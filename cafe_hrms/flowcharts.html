@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Slow Hours Cafe — System Flowcharts</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f8fafc; padding: 40px; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #1e293b; text-align: center; margin-bottom: 40px; }
+        h2 { color: #4f46e5; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 48px; }
+        .diagram-container { background: white; border-radius: 12px; padding: 24px; margin: 16px 0 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+        .diagram-container .mermaid { display: inline-block; }
+        @media print { body { padding: 20px; } .diagram-container { break-inside: avoid; page-break-inside: avoid; } }
+    </style>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+    </script>
+</head>
+<body>
+    <h1>Slow Hours Cafe — Full System Flowcharts</h1>
+    <p style="text-align:center;color:#64748b;">Right-click any diagram → "Save image as..." to download as PNG. Or use Ctrl+P to print/save as PDF.</p>
+
+    <h2>1. Authentication & Role-Based Routing</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    START(["User visits login.php"]) --> LOGIN["Login Page\nUsername + Password"]
+    LOGIN --> AUTH{Authentication\nSuccessful?}
+    AUTH -->|No| ERR["Show Error\nInvalid Credentials"]
+    ERR --> LOGIN
+    AUTH -->|Yes| ROLE{User Role?}
+    ROLE -->|"Super Admin / HR Admin"| ADMIN["Admin Dashboard\ndashboard.php"]
+    ROLE -->|"Employee / Barista"| ESS["Employee Self-Service\ness.php"]
+    ROLE -->|"Head Barista"| ESS
+    ROLE -->|"Cashier"| CASHIER["Cashier Terminal\ncashier.php"]
+    ROLE -->|"Kiosk - tablet"| TABLET["Tablet Kiosk\ncafe_pos/index.html"]
+    ROLE -->|"Kiosk - clock"| KIOSK["Clock-In Kiosk\nkiosk.php"]
+    style START fill:#4f46e5,color:#fff
+    style ADMIN fill:#1e293b,color:#fff
+    style ESS fill:#2563eb,color:#fff
+    style CASHIER fill:#16a34a,color:#fff
+    style TABLET fill:#ea580c,color:#fff
+    style KIOSK fill:#7c3aed,color:#fff
+        </pre>
+    </div>
+
+    <h2>2. HRMS Admin Panel</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    ADMIN["Admin Dashboard"] --> HRMS_MENU["HRMS Module"]
+    ADMIN --> POS_MENU["POS Module"]
+    subgraph HRMS ["HRMS Module"]
+        direction TB
+        DASH["Dashboard\nKPIs, Charts, Headcount"]
+        SHIFT["Shift Board\nWeekly Schedule Manager"]
+        APPS["Applications\nKanban Board"]
+        EMP["Employees Directory\nList, Search, Filter"]
+        SYS["System Accounts\nKiosk / Cashier / Admin"]
+        ACCT["Account Management\nEmployee Access Control"]
+        ATT["Attendance\nDaily Records"]
+        LV["Leave and Shifts\nRoster + Leave Requests"]
+        PAY["Payroll\nDraft - Approve - Release"]
+        PERF["Performance\nEvaluation Forms"]
+    end
+    subgraph POS_ADMIN ["POS Module - Admin View"]
+        direction TB
+        POS_DASH["POS Dashboard\nSales Analytics"]
+        MENU["Menu List\nProducts + Categories"]
+        INV["Inventory\nStock Tracking"]
+    end
+    HRMS_MENU --> DASH
+    HRMS_MENU --> SHIFT
+    HRMS_MENU --> APPS
+    HRMS_MENU --> EMP
+    HRMS_MENU --> SYS
+    HRMS_MENU --> ACCT
+    HRMS_MENU --> ATT
+    HRMS_MENU --> LV
+    HRMS_MENU --> PAY
+    HRMS_MENU --> PERF
+    POS_MENU --> POS_DASH
+    POS_MENU --> MENU
+    POS_MENU --> INV
+    style ADMIN fill:#1e293b,color:#fff
+    style HRMS fill:#f1f5f9,stroke:#4f46e5,stroke-width:2px
+    style POS_ADMIN fill:#f1f5f9,stroke:#ea580c,stroke-width:2px
+        </pre>
+    </div>
+
+    <h2>3. Recruitment & Hiring Pipeline</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart LR
+    CAREER(["Public Careers Page\ncareers.php"]) -->|"Online Application"| NEW["New"]
+    MANUAL["Manual Input\napplicant_form.php"] -->|"HR adds applicant"| NEW
+    subgraph KANBAN ["Kanban Pipeline - applications.php"]
+        direction LR
+        NEW --> II["Initial\nInterview"]
+        II --> FI["Final\nInterview"]
+        FI --> JO["Job\nOffer"]
+        JO --> HIRED["Hired"]
+    end
+    HIRED -->|"Auto-creates"| EMP_REC["Employee Record\n+ User Account"]
+    II -->|"Schedule Interview"| SCHED["Interview Modal\nDate must be today or later"]
+    FI -->|"Schedule Interview"| SCHED
+    style CAREER fill:#4f46e5,color:#fff
+    style HIRED fill:#16a34a,color:#fff
+    style EMP_REC fill:#1e293b,color:#fff
+        </pre>
+    </div>
+
+    <h2>4. Employee Lifecycle</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    HIRE["Hired from\nApplications"] --> TRAINEE["Status: Trainee"]
+    TRAINEE -->|"After evaluation"| ACTIVE["Status: Active"]
+    ACTIVE --> RAISE["Salary Raise\nraise_form.php"]
+    ACTIVE --> TERM["Termination\nterminate_form.php"]
+    ACTIVE --> REHIRE["Rehire\nrehire_form.php"]
+    TERM --> ARCHIVED["Status: Archived"]
+    ARCHIVED -->|"Rehire"| REHIRE
+    REHIRE --> ACTIVE
+    subgraph SELF_SERVICE ["Employee Self-Service - ess.php"]
+        direction TB
+        MY_DASH["My Dashboard\nHours, Attendance, Profile"]
+        MY_LEAVE["Request Leave"]
+        MY_SHIFT["View Shift Board"]
+        MY_PERF["View Performance\nHead Barista: Evaluate"]
+    end
+    ACTIVE --> SELF_SERVICE
+    style HIRE fill:#16a34a,color:#fff
+    style ARCHIVED fill:#dc2626,color:#fff
+    style SELF_SERVICE fill:#eff6ff,stroke:#2563eb,stroke-width:2px
+        </pre>
+    </div>
+
+    <h2>5. Attendance & Leave Flow</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    subgraph CLOCK ["Clock-In Methods"]
+        K1["HRMS Kiosk\nUsername + Password"]
+        K2["Admin Manual Entry\nattendance.php"]
+    end
+    K1 --> ATT_DB[("attendance Table\ntime_in / time_out")]
+    K2 --> ATT_DB
+    subgraph LEAVE_FLOW ["Leave Management"]
+        direction TB
+        EMP_REQ["Employee Requests\nLeave via ESS"]
+        HR_REQ["HR Requests on\nbehalf of Employee"]
+        EMP_REQ --> PENDING["Status: Pending"]
+        HR_REQ --> PENDING
+        PENDING -->|"HR Approves"| APPROVED["Status: Approved"]
+        PENDING -->|"HR Rejects"| REJECTED["Status: Rejected"]
+        SICK["Sick Leave"] -->|"Auto-Approved"| APPROVED
+        MATERNAL["Maternal Leave\n105 days, Female only"] -->|"Auto-Approved"| APPROVED
+    end
+    ATT_DB -->|"Feeds into"| PAYROLL["Payroll Calculation"]
+    APPROVED -->|"Feeds into"| PAYROLL
+    style ATT_DB fill:#fef3c7,stroke:#f59e0b,stroke-width:2px
+    style PAYROLL fill:#16a34a,color:#fff
+        </pre>
+    </div>
+
+    <h2>6. Payroll Processing</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    GEN["HR Clicks\nGenerate Payroll"] --> PERIOD["Select Period\nBi-monthly Cutoffs"]
+    PERIOD --> FT{Employee Type?}
+    FT -->|"Full-Time"| FT_CALC["Base Pay = Monthly Salary / 2\nDaily Rate = Salary / 22\nCount actual days attended + leaves\nDeduct unworked days"]
+    FT -->|"Part-Time"| PT_CALC["Total Hours from Attendance\nx Hourly Rate"]
+    FT_CALC --> DEDUCTIONS
+    PT_CALC --> DEDUCTIONS
+    DEDUCTIONS["Statutory Deductions\nPhilHealth 2.5% + SSS 4.5%\n+ Pag-IBIG P100 + Tax"]
+    DEDUCTIONS --> BONUS["+ Pending Bonuses"]
+    BONUS --> NET["Net Pay = Gross - Deductions + Bonus"]
+    NET --> DRAFT["Status: Draft"]
+    DRAFT -->|"HR Reviews"| APPROVE["Status: Approved"]
+    APPROVE -->|"HR Releases"| RELEASE["Status: Released\n+ Payment Method\n+ Email Notification"]
+    style GEN fill:#4f46e5,color:#fff
+    style RELEASE fill:#16a34a,color:#fff
+        </pre>
+    </div>
+
+    <h2>7. POS - Tablet Kiosk (Customer Self-Order)</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    TABLET(["Tablet Kiosk\ncafe_pos/index.html"]) --> BROWSE["Browse Menu\nby Category"]
+    BROWSE --> SELECT["Select Product"]
+    SELECT --> MODS{"Has Modifiers?"}
+    MODS -->|Yes| CUSTOMIZE["Customize Order\nSize, Add-ons"]
+    MODS -->|No| CART["Add to Cart"]
+    CUSTOMIZE --> CART
+    CART --> CHECKOUT["Place Order"]
+    CHECKOUT --> PAY_SELECT{Payment Method?}
+    PAY_SELECT -->|"Digital Payment"| DIGITAL["Digital Payment\nAuto-completes\nprints receipt"]
+    PAY_SELECT -->|"Physical Cash"| QUEUE["Order to Cashier Queue\nStatus: Pending"]
+    DIGITAL --> DONE["Order Complete\nReceipt Printed"]
+    QUEUE --> CASHIER_PICK["Cashier Receives\nin Pending Queue"]
+    style TABLET fill:#ea580c,color:#fff
+    style DONE fill:#16a34a,color:#fff
+        </pre>
+    </div>
+
+    <h2>8. POS - Cashier Terminal</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    LOCK["Terminal Locked"] -->|"Select Profile + PIN"| UNLOCK["Cashier Unlocked"]
+    UNLOCK --> SESSION["Open POS Session\nStarting Cash"]
+    SESSION --> WORK{Workflow}
+    WORK -->|"Manual Order"| MANUAL_ORD["Browse Menu then Add to Cart\nthen Place Order"]
+    WORK -->|"From Tablet Queue"| PENDING["Load Pending Order\nfrom Left Sidebar"]
+    MANUAL_ORD --> PAY
+    PENDING --> PAY
+    PAY["Select Payment"] --> PAY_TYPE{Method?}
+    PAY_TYPE -->|"Physical Cash"| CASH["Cash Register Modal\nCalculate Change"]
+    PAY_TYPE -->|"Digital"| REF["Enter Reference Number\nConfirm Payment"]
+    CASH --> COMPLETE["Order Complete\nReceipt Printed"]
+    REF --> COMPLETE
+    COMPLETE --> NEXT["Next Order..."]
+    NEXT --> WORK
+    SESSION -->|"End Shift"| CLOSE["Close Session\nExpected vs Actual Cash"]
+    style LOCK fill:#7c3aed,color:#fff
+    style COMPLETE fill:#16a34a,color:#fff
+        </pre>
+    </div>
+
+    <h2>9. Cross-System Data Flow</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart LR
+    subgraph PUBLIC ["Public"]
+        CAREERS["Careers Page"]
+    end
+    subgraph HRMS_SYS ["HRMS System"]
+        direction TB
+        APPS_K["Applications\nKanban"]
+        EMP_DIR["Employees"]
+        ATT_SYS["Attendance"]
+        LEAVE_SYS["Leave"]
+        PAY_SYS["Payroll"]
+        PERF_SYS["Performance"]
+        ACCT_SYS["Account Mgmt"]
+    end
+    subgraph POS_SYS ["POS System"]
+        direction TB
+        MENU_SYS["Menu and Products"]
+        INV_SYS["Inventory"]
+        ORDERS_SYS["Orders and Sales"]
+        CASHIER_SYS["Cashier Terminal"]
+        KIOSK_SYS["Tablet Kiosk"]
+    end
+    CAREERS -->|"Application"| APPS_K
+    APPS_K -->|"Hire"| EMP_DIR
+    EMP_DIR -->|"Creates User"| ACCT_SYS
+    ATT_SYS -->|"Hours/Days"| PAY_SYS
+    LEAVE_SYS -->|"Paid Leave Days"| PAY_SYS
+    PERF_SYS -->|"Bonus"| PAY_SYS
+    MENU_SYS -->|"Products"| KIOSK_SYS
+    MENU_SYS -->|"Products"| CASHIER_SYS
+    INV_SYS -->|"Stock Levels"| MENU_SYS
+    KIOSK_SYS -->|"Pending Orders"| CASHIER_SYS
+    ORDERS_SYS -->|"Sales Data"| POS_DASH_SYS["POS Dashboard"]
+    CASHIER_SYS -->|"Completed Sales"| ORDERS_SYS
+    style PUBLIC fill:#eff6ff,stroke:#4f46e5
+    style HRMS_SYS fill:#f1f5f9,stroke:#1e293b,stroke-width:2px
+    style POS_SYS fill:#fff7ed,stroke:#ea580c,stroke-width:2px
+        </pre>
+    </div>
+
+    <h2>10. System Accounts & Access Control</h2>
+    <div class="diagram-container">
+        <pre class="mermaid">
+flowchart TD
+    subgraph SYSTEM_ACCOUNTS ["System Accounts - system_accounts.php"]
+        direction TB
+        SA1["Kiosk Accounts\nClock-In Terminals"]
+        SA2["Tablet Kiosk Accounts\nusername contains tablet"]
+        SA3["Cashier Terminal Accounts"]
+        SA4["Super Admin Accounts"]
+    end
+    subgraph EMPLOYEE_ACCOUNTS ["Account Management - account_management.php"]
+        direction TB
+        EA1["View All Employee Users"]
+        EA2["Reset Password"]
+        EA3["Change Username / Role"]
+        EA4["Activate / Deactivate Access"]
+    end
+    SUPER["Super Admin"] --> SYSTEM_ACCOUNTS
+    SUPER --> EMPLOYEE_ACCOUNTS
+    EA4 -->|"Deactivated"| BLOCKED["Cannot Login"]
+    EA4 -->|"Active"| ALLOWED["Can Login"]
+    style SUPER fill:#7c3aed,color:#fff
+    style SYSTEM_ACCOUNTS fill:#f1f5f9,stroke:#1e293b
+    style EMPLOYEE_ACCOUNTS fill:#fef3c7,stroke:#f59e0b
+        </pre>
+    </div>
+
+</body>
+</html>

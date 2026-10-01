@@ -1,0 +1,15 @@
+- [x] **1. Public Application Intake**
+  - [x] Delete compensation inputs (`expected_salary`) from `careers.php`.
+- [x] **2. ATS Onboarding Gate**
+  - [x] Remove `hourly_rate` from public applications.
+  - [x] Add `hourly_rate` input to the "Onboard Employee" modal in `applications.php`.
+- [x] **3. Form & UI Updates**
+  - [x] Update `employee_form.php` to "Hourly Rate (₱)" and add projection script.
+  - [x] Update `raise_form.php` to "Hourly Rate (₱)" and add projection script.
+  - [x] Update `rehire_form.php` to "Hourly Rate (₱)" and add projection script.
+  - [x] Update `employee_view.php`, `employees.php`, `ess.php` to show `₱X/hr (Est. ₱Y/mo)`.
+- [x] **4. Database & PHP Codebase Migration**
+  - [x] Replace `salary_rate` with `hourly_rate` everywhere in the PHP codebase.
+  - [x] Fix Full-Time hourly rates in the DB (currently corrupted to 0.65, will multiply by 176 to restore to 114.40).
+- [x] **5. Payroll Engine Replacement**
+  - [x] Rewrite draft generation logic in `payroll.php` to use the new `Gross Pay` formula.
