@@ -97,13 +97,13 @@ $stage_name = $app['stage'];
     <h4 class="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Documents</h4>
     <div class="space-y-2">
         <?php if(!empty($app['resume'])): ?>
-        <a href="uploads/applicants/<?= h($app['resume']) ?>" target="_blank" class="flex items-center justify-between bg-white border border-slate-200 p-3 rounded-lg hover:border-indigo-300 hover:shadow-sm transition group">
+        <a href="file_proxy.php?file=applicants/<?= h($app['resume']) ?>" target="_blank" class="flex items-center justify-between bg-white border border-slate-200 p-3 rounded-lg hover:border-indigo-300 hover:shadow-sm transition group">
             <span class="text-sm font-medium text-slate-700 group-hover:text-indigo-600"><i class="fa-solid fa-file-pdf text-red-500 mr-2"></i> Resume</span>
             <i class="fa-solid fa-external-link-alt text-slate-400 text-xs"></i>
         </a>
         <?php endif; ?>
         <?php if(!empty($app['valid_id_photo'])): ?>
-        <a href="uploads/applicants/<?= h($app['valid_id_photo']) ?>" target="_blank" class="flex items-center justify-between bg-white border border-slate-200 p-3 rounded-lg hover:border-indigo-300 hover:shadow-sm transition group">
+        <a href="file_proxy.php?file=applicants/<?= h($app['valid_id_photo']) ?>" target="_blank" class="flex items-center justify-between bg-white border border-slate-200 p-3 rounded-lg hover:border-indigo-300 hover:shadow-sm transition group">
             <span class="text-sm font-medium text-slate-700 group-hover:text-indigo-600"><i class="fa-solid fa-id-card text-blue-500 mr-2"></i> Valid ID</span>
             <i class="fa-solid fa-external-link-alt text-slate-400 text-xs"></i>
         </a>

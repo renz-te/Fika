@@ -6,32 +6,128 @@ if (empty($_SESSION['user']) || !in_array($_SESSION['user']['role'], ['Super Adm
     redirect('dashboard');
 }
 
-// Handle CSV Export
-if (isset($_GET['export']) && $_GET['export'] === 'csv') {
-    $stmt = $pdo->query("
-        SELECT t.transaction_date, b.name as branch_name, t.item_name, t.quantity, i.unit, t.cost as financial_impact
-        FROM inventory_transactions t
-        JOIN inventory i ON t.inventory_id = i.id
-        LEFT JOIN branches b ON t.branch_id = b.id
-        WHERE t.type = 'Write-off'
-        ORDER BY t.transaction_date DESC
-    ");
-    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename=inventory_writeoffs_' . date('Y-m-d') . '.csv');
+if (isset($_GET['export'])) {
+    $exportType = $_GET['export'];
     $output = fopen('php://output', 'w');
-    fputcsv($output, ['Date', 'Branch', 'Item', 'Quantity Deducted', 'Unit', 'Financial Impact']);
-    foreach ($data as $row) {
-        fputcsv($output, [
-            $row['transaction_date'],
-            $row['branch_name'] ?? 'Global',
-            $row['item_name'],
-            $row['quantity'],
-            $row['unit'],
-            $row['financial_impact']
-        ]);
+    header('Content-Type: text/csv; charset=utf-8');
+
+    if ($exportType === 'csv') {
+        $stmt = $pdo->query("
+            SELECT t.transaction_date, b.name as branch_name, t.item_name, t.quantity, i.unit, t.cost as financial_impact
+            FROM inventory_transactions t
+            JOIN inventory i ON t.inventory_id = i.id
+            LEFT JOIN branches b ON t.branch_id = b.id
+            WHERE t.type = 'Write-off'
+            ORDER BY t.transaction_date DESC
+        ");
+        header('Content-Disposition: attachment; filename=inventory_writeoffs_' . date('Y-m-d') . '.csv');
+        fputcsv($output, ['Date', 'Branch', 'Item', 'Quantity Deducted', 'Unit', 'Financial Impact']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            fputcsv($output, [
+                $row['transaction_date'], $row['branch_name'] ?? 'Global', $row['item_name'], 
+                $row['quantity'], $row['unit'], $row['financial_impact']
+            ]);
+        }
+    } 
+    elseif ($exportType === 'sss') {
+        $stmt = $pdo->query("
+            SELECT b.name as branch_name, DATE_FORMAT(p.period_end, '%Y-%m') as month, e.first_name, e.last_name, e.sss as sss_no, 
+                   SUM(p.gross_pay) as gross_pay, SUM(p.sss) as ee_share, SUM(p.employer_sss) as er_share
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN branches b ON p.branch_id = b.id
+            WHERE p.status = 'Released'
+            GROUP BY p.branch_id, month, e.id
+            ORDER BY month DESC, b.name ASC, e.last_name ASC
+        ");
+        header('Content-Disposition: attachment; filename=sss_remittance_' . date('Y-m') . '.csv');
+        fputcsv($output, ['Branch', 'Month', 'Employee Name', 'SSS No', 'Gross Pay', 'EE Share', 'ER Share', 'Total SSS']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $total = $row['ee_share'] + $row['er_share'];
+            fputcsv($output, [$row['branch_name'], $row['month'], $row['last_name'] . ', ' . $row['first_name'], decryptData($row['sss_no']), $row['gross_pay'], $row['ee_share'], $row['er_share'], $total]);
+        }
     }
+    elseif ($exportType === 'philhealth') {
+        $stmt = $pdo->query("
+            SELECT b.name as branch_name, DATE_FORMAT(p.period_end, '%Y-%m') as month, e.first_name, e.last_name, e.philhealth as ph_no, 
+                   SUM(p.gross_pay) as gross_pay, SUM(p.philhealth) as ee_share, SUM(p.employer_philhealth) as er_share
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN branches b ON p.branch_id = b.id
+            WHERE p.status = 'Released'
+            GROUP BY p.branch_id, month, e.id
+            ORDER BY month DESC, b.name ASC, e.last_name ASC
+        ");
+        header('Content-Disposition: attachment; filename=philhealth_remittance_' . date('Y-m') . '.csv');
+        fputcsv($output, ['Branch', 'Month', 'Employee Name', 'PhilHealth No', 'Gross Pay', 'EE Share', 'ER Share', 'Total PH']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $total = $row['ee_share'] + $row['er_share'];
+            fputcsv($output, [$row['branch_name'], $row['month'], $row['last_name'] . ', ' . $row['first_name'], decryptData($row['ph_no']), $row['gross_pay'], $row['ee_share'], $row['er_share'], $total]);
+        }
+    }
+    elseif ($exportType === 'pagibig') {
+        $stmt = $pdo->query("
+            SELECT b.name as branch_name, DATE_FORMAT(p.period_end, '%Y-%m') as month, e.first_name, e.last_name, e.pagibig as hdmf_no, 
+                   SUM(p.gross_pay) as gross_pay, SUM(p.pagibig) as ee_share, SUM(p.employer_pagibig) as er_share
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN branches b ON p.branch_id = b.id
+            WHERE p.status = 'Released'
+            GROUP BY p.branch_id, month, e.id
+            ORDER BY month DESC, b.name ASC, e.last_name ASC
+        ");
+        header('Content-Disposition: attachment; filename=pagibig_remittance_' . date('Y-m') . '.csv');
+        fputcsv($output, ['Branch', 'Month', 'Employee Name', 'Pag-IBIG No', 'Gross Pay', 'EE Share', 'ER Share', 'Total HDMF']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $total = $row['ee_share'] + $row['er_share'];
+            fputcsv($output, [$row['branch_name'], $row['month'], $row['last_name'] . ', ' . $row['first_name'], decryptData($row['hdmf_no']), $row['gross_pay'], $row['ee_share'], $row['er_share'], $total]);
+        }
+    }
+    elseif ($exportType === 'bir') {
+        $stmt = $pdo->query("
+            SELECT b.name as branch_name, DATE_FORMAT(p.period_end, '%Y-%m') as month, e.first_name, e.last_name, e.tin, 
+                   SUM(p.gross_pay) as gross_pay, SUM(p.sss + p.philhealth + p.pagibig) as non_taxable, SUM(p.tax) as tax_withheld
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN branches b ON p.branch_id = b.id
+            WHERE p.status = 'Released'
+            GROUP BY p.branch_id, month, e.id
+            ORDER BY month DESC, b.name ASC, e.last_name ASC
+        ");
+        header('Content-Disposition: attachment; filename=bir_withholding_' . date('Y-m') . '.csv');
+        fputcsv($output, ['Branch', 'Month', 'Employee Name', 'TIN', 'Gross Pay', 'Non-Taxable Contributions', 'Taxable Income', 'Tax Withheld']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $taxable = $row['gross_pay'] - $row['non_taxable'];
+            fputcsv($output, [$row['branch_name'], $row['month'], $row['last_name'] . ', ' . $row['first_name'], decryptData($row['tin']), $row['gross_pay'], $row['non_taxable'], $taxable, $row['tax_withheld']]);
+        }
+    }
+    elseif ($exportType === 'payroll_register') {
+        $run_id = (int)($_GET['run_id'] ?? 0);
+        if (!$run_id) {
+            echo "run_id required"; exit;
+        }
+        $stmt = $pdo->prepare("
+            SELECT b.name as branch_name, p.period_start, p.period_end, e.first_name, e.last_name,
+                   p.regular_hours, p.overtime_hours, p.overtime_pay, p.night_differential, p.late_deduction,
+                   p.gross_pay, p.sss, p.philhealth, p.pagibig, p.tax, p.bonus_amount, p.deductions, p.net_pay
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN branches b ON p.branch_id = b.id
+            WHERE p.run_id = ? AND p.status = 'Released'
+            ORDER BY e.last_name ASC
+        ");
+        $stmt->execute([$run_id]);
+        header('Content-Disposition: attachment; filename=payroll_register_run_' . $run_id . '.csv');
+        fputcsv($output, ['Branch', 'Period Start', 'Period End', 'Employee Name', 'Reg Hours', 'OT Hours', 'OT Pay', 'ND Pay', 'Late Ded', 'Gross Pay', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Tax', 'Bonus', 'Total Deductions', 'Net Pay']);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            fputcsv($output, [
+                $row['branch_name'], $row['period_start'], $row['period_end'], $row['last_name'] . ', ' . $row['first_name'],
+                $row['regular_hours'], $row['overtime_hours'], $row['overtime_pay'], $row['night_differential'], $row['late_deduction'],
+                $row['gross_pay'], $row['sss'], $row['philhealth'], $row['pagibig'], $row['tax'], $row['bonus_amount'], $row['deductions'], $row['net_pay']
+            ]);
+        }
+    }
+    
     fclose($output);
     exit;
 }
@@ -63,14 +159,36 @@ $writeoffs = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <?php include 'includes/header.php'; ?>
 
     <div class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center z-10">
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center z-10 gap-4">
             <div>
                 <h2 class="text-xl font-bold text-slate-800">Financial Reports</h2>
-                <p class="text-sm text-slate-500">Inventory Write-Offs & Ledger Valuation</p>
+                <p class="text-sm text-slate-500">Statutory Remittances, Payroll & Ledger</p>
             </div>
-            <div class="flex gap-3">
-                <a href="?export=csv" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                    <i class="fa-solid fa-file-csv mr-2"></i> Export to CSV
+            <div class="flex flex-wrap gap-2">
+                <!-- Dropdown for Remittance -->
+                <div class="relative group">
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
+                        <i class="fa-solid fa-file-invoice-dollar mr-2"></i> Statutory Exports <i class="fa-solid fa-chevron-down ml-2 text-xs"></i>
+                    </button>
+                    <div class="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                        <a href="?export=sss" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 border-b border-slate-100">SSS Remittance</a>
+                        <a href="?export=philhealth" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 border-b border-slate-100">PhilHealth Remittance</a>
+                        <a href="?export=pagibig" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 border-b border-slate-100">Pag-IBIG Remittance</a>
+                        <a href="?export=bir" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">BIR Withholding</a>
+                    </div>
+                </div>
+
+                <!-- Run ID for Payroll -->
+                <form action="" method="GET" class="flex items-center gap-2">
+                    <input type="hidden" name="export" value="payroll_register">
+                    <input type="number" name="run_id" placeholder="Run ID" class="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" required>
+                    <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                        <i class="fa-solid fa-file-invoice mr-2"></i> Payroll Register
+                    </button>
+                </form>
+
+                <a href="?export=csv" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center">
+                    <i class="fa-solid fa-file-csv mr-2"></i> Write-Offs
                 </a>
             </div>
         </header>

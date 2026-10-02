@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Check if this HB already has an open shift on ANY terminal
-                $stmt2 = $pdoPos->prepare("SELECT id FROM pos_sessions WHERE head_barista_id = ? AND status = 'OPEN'");
+                $stmt2 = $pdoPos->prepare("SELECT id FROM cash_sessions WHERE cashier_id = ? AND status = 'OPEN'");
                 $stmt2->execute([$user['id']]);
                 $openShift = $stmt2->fetch();
 

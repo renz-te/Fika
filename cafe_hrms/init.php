@@ -4,6 +4,9 @@ $config = require __DIR__ . '/config.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
 // 1. Authentication Check
 $current_page = basename($_SERVER['PHP_SELF']);
@@ -29,12 +32,17 @@ if (!defined('APP_ROOT')) {
     define('APP_ROOT', __DIR__);
 }
 
+if (!defined('APP_KEY')) {
+    define('APP_KEY', 'xK9pL2vM8qJ5wH4tN7eR3yA6cZ1bF0dG');
+}
+
 try {
     $dsn = "mysql:host={$config['db']['host']};dbname={$config['db']['name']};charset={$config['db']['charset']}";
     $pdo = new PDO($dsn, $config['db']['user'], $config['db']['pass'], [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '+08:00'"
     ]);
 } catch (PDOException $ex) {
     die('Database connection failed: ' . htmlspecialchars($ex->getMessage()));

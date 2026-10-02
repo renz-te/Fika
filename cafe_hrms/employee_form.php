@@ -198,6 +198,30 @@ require_once __DIR__ . '/includes/header.php';
             </div>
             
             <div class="md:col-span-2 pt-4 border-t border-slate-100 mt-2">
+                <h3 class="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Statutory & Banking</h3>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Bank Account</label>
+                <input type="text" name="bank_account" value="<?= h(decryptData($employee['bank_account'] ?? '')) ?>" class="w-full rounded-lg border-slate-300 p-2 border focus:ring-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">TIN</label>
+                <input type="text" name="tin" value="<?= h(decryptData($employee['tin'] ?? '')) ?>" class="w-full rounded-lg border-slate-300 p-2 border focus:ring-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">SSS Number</label>
+                <input type="text" name="sss" value="<?= h(decryptData($employee['sss'] ?? '')) ?>" class="w-full rounded-lg border-slate-300 p-2 border focus:ring-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">PhilHealth Number</label>
+                <input type="text" name="philhealth" value="<?= h(decryptData($employee['philhealth'] ?? '')) ?>" class="w-full rounded-lg border-slate-300 p-2 border focus:ring-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Pag-IBIG Number</label>
+                <input type="text" name="pagibig" value="<?= h(decryptData($employee['pagibig'] ?? '')) ?>" class="w-full rounded-lg border-slate-300 p-2 border focus:ring-primary">
+            </div>
+            
+            <div class="md:col-span-2 pt-4 border-t border-slate-100 mt-2">
                 <h3 class="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wider">Identification Documents</h3>
             </div>
             <div>

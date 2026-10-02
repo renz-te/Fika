@@ -28,6 +28,10 @@ if (in_array($user_role, ['Branch Manager', 'Branch Accountant'])) {
 
 // --- Handle POST: Add/Edit Budget Allocation ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        http_response_code(403);
+        die('CSRF token validation failed.');
+    }
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_budget') {
@@ -35,8 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $b_month = trim($_POST['budget_month'] ?? '');
         $b_amount = (float)str_replace(',', '', $_POST['allocated_labor_budget'] ?? '0');
 
-        // Branch Managers can only set budget for their own branch
-        if (in_array($user_role, ['Branch Manager', 'Branch Accountant']) && $b_branch_id !== (int)$user_branch_id) {
+        // strict server-side validation on budget_month
+        if (!preg_match('/^\d{4}-\d{2}$/', $b_month)) {
+            $error = "Invalid budget month format. Must be YYYY-MM.";
+        } elseif (in_array($user_role, ['Branch Manager', 'Branch Accountant']) && $b_branch_id !== (int)$user_branch_id) {
             $error = "You can only manage budgets for your assigned branch.";
         } elseif (empty($b_branch_id) || empty($b_month) || $b_amount <= 0) {
             $error = "All fields are required. Budget must be greater than zero.";
@@ -47,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                    ON DUPLICATE KEY UPDATE allocated_labor_budget = VALUES(allocated_labor_budget)");
             $stmt->execute([$b_branch_id, $b_month, $b_amount]);
             $success = "Budget allocation saved successfully.";
+            log_activity($pdo, $user['id'], 'save_budget', "Set budget for branch $b_branch_id month $b_month to $b_amount");
         }
     } elseif ($action === 'delete_budget') {
         $budget_id = (int)($_POST['budget_id'] ?? 0);
@@ -61,10 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $pdo->prepare("DELETE FROM branch_budgets WHERE id = ?")->execute([$budget_id]);
                     $success = "Budget entry deleted.";
+                    log_activity($pdo, $user['id'], 'delete_budget', "Deleted budget ID: $budget_id");
                 }
             } else {
                 $pdo->prepare("DELETE FROM branch_budgets WHERE id = ?")->execute([$budget_id]);
                 $success = "Budget entry deleted.";
+                log_activity($pdo, $user['id'], 'delete_budget', "Deleted budget ID: $budget_id");
             }
         }
     }
@@ -77,63 +86,68 @@ $branches_list = $pdo->query("SELECT id, name FROM branches WHERE status = 'Acti
 $budget_query = "
     SELECT 
         bb.id AS budget_id,
-        bb.branch_id,
+        b.id AS branch_id,
         b.name AS branch_name,
-        bb.budget_month,
-        bb.allocated_labor_budget,
+        master.report_month AS budget_month,
+        COALESCE(bb.allocated_labor_budget, 0) AS allocated_labor_budget,
         COALESCE(actual.total_labor_cost, 0) AS actual_labor_cost,
         COALESCE(rev.gross_revenue, 0) AS gross_revenue,
         COALESCE(cogs.total_cogs, 0) AS total_cogs,
-        (COALESCE(rev.gross_revenue, 0) - COALESCE(cogs.total_cogs, 0) - COALESCE(actual.total_labor_cost, 0)) AS net_profit
-    FROM branch_budgets bb
-    JOIN branches b ON bb.branch_id = b.id
+        (COALESCE(rev.gross_revenue, 0) - COALESCE(cogs.total_cogs, 0) - COALESCE(actual.total_labor_cost, 0)) AS margin_before_overhead,
+        (COALESCE(actual.total_labor_cost, 0) > COALESCE(bb.allocated_labor_budget, 0)) AS is_over_budget
+    FROM branches b
+    CROSS JOIN (
+        SELECT DISTINCT budget_month AS report_month FROM branch_budgets
+        UNION
+        SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') FROM cafe_pos.orders WHERE payment_status = 'PAID'
+        UNION
+        SELECT DISTINCT DATE_FORMAT(period_end, '%Y-%m') FROM payroll WHERE status != 'Draft'
+    ) master
+    LEFT JOIN branch_budgets bb ON bb.branch_id = b.id AND bb.budget_month = master.report_month
     LEFT JOIN (
         SELECT 
-            e.branch_id,
+            p.branch_id,
             DATE_FORMAT(p.period_end, '%Y-%m') AS pay_month,
-            SUM(p.gross_pay) AS total_labor_cost
+            SUM(p.gross_pay + COALESCE(p.bonus_amount, 0) + p.employer_sss + p.employer_philhealth + p.employer_pagibig) AS total_labor_cost
         FROM payroll p
-        JOIN employees e ON p.employee_id = e.id
         WHERE p.status != 'Draft'
-        GROUP BY e.branch_id, DATE_FORMAT(p.period_end, '%Y-%m')
-    ) actual ON actual.branch_id = bb.branch_id AND actual.pay_month = bb.budget_month
+        GROUP BY p.branch_id, DATE_FORMAT(p.period_end, '%Y-%m')
+    ) actual ON actual.branch_id = b.id AND actual.pay_month = master.report_month
     LEFT JOIN (
         SELECT 
-            u.branch_id, 
+            o.branch_id, 
             DATE_FORMAT(o.created_at, '%Y-%m') AS rev_month, 
             SUM(o.total_price) AS gross_revenue
         FROM cafe_pos.orders o
-        JOIN users u ON o.cashier_id = u.id
         WHERE o.payment_status = 'PAID'
-        GROUP BY u.branch_id, DATE_FORMAT(o.created_at, '%Y-%m')
-    ) rev ON rev.branch_id = bb.branch_id AND rev.rev_month = bb.budget_month
+        GROUP BY o.branch_id, DATE_FORMAT(o.created_at, '%Y-%m')
+    ) rev ON rev.branch_id = b.id AND rev.rev_month = master.report_month
     LEFT JOIN (
         SELECT 
-            it.branch_id, 
-            DATE_FORMAT(it.transaction_date, '%Y-%m') AS cogs_month, 
-            SUM(it.quantity * i.unit_cost) AS total_cogs
-        FROM cafe_pos.inventory_transactions it
-        JOIN cafe_pos.inventory i ON it.inventory_id = i.id
-        WHERE it.type = 'Stock Out'
-        GROUP BY it.branch_id, DATE_FORMAT(it.transaction_date, '%Y-%m')
-    ) cogs ON cogs.branch_id = bb.branch_id AND cogs.cogs_month = bb.budget_month
-    WHERE 1=1
+            branch_id, 
+            DATE_FORMAT(transaction_date, '%Y-%m') AS cogs_month, 
+            SUM(quantity * COALESCE(unit_cost_snapshot, cost)) AS total_cogs
+        FROM inventory_transactions
+        WHERE type IN ('Usage', 'Write-off') AND status = 'Completed'
+        GROUP BY branch_id, DATE_FORMAT(transaction_date, '%Y-%m')
+    ) cogs ON cogs.branch_id = b.id AND cogs.cogs_month = master.report_month
+    WHERE master.report_month IS NOT NULL
 ";
 
 $params = [];
 if ($filter_branch_id) {
-    $budget_query .= " AND bb.branch_id = ?";
+    $budget_query .= " AND b.id = ?";
     $params[] = $filter_branch_id;
 }
 
 // Month filter
 $filter_month = $_GET['month'] ?? '';
 if (!empty($filter_month)) {
-    $budget_query .= " AND bb.budget_month = ?";
+    $budget_query .= " AND master.report_month = ?";
     $params[] = $filter_month;
 }
 
-$budget_query .= " ORDER BY bb.budget_month DESC, b.name ASC";
+$budget_query .= " ORDER BY master.report_month DESC, b.name ASC";
 
 $stmt = $pdo->prepare($budget_query);
 $stmt->execute($params);
@@ -143,15 +157,15 @@ $budget_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $total_revenue = 0;
 $total_cogs = 0;
 $total_labor = 0;
-$total_net_profit = 0;
+$total_margin = 0;
 $loss_count = 0;
 
 foreach ($budget_rows as $r) {
     $total_revenue += (float)$r['gross_revenue'];
     $total_cogs += (float)$r['total_cogs'];
     $total_labor += (float)$r['actual_labor_cost'];
-    $total_net_profit += (float)$r['net_profit'];
-    if ((float)$r['net_profit'] < 0) $loss_count++;
+    $total_margin += (float)$r['margin_before_overhead'];
+    if ((float)$r['margin_before_overhead'] < 0) $loss_count++;
 }
 
 $pageTitle = 'P&L Dashboard';
@@ -162,7 +176,7 @@ require_once __DIR__ . '/includes/header.php';
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 class="text-2xl font-bold text-slate-800">Profit & Loss Dashboard</h1>
-            <p class="text-slate-500">Track Revenue, COGS, Labor Costs, and Net Profit by branch.</p>
+            <p class="text-slate-500">Track Revenue, COGS, Labor Costs, and Margin Before Overhead by branch.</p>
         </div>
         <button onclick="openModal('budgetModal')" class="bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center">
             <i class="fa-solid fa-plus mr-2"></i> Allocate Labor Budget
@@ -196,9 +210,9 @@ require_once __DIR__ . '/includes/header.php';
         <div class="text-2xl font-bold text-red-500">₱<?= number_format($total_labor, 2) ?></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Net Profit</div>
-        <div class="text-2xl font-bold <?= $total_net_profit >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
-            <?= $total_net_profit >= 0 ? '+' : '' ?>₱<?= number_format($total_net_profit, 2) ?>
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Margin Before Overhead</div>
+        <div class="text-2xl font-bold <?= $total_margin >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
+            <?= $total_margin >= 0 ? '+' : '' ?>₱<?= number_format($total_margin, 2) ?>
         </div>
     </div>
 </div>
@@ -240,7 +254,7 @@ require_once __DIR__ . '/includes/header.php';
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Revenue</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">COGS</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Labor Cost</th>
-                    <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Net Profit</th>
+                    <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Margin Before Overhead</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-center">Status</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
@@ -258,7 +272,7 @@ require_once __DIR__ . '/includes/header.php';
                         $revenue = (float)$row['gross_revenue'];
                         $cogs = (float)$row['total_cogs'];
                         $labor = (float)$row['actual_labor_cost'];
-                        $net = (float)$row['net_profit'];
+                        $net = (float)$row['margin_before_overhead'];
                         $is_loss = $net < 0;
                     ?>
                     <tr class="hover:bg-slate-50 transition-colors">
@@ -289,10 +303,11 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                         </td>
                         <td class="py-4 px-6 text-right">
-                            <button onclick='editBudget(<?= json_encode($row) ?>)' class="text-slate-400 hover:text-blue-600 transition-colors mr-2" title="Edit">
+                            <button type="button" onclick="editBudget(<?= htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8') ?>)" class="text-slate-400 hover:text-blue-600 transition-colors mr-2" title="Edit">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
                             <form method="POST" class="inline" onsubmit="return confirm('Delete this budget entry?');">
+                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="action" value="delete_budget">
                                 <input type="hidden" name="budget_id" value="<?= $row['budget_id'] ?>">
                                 <button type="submit" class="text-slate-400 hover:text-red-600 transition-colors" title="Delete">
@@ -319,6 +334,7 @@ require_once __DIR__ . '/includes/header.php';
         </div>
         <div class="p-6 overflow-y-auto">
             <form id="budgetForm" method="POST" action="finance_budgeting">
+                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="action" id="budgetAction" value="save_budget">
 
                 <div class="space-y-4">

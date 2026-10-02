@@ -31,7 +31,13 @@ if (in_array($user_role, ['Super Admin', 'Admin'])) {
 $selected_branch_id = $_GET['branch_id'] ?? $user_branch_id ?? 1;
 
 // 2. Fetch Open Register Sessions (Active Cashiers)
-$sessionStmt = $posPdo->prepare("SELECT * FROM pos_sessions WHERE status = 'OPEN' AND branch_id = ?");
+$sessionStmt = $posPdo->prepare("
+    SELECT cs.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
+    FROM cash_sessions cs 
+    LEFT JOIN hrms.users u ON cs.cashier_id = u.id 
+    LEFT JOIN hrms.employees e ON u.employee_id = e.id 
+    WHERE cs.status = 'OPEN' AND cs.branch_id = ?
+");
 $sessionStmt->execute([$selected_branch_id]);
 $activeSessions = $sessionStmt->fetchAll();
 
@@ -77,8 +83,8 @@ foreach ($bestSellersRaw as $row) {
 // 5. Fetch Closed Sessions (Shift Audits)
 $auditsStmt = $posPdo->prepare("
     SELECT ps.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
-    FROM pos_sessions ps 
-    LEFT JOIN hrms.users u ON ps.head_barista_id = u.id 
+    FROM cash_sessions ps 
+    LEFT JOIN hrms.users u ON ps.cashier_id = u.id 
     LEFT JOIN hrms.employees e ON u.employee_id = e.id 
     WHERE ps.status = 'CLOSED' AND ps.branch_id = ?
     ORDER BY ps.closed_at DESC LIMIT 10
@@ -269,7 +275,7 @@ require_once __DIR__ . '/includes/header.php';
                             <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">No recent closed shifts.</td></tr>
                         <?php else: ?>
                             <?php foreach ($closedSessions as $cs): 
-                                $diff = (float)$cs['discrepancy'];
+                                $diff = (float)$cs['variance'];
                                 $diffColor = $diff < 0 ? 'text-red-500 font-bold' : ($diff > 0 ? 'text-emerald-500 font-bold' : 'text-slate-500');
                                 $start = !empty($cs['opened_at']) ? date('h:i A', strtotime($cs['opened_at'])) : 'N/A';
                                 $end = !empty($cs['closed_at']) ? date('h:i A', strtotime($cs['closed_at'])) : 'Active';
@@ -277,8 +283,8 @@ require_once __DIR__ . '/includes/header.php';
                                 <tr class="hover:bg-slate-50">
                                     <td class="px-4 py-3 font-medium text-slate-800"><?= h($cs['head_barista_name']) ?></td>
                                     <td class="px-4 py-3 text-slate-500 text-xs"><?= $start ?> - <?= $end ?></td>
-                                    <td class="px-4 py-3 text-right text-slate-600">₱<?= number_format((float)$cs['expected_closing_cash'], 2) ?></td>
-                                    <td class="px-4 py-3 text-right text-slate-600">₱<?= number_format((float)$cs['actual_closing_cash'], 2) ?></td>
+                                    <td class="px-4 py-3 text-right text-slate-600">₱<?= number_format((float)$cs['expected_cash'], 2) ?></td>
+                                    <td class="px-4 py-3 text-right text-slate-600">₱<?= number_format((float)$cs['closing_cash'], 2) ?></td>
                                     <td class="px-4 py-3 text-right <?= $diffColor ?>">₱<?= number_format((float)$diff, 2) ?></td>
                                 </tr>
                             <?php endforeach; ?>

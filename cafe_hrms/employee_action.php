@@ -24,8 +24,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $salaryRate = $_POST['hourly_rate'] ?? 0;
     $address = trim($_POST['address'] ?? '');
     $emergencyContact = trim($_POST['emergency_contact'] ?? '');
-    $bankAccount = trim($_POST['bank_account'] ?? '');
-    $governmentIds = trim($_POST['government_ids'] ?? '');
+    $bankAccount = encryptData(trim($_POST['bank_account'] ?? ''));
+    $tin = encryptData(trim($_POST['tin'] ?? ''));
+    $sss = encryptData(trim($_POST['sss'] ?? ''));
+    $philhealth = encryptData(trim($_POST['philhealth'] ?? ''));
+    $pagibig = encryptData(trim($_POST['pagibig'] ?? ''));
+    $governmentIds = encryptData(trim($_POST['government_ids'] ?? ''));
     $photoPath = null;
 
     if (!empty($_FILES['photo']['tmp_name'])) {
@@ -42,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($id) {
-        $fields = 'employee_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?, position = ?, department = ?, employment_type = ?, status = ?, date_hired = ?, birthday = ?, hourly_rate = ?, address = ?, emergency_contact = ?, bank_account = ?, government_ids = ?';
-        $params = [$employeeId, $first_name, $last_name, $email, $phone, $position, $department, $employmentType, $status, $dateHired, $birthday, $salaryRate, $address, $emergencyContact, $bankAccount, $governmentIds, $id];
+        $fields = 'employee_id = ?, first_name = ?, last_name = ?, email = ?, phone = ?, position = ?, department = ?, employment_type = ?, status = ?, date_hired = ?, birthday = ?, hourly_rate = ?, address = ?, emergency_contact = ?, bank_account = ?, tin = ?, sss = ?, philhealth = ?, pagibig = ?, government_ids = ?';
+        $params = [$employeeId, $first_name, $last_name, $email, $phone, $position, $department, $employmentType, $status, $dateHired, $birthday, $salaryRate, $address, $emergencyContact, $bankAccount, $tin, $sss, $philhealth, $pagibig, $governmentIds, $id];
         if ($photoPath) {
             $fields .= ', photo = ?';
             array_splice($params, -1, 0, $photoPath);
@@ -53,8 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         log_activity($pdo, $_SESSION['user']['id'], 'update_employee', "Updated employee {$first_name} {$last_name}");
         flash('success', 'Employee details updated successfully.');
     } else {
-        $stmt = $pdo->prepare('INSERT INTO employees (employee_id, first_name, last_name, email, phone, position, department, employment_type, status, date_hired, birthday, hourly_rate, address, emergency_contact, bank_account, government_ids, photo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
-        $stmt->execute([$employeeId, $first_name, $last_name, $email, $phone, $position, $department, $employmentType, $status, $dateHired, $birthday, $salaryRate, $address, $emergencyContact, $bankAccount, $governmentIds, $photoPath]);
+        $stmt = $pdo->prepare('INSERT INTO employees (employee_id, first_name, last_name, email, phone, position, department, employment_type, status, date_hired, birthday, hourly_rate, address, emergency_contact, bank_account, tin, sss, philhealth, pagibig, government_ids, photo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+        $stmt->execute([$employeeId, $first_name, $last_name, $email, $phone, $position, $department, $employmentType, $status, $dateHired, $birthday, $salaryRate, $address, $emergencyContact, $bankAccount, $tin, $sss, $philhealth, $pagibig, $governmentIds, $photoPath]);
         
         // Auto-create user account
         $username = strtolower(trim($first_name) . '.' . trim($last_name));

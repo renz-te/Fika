@@ -466,7 +466,7 @@ require_once __DIR__ . '/includes/header.php';
                         <?php if(!empty($applicant['valid_id_photo'])): ?>
                             <div class="mt-2 flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-200">
                                 <span class="text-xs text-green-600"><i class="fa-solid fa-check-circle"></i> Uploaded</span>
-                                <a href="uploads/applicants/<?= h($applicant['valid_id_photo']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
+                                <a href="file_proxy.php?file=applicants/<?= h($applicant['valid_id_photo']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -476,7 +476,7 @@ require_once __DIR__ . '/includes/header.php';
                         <?php if(!empty($applicant['valid_id_back_photo'])): ?>
                             <div class="mt-2 flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-200">
                                 <span class="text-xs text-green-600"><i class="fa-solid fa-check-circle"></i> Uploaded</span>
-                                <a href="uploads/applicants/<?= h($applicant['valid_id_back_photo']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
+                                <a href="file_proxy.php?file=applicants/<?= h($applicant['valid_id_back_photo']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -486,7 +486,7 @@ require_once __DIR__ . '/includes/header.php';
                         <?php if(!empty($applicant['resume'])): ?>
                             <div class="mt-2 flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-200">
                                 <span class="text-xs text-green-600"><i class="fa-solid fa-check-circle"></i> Uploaded</span>
-                                <a href="uploads/applicants/<?= h($applicant['resume']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
+                                <a href="file_proxy.php?file=applicants/<?= h($applicant['resume']) ?>" target="_blank" class="text-xs text-indigo-600 hover:underline"><i class="fa-solid fa-eye"></i> View File</a>
                             </div>
                         <?php endif; ?>
                     </div>

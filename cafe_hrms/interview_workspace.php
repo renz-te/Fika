@@ -207,12 +207,12 @@ $pageTitle = 'Interview Workspace';
                 <div class="flex items-center justify-between mb-3 shrink-0">
                     <h3 class="font-bold text-slate-700 flex items-center"><i class="fa-solid fa-file-pdf text-red-500 mr-2 text-lg"></i> Resume Document</h3>
                     <?php if($data['resume']): ?>
-                        <a href="uploads/applicants/<?= h($data['resume']) ?>" target="_blank" class="text-xs font-semibold bg-white px-3 py-1.5 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50 transition shadow-sm"><i class="fa-solid fa-up-right-from-square mr-1"></i> Open in tab</a>
+                        <a href="file_proxy.php?file=applicants/<?= h($data['resume']) ?>" target="_blank" class="text-xs font-semibold bg-white px-3 py-1.5 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50 transition shadow-sm"><i class="fa-solid fa-up-right-from-square mr-1"></i> Open in tab</a>
                     <?php endif; ?>
                 </div>
                 <div class="flex-1 w-full h-full bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm relative">
                     <?php if($data['resume']): ?>
-                        <iframe src="uploads/applicants/<?= h($data['resume']) ?>#toolbar=0" class="w-full h-full border-0"></iframe>
+                        <iframe src="file_proxy.php?file=applicants/<?= h($data['resume']) ?>#toolbar=0" class="w-full h-full border-0"></iframe>
                     <?php else: ?>
                         <div class="absolute inset-0 flex items-center justify-center text-slate-500 flex-col">
                             <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">

@@ -40,7 +40,7 @@ if ($cashier_id) {
 try {
     $pdo->beginTransaction();
 
-    $total_price = 0;
+    $gross_total = 0;
     $order_items_data = [];
 
     foreach ($cart as $item) {
@@ -78,7 +78,7 @@ try {
         }
 
         $item_total = $item_subtotal * $quantity;
-        $total_price += $item_total;
+        $gross_total += $item_total;
 
         $order_items_data[] = [
             'product_id' => $product_id,
@@ -88,23 +88,37 @@ try {
         ];
     }
 
-    // Generate short alphanumeric order number (e.g. A4B2)
-    $characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    $order_number = '';
-    do {
-        $order_number = '';
-        for ($i = 0; $i < 4; $i++) {
-            $order_number .= $characters[rand(0, strlen($characters) - 1)];
-        }
-        // Check uniqueness
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE order_number = ?");
-        $stmt->execute([$order_number]);
-        $count = $stmt->fetchColumn();
-    } while ($count > 0);
+    $discount_type = $input['discount_type'] ?? 'NONE';
+    $vat_amount = 0;
+    $discount_amount = 0;
+    $net_payable = 0;
+
+    if ($discount_type === 'SENIOR' || $discount_type === 'PWD') {
+        // Senior/PWD: VAT Exempt, then 20% discount on the VAT-exempt amount
+        $vat_exempt_total = $gross_total / 1.12;
+        $discount_amount = $vat_exempt_total * 0.20;
+        $net_payable = $vat_exempt_total - $discount_amount;
+        $vat_amount = 0;
+    } else {
+        // Standard transaction
+        $net_payable = $gross_total;
+        $vat_amount = $gross_total - ($gross_total / 1.12);
+        $discount_amount = 0;
+    }
+
+    $total_price = $net_payable;
+
+    // Generate sequential daily order number scoped to branch and date (e.g. 20261002-0001)
+    $todayDate = date('Y-m-d');
+    $todayPrefix = date('Ymd');
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE branch_id = ? AND DATE(created_at) = ?");
+    $stmt->execute([$branch_id, $todayDate]);
+    $daily_count = (int)$stmt->fetchColumn() + 1;
+    $order_number = sprintf("%s-%04d", $todayPrefix, $daily_count);
 
     // Insert Order
-    $stmt = $pdo->prepare("INSERT INTO orders (order_number, table_source, total_price, payment_status, payment_method, payment_reference, pos_session_id, cashier_id, cashier_name, branch_id, is_test) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$order_number, $table_source, $total_price, $payment_status, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $branch_id, $is_test]);
+    $stmt = $pdo->prepare("INSERT INTO orders (order_number, table_source, total_price, vat_amount, discount_amount, payment_status, payment_method, payment_reference, pos_session_id, cashier_id, cashier_name, branch_id, is_test) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$order_number, $table_source, $total_price, $vat_amount, $discount_amount, $payment_status, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $branch_id, $is_test]);
     $order_id = $pdo->lastInsertId();
 
     // Insert Order Items and Modifiers

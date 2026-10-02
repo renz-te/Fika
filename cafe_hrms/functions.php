@@ -3,6 +3,24 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function encryptData($data) {
+    if (empty($data)) return $data;
+    $method = 'aes-256-cbc';
+    $ivLength = openssl_cipher_iv_length($method);
+    $iv = openssl_random_pseudo_bytes($ivLength);
+    $encrypted = openssl_encrypt($data, $method, APP_KEY, 0, $iv);
+    return base64_encode($iv . '::' . $encrypted);
+}
+
+function decryptData($data) {
+    if (empty($data)) return $data;
+    $decoded = base64_decode($data);
+    if (strpos($decoded, '::') === false) return $data; // Not encrypted or old data format
+    list($iv, $encryptedData) = explode('::', $decoded, 2);
+    $method = 'aes-256-cbc';
+    return openssl_decrypt($encryptedData, $method, APP_KEY, 0, $iv);
+}
+
 function redirect($url) {
     header('Location: ' . $url);
     exit;
@@ -148,4 +166,111 @@ function notify_user($pdo, $userId, $message, $link = null, $icon = 'fa-bell', $
 function set_setting($pdo, $key, $value) {
     $stmt = $pdo->prepare('INSERT INTO settings (name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)');
     $stmt->execute([$key, $value]);
+}
+
+// ============================================================
+// Philippine Statutory Contribution Helpers
+// ============================================================
+
+/**
+ * Calculate SSS contribution based on Monthly Salary Credit (MSC) brackets.
+ * Uses the contribution_rates table for dynamic bracket lookup.
+ * Returns ['employee' => float, 'employer' => float]
+ */
+function calculate_sss($pdo, $monthlyGross) {
+    $stmt = $pdo->prepare("
+        SELECT base_amount, employee_rate, employer_rate
+        FROM contribution_rates
+        WHERE type = 'SSS'
+          AND ? BETWEEN min_salary AND max_salary
+          AND effective_date <= CURDATE()
+        ORDER BY effective_date DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$monthlyGross]);
+    $bracket = $stmt->fetch();
+
+    if (!$bracket) {
+        // Fallback to max bracket if salary exceeds all ranges
+        $fallback = $pdo->query("
+            SELECT base_amount, employee_rate, employer_rate
+            FROM contribution_rates
+            WHERE type = 'SSS'
+            ORDER BY max_salary DESC
+            LIMIT 1
+        ")->fetch();
+        $bracket = $fallback ?: ['base_amount' => 30000, 'employee_rate' => 0.045, 'employer_rate' => 0.095];
+    }
+
+    $msc = (float)$bracket['base_amount'];
+    return [
+        'employee' => round($msc * (float)$bracket['employee_rate'], 2),
+        'employer' => round($msc * (float)$bracket['employer_rate'], 2),
+    ];
+}
+
+/**
+ * Calculate PhilHealth contribution.
+ * 2025 rules: 5% total (2.5% each), floor ₱10,000, ceiling ₱100,000.
+ * Returns ['employee' => float, 'employer' => float]
+ */
+function calculate_philhealth($monthlyGross) {
+    $floor = 10000.00;
+    $ceiling = 100000.00;
+    $rate = 0.05; // 5% total
+
+    $base = max($floor, min($ceiling, $monthlyGross));
+    $total = $base * $rate;
+
+    return [
+        'employee' => round($total / 2, 2),
+        'employer' => round($total / 2, 2),
+    ];
+}
+
+/**
+ * Calculate Pag-IBIG contribution.
+ * Employee 2%, Employer 2%, max base ₱10,000 => max ₱200/month each.
+ * Returns ['employee' => float, 'employer' => float]
+ */
+function calculate_pagibig($monthlyGross) {
+    $maxBase = 10000.00;
+    $rate = 0.02;
+
+    $base = min($maxBase, $monthlyGross);
+
+    return [
+        'employee' => round($base * $rate, 2),
+        'employer' => round($base * $rate, 2),
+    ];
+}
+
+/**
+ * Calculate BIR Withholding Tax (semi-monthly basis).
+ * Standard 2023+ TRAIN Law brackets applied to semi-monthly taxable income.
+ * $taxableIncome = grossPay - sss_ee - philhealth_ee - pagibig_ee - absences/tardiness
+ */
+function calculate_withholding_tax_semimonthly($taxableIncome) {
+    // BIR semi-monthly brackets (TRAIN Law, effective 2023+)
+    // Bracket: [threshold, base_tax, excess_rate]
+    $brackets = [
+        [0,        0,        0.00],   // ₱0 - ₱10,417: exempt
+        [10417,    0,        0.15],   // Over ₱10,417 - ₱16,667
+        [16667,    937.50,   0.20],   // Over ₱16,667 - ₱33,333
+        [33333,    4270.83,  0.25],   // Over ₱33,333 - ₱83,333
+        [83333,    16770.83, 0.30],   // Over ₱83,333 - ₱333,333
+        [333333,   91770.83, 0.35],   // Over ₱333,333
+    ];
+
+    if ($taxableIncome <= $brackets[0][0]) return 0.00;
+
+    $tax = 0.00;
+    for ($i = count($brackets) - 1; $i >= 0; $i--) {
+        if ($taxableIncome > $brackets[$i][0]) {
+            $tax = $brackets[$i][1] + (($taxableIncome - $brackets[$i][0]) * $brackets[$i][2]);
+            break;
+        }
+    }
+
+    return round(max(0, $tax), 2);
 }

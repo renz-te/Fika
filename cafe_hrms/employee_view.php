@@ -221,14 +221,55 @@ require_once __DIR__ . '/includes/header.php';
         <!-- IDs Column -->
         <div class="space-y-6">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-100">Statutory & Banking</h3>
+                <div class="space-y-4">
+                    <div class="flex items-start">
+                        <div class="w-8 text-indigo-400 mt-0.5"><i class="fa-solid fa-building-columns"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-medium">Bank Account</div>
+                            <div class="text-slate-800 font-medium"><?= h(decryptData($employee['bank_account']) ?: 'Not provided') ?></div>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-8 text-indigo-400 mt-0.5"><i class="fa-solid fa-file-invoice"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-medium">TIN</div>
+                            <div class="text-slate-800 font-medium"><?= h(decryptData($employee['tin']) ?: 'Not provided') ?></div>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-8 text-indigo-400 mt-0.5"><i class="fa-solid fa-shield-halved"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-medium">SSS Number</div>
+                            <div class="text-slate-800 font-medium"><?= h(decryptData($employee['sss']) ?: 'Not provided') ?></div>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-8 text-indigo-400 mt-0.5"><i class="fa-solid fa-heart-circle-check"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-medium">PhilHealth Number</div>
+                            <div class="text-slate-800 font-medium"><?= h(decryptData($employee['philhealth']) ?: 'Not provided') ?></div>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-8 text-indigo-400 mt-0.5"><i class="fa-solid fa-house-chimney"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-medium">Pag-IBIG Number</div>
+                            <div class="text-slate-800 font-medium"><?= h(decryptData($employee['pagibig']) ?: 'Not provided') ?></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-2 border-b border-slate-100">Identification Documents</h3>
                 
                 <div class="space-y-6">
                     <div>
                         <div class="text-sm font-medium text-slate-700 mb-2">Valid ID (Front)</div>
                         <?php if(!empty($employee['valid_id_photo'])): ?>
-                            <a href="uploads/applicants/<?= h($employee['valid_id_photo']) ?>" target="_blank" class="block rounded-lg border-2 border-slate-200 overflow-hidden hover:border-primary transition group relative">
-                                <img src="uploads/applicants/<?= h($employee['valid_id_photo']) ?>" alt="ID Front" class="w-full h-48 object-cover">
+                            <a href="file_proxy.php?file=applicants/<?= h($employee['valid_id_photo']) ?>" target="_blank" class="block rounded-lg border-2 border-slate-200 overflow-hidden hover:border-primary transition group relative">
+                                <img src="file_proxy.php?file=applicants/<?= h($employee['valid_id_photo']) ?>" alt="ID Front" class="w-full h-48 object-cover">
                                 <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                     <span class="text-white bg-black/50 px-4 py-2 rounded-full text-sm font-medium"><i class="fa-solid fa-magnifying-glass mr-1"></i> View Full Image</span>
                                 </div>
@@ -243,8 +284,8 @@ require_once __DIR__ . '/includes/header.php';
                     <div>
                         <div class="text-sm font-medium text-slate-700 mb-2">Valid ID (Back)</div>
                         <?php if(!empty($employee['valid_id_back_photo'])): ?>
-                            <a href="uploads/applicants/<?= h($employee['valid_id_back_photo']) ?>" target="_blank" class="block rounded-lg border-2 border-slate-200 overflow-hidden hover:primary transition group relative">
-                                <img src="uploads/applicants/<?= h($employee['valid_id_back_photo']) ?>" alt="ID Back" class="w-full h-48 object-cover">
+                            <a href="file_proxy.php?file=applicants/<?= h($employee['valid_id_back_photo']) ?>" target="_blank" class="block rounded-lg border-2 border-slate-200 overflow-hidden hover:primary transition group relative">
+                                <img src="file_proxy.php?file=applicants/<?= h($employee['valid_id_back_photo']) ?>" alt="ID Back" class="w-full h-48 object-cover">
                                 <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                     <span class="text-white bg-black/50 px-4 py-2 rounded-full text-sm font-medium"><i class="fa-solid fa-magnifying-glass mr-1"></i> View Full Image</span>
                                 </div>
