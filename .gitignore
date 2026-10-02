@@ -1,1 +1,6 @@
 vendor/
+
+config.php
+*.sql
+uploads/
+.env
