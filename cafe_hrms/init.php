@@ -1,5 +1,6 @@
 <?php
 $config = require __DIR__ . '/config.php';
+require_once __DIR__ . '/roles.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -10,7 +11,7 @@ if (empty($_SESSION['csrf_token'])) {
 
 // 1. Authentication Check
 $current_page = basename($_SERVER['PHP_SELF']);
-$public_pages = ['login.php', 'forgot_password.php', 'reset_password.php', 'verify.php'];
+$public_pages = ['login.php', 'forgot_password.php', 'reset_password.php', 'verify.php', 'careers.php'];
 
 if (!isset($_SESSION['user']) && !in_array($current_page, $public_pages)) {
     header('Location: login');
@@ -18,11 +19,21 @@ if (!isset($_SESSION['user']) && !in_array($current_page, $public_pages)) {
 }
 
 // 2. Authorization Check for Admin Modules
-$admin_pages = ['finance_budgeting.php', 'finance_reports.php', 'system_accounts.php', 'settings.php'];
-if (in_array($current_page, $admin_pages) && isset($_SESSION['user'])) {
+$finance_pages = ['finance_budgeting.php', 'finance_reports.php'];
+$system_pages = ['system_accounts.php', 'settings.php'];
+
+if (in_array($current_page, $finance_pages) && isset($_SESSION['user'])) {
     $role = $_SESSION['user']['role'] ?? '';
-    // If not in a higher management role, deny access
-    if (!in_array($role, ['System Admin', 'Super Admin', 'Central HR', 'Executives', 'Admin'])) {
+    if (!in_array($role, [ROLE_SUPER_ADMIN, ROLE_EXECUTIVE, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_ACCOUNTANT, ROLE_BRANCH_MANAGER])) {
+        header("Location: dashboard.php?error=unauthorized");
+        exit();
+    }
+}
+
+if (in_array($current_page, $system_pages) && isset($_SESSION['user'])) {
+    $role = $_SESSION['user']['role'] ?? '';
+    // Consolidate admin access for system settings
+    if (!in_array($role, [ROLE_SUPER_ADMIN, ROLE_CENTRAL_HR])) {
         header("Location: dashboard.php?error=unauthorized");
         exit();
     }
@@ -33,7 +44,7 @@ if (!defined('APP_ROOT')) {
 }
 
 if (!defined('APP_KEY')) {
-    define('APP_KEY', 'xK9pL2vM8qJ5wH4tN7eR3yA6cZ1bF0dG');
+    die('Fatal Error: APP_KEY is not defined in config.php. System cannot safely initialize.');
 }
 
 try {

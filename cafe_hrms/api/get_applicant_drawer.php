@@ -195,7 +195,7 @@ $stage_name = $app['stage'];
                     </select>
                 </div>
                 
-                <button type="button" onclick="handleStageChange(this.form.elements['new_stage'], <?= $app['id'] ?>, '<?= h(addslashes($app['full_name'])) ?>', '<?= h(addslashes($app['email'])) ?>')" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 rounded-lg transition">
+                <button type="button" onclick="handleStageChange(this.form.elements['new_stage'], <?= $app['id'] ?>, <?= json_encode(htmlspecialchars($app['full_name'], ENT_QUOTES, 'UTF-8')) ?>, <?= json_encode(htmlspecialchars($app['email'], ENT_QUOTES, 'UTF-8')) ?>)" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 rounded-lg transition">
                     Update Stage
                 </button>
             </form>

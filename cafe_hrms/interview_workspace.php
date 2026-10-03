@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/init.php';
 require_login();
-require_role(['Admin', 'Super Admin', 'HR', 'Branch Admin', 'Head Barista', 'Central HR']);
+require_role([ROLE_SUPER_ADMIN, ROLE_HR_MANAGER, ROLE_BRANCH_MANAGER, 'Head Barista', ROLE_CENTRAL_HR]);
 
 $interview_id = isset($_GET['interview_id']) ? (int)$_GET['interview_id'] : 0;
 
@@ -427,7 +427,7 @@ $pageTitle = 'Interview Workspace';
                                     <label class="block text-xs font-bold text-indigo-800 mb-1">Interviewer</label>
                                     <select name="next_interviewer_id" class="w-full rounded border-indigo-300 p-2 text-sm bg-white focus:ring-indigo-500">
                                         <?php
-                                            $empStmt = $pdo->query("SELECT e.id, CONCAT(e.first_name, ' ', e.last_name) AS full_name FROM employees e INNER JOIN users u ON u.employee_id = e.id INNER JOIN roles r ON u.role_id = r.id WHERE e.status = 'Active' AND r.name IN ('Branch Admin', 'Central HR', 'Super Admin') ORDER BY e.first_name");
+                                            $empStmt = $pdo->query("SELECT e.id, CONCAT(e.first_name, ' ', e.last_name) AS full_name FROM employees e INNER JOIN users u ON u.employee_id = e.id INNER JOIN roles r ON u.role_id = r.id WHERE e.status = 'Active' AND r.name IN ('" . ROLE_BRANCH_MANAGER . "', '" . ROLE_CENTRAL_HR . "', '" . ROLE_SUPER_ADMIN . "') ORDER BY e.first_name");
                                             while ($emp = $empStmt->fetch()) {
                                                 echo '<option value="' . $emp['id'] . '">' . h($emp['full_name']) . '</option>';
                                             }

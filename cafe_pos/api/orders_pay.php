@@ -39,7 +39,7 @@ try {
     $pdo->beginTransaction();
 
     // Recalculate total
-    $total_price = 0;
+    $gross_total = 0;
     $order_items_data = [];
 
     foreach ($cart as $item) {
@@ -68,7 +68,7 @@ try {
         }
 
         $item_total = $item_subtotal * $quantity;
-        $total_price += $item_total;
+        $gross_total += $item_total;
 
         $order_items_data[] = [
             'product_id' => $product_id,
@@ -78,14 +78,32 @@ try {
         ];
     }
 
+    $discount_type = $input['discount_type'] ?? 'NONE';
+    $vat_amount = 0;
+    $discount_amount = 0;
+    $net_payable = 0;
+
+    if ($discount_type === 'SENIOR' || $discount_type === 'PWD') {
+        $vat_exempt_total = $gross_total / 1.12;
+        $discount_amount = $vat_exempt_total * 0.20;
+        $net_payable = $vat_exempt_total - $discount_amount;
+        $vat_amount = 0;
+    } else {
+        $net_payable = $gross_total;
+        $vat_amount = $gross_total - ($gross_total / 1.12);
+        $discount_amount = 0;
+    }
+
+    $total_price = $net_payable;
+
     // Fetch order number before updating
     $stmtNum = $pdo->prepare("SELECT order_number FROM orders WHERE id = ?");
     $stmtNum->execute([$order_id]);
     $order_number = $stmtNum->fetchColumn() ?: 'UNKNOWN';
 
     // Update order header
-    $stmt = $pdo->prepare("UPDATE orders SET total_price = ?, payment_status = 'PAID', payment_method = ?, payment_reference = ?, pos_session_id = ?, cashier_id = ?, cashier_name = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?");
-    $stmt->execute([$total_price, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $order_id]);
+    $stmt = $pdo->prepare("UPDATE orders SET total_price = ?, vat_amount = ?, discount_amount = ?, payment_status = 'PAID', payment_method = ?, payment_reference = ?, pos_session_id = ?, cashier_id = ?, cashier_name = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?");
+    $stmt->execute([$total_price, $vat_amount, $discount_amount, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $order_id]);
 
     // --- Inventory: Restore old stock ---
     if (!$is_test) {
@@ -162,7 +180,12 @@ try {
     $pdo->commit();
     echo json_encode([
         'success' => true,
-        'order_number' => $order_number
+        'order_number' => $order_number,
+        'gross_total' => $gross_total,
+        'vat_amount' => $vat_amount,
+        'discount_amount' => $discount_amount,
+        'net_payable' => $total_price,
+        'discount_type' => $discount_type
     ]);
 
 } catch (Exception $e) {

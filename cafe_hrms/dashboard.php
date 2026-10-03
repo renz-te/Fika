@@ -22,7 +22,7 @@ $newApplicants = $stmt->fetchColumn();
 
 // Daily Agenda Dashboard Integration
 $todayInterviews = [];
-if (in_array($user['role'], ['HR', 'Central HR', 'Branch Admin', 'Super Admin', 'Head Barista'])) {
+if (in_array($user['role'], ['HR', ROLE_CENTRAL_HR, ROLE_BRANCH_MANAGER, ROLE_SUPER_ADMIN, 'Head Barista'])) {
     $stmt = $pdo->prepare('
         SELECT i.id as interview_id, i.interview_time as start_time, a.first_name, a.last_name, a.position_applied as position 
         FROM interviews i 
@@ -187,7 +187,7 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <!-- Daily Agenda Widget -->
-<?php if (in_array($user['role'], ['HR', 'Central HR', 'Branch Admin', 'Super Admin', 'Head Barista'])): ?>
+<?php if (in_array($user['role'], ['HR', ROLE_CENTRAL_HR, ROLE_BRANCH_MANAGER, ROLE_SUPER_ADMIN, 'Head Barista'])): ?>
 <div class="mb-8">
     <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-slate-800"><i class="fa-solid fa-calendar-day text-indigo-500 mr-2"></i> Today's Interviews</h3>

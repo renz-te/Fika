@@ -34,6 +34,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $emp_cat = $applicant['employment_category'] ?: 'Full-Time';
         $target_branch = $applicant['branch_id'];
 
+        // Enforce branch assignment — Global Pool hires must have a branch
+        if (empty($target_branch)) {
+            $pdo->rollBack();
+            echo json_encode(['status' => 'error', 'message' => 'Cannot convert: Applicant must be assigned to a specific branch before hiring.']);
+            exit;
+        }
+
+        // Fetch the approved hourly wage from the most recent scorecard
+        $wageStmt = $pdo->prepare('
+            SELECT sc.hourly_wage 
+            FROM interview_scorecards sc 
+            INNER JOIN interviews i ON sc.interview_id = i.id 
+            WHERE i.applicant_id = ? AND sc.hourly_wage IS NOT NULL AND sc.hourly_wage > 0
+            ORDER BY sc.created_at DESC 
+            LIMIT 1
+        ');
+        $wageStmt->execute([$applicant_id]);
+        $approvedWage = (float)($wageStmt->fetchColumn() ?: 0);
+
         // Generate collision-resistant employee_id string
         $prefixMap = [
             'Branch Manager' => 'BM', 'Branch Accountant' => 'BA',
@@ -83,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $emp_position,
             'Active',
             $emp_cat,
-            0, // Default hourly rate
+            $approvedWage,
             $applicant['valid_id_photo'] ?? null,
             $applicant['valid_id_back_photo'] ?? null,
             $applicant['reference_name'] ?? null,
@@ -132,8 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($empRoleId) {
-            $default_password = 'password123';
-            $hashed_password = password_hash($default_password, PASSWORD_DEFAULT);
+            // Generate a secure 12-character random password
+            $raw_password = substr(bin2hex(random_bytes(8)), 0, 12);
+            $hashed_password = password_hash($raw_password, PASSWORD_DEFAULT);
             
             $userInsert = $pdo->prepare('INSERT INTO users 
                 (name, username, email, password, role_id, employee_id, verified, created_at, branch_id) 
@@ -174,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <p style='margin: 0 0 10px 0;'><strong>Employee ID:</strong> $empCode</p>
                             <p style='margin: 0 0 10px 0;'><strong>Login URL:</strong> <a href='$appUrl/login.php'>$appUrl/login.php</a></p>
                             <p style='margin: 0 0 10px 0;'><strong>Username:</strong> $username</p>
-                            <p style='margin: 0;'><strong>Temporary Password:</strong> Welcome123!</p>
+                            <p style='margin: 0;'><strong>Temporary Password:</strong> $raw_password</p>
                         </div>
                         <p>Please log in and change your password immediately.</p>
                         <br>

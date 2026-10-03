@@ -9,7 +9,7 @@ if (empty($_SESSION['user'])) {
 
 // Only HR and Admins should access applicant/employee files, wait maybe Employee themselves?
 // Assuming 'Super Admin', 'Admin', 'HR Manager'
-$allowed = ['Super Admin', 'Admin', 'HR Manager'];
+$allowed = [ROLE_SUPER_ADMIN, ROLE_HR_MANAGER, ROLE_CENTRAL_HR, ROLE_BRANCH_MANAGER];
 if (!in_array($_SESSION['user']['role'], $allowed)) {
     http_response_code(403);
     die('Forbidden: Insufficient privileges.');
@@ -37,8 +37,16 @@ $finfo = finfo_open(FILEINFO_MIME_TYPE);
 $mime = finfo_file($finfo, $filePath);
 finfo_close($finfo);
 
+header('X-Content-Type-Options: nosniff');
 header('Content-Type: ' . $mime);
-header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
+
+// Force PDFs as attachments to prevent inline HTML/JS execution
+if ($mime === 'application/pdf') {
+    header('Content-Disposition: attachment; filename="' . basename($filePath) . '"');
+} else {
+    header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
+}
+
 header('Content-Length: ' . filesize($filePath));
 readfile($filePath);
 exit;

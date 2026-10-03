@@ -109,12 +109,10 @@ try {
     $total_price = $net_payable;
 
     // Generate sequential daily order number scoped to branch and date (e.g. 20261002-0001)
-    $todayDate = date('Y-m-d');
-    $todayPrefix = date('Ymd');
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE branch_id = ? AND DATE(created_at) = ?");
-    $stmt->execute([$branch_id, $todayDate]);
-    $daily_count = (int)$stmt->fetchColumn() + 1;
-    $order_number = sprintf("%s-%04d", $todayPrefix, $daily_count);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE branch_id = ?");
+    $stmt->execute([$branch_id]);
+    $branch_count = (int)$stmt->fetchColumn() + 1;
+    $order_number = sprintf("BR%d-INV-%06d", $branch_id, $branch_count);
 
     // Insert Order
     $stmt = $pdo->prepare("INSERT INTO orders (order_number, table_source, total_price, vat_amount, discount_amount, payment_status, payment_method, payment_reference, pos_session_id, cashier_id, cashier_name, branch_id, is_test) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -169,6 +167,10 @@ try {
         'order_id' => $order_id,
         'order_number' => $order_number,
         'total_price' => $total_price,
+        'gross_total' => $gross_total,
+        'vat_amount' => $vat_amount,
+        'discount_amount' => $discount_amount,
+        'discount_type' => $discount_type,
         'payment_status' => $payment_status
     ]);
 

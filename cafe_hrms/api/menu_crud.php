@@ -36,7 +36,16 @@ try {
                 FROM products p 
                 ORDER BY p.category, p.name
             ");
-            echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($products as &$prod) {
+                if ($prod['image_path']) {
+                    // Prepend the URL base for the frontend
+                    $prod['image_url'] = '../cafe_pos/' . $prod['image_path'];
+                } else {
+                    $prod['image_url'] = null;
+                }
+            }
+            echo json_encode(['success' => true, 'data' => $products]);
         } elseif ($type === 'modifiers') {
             $stmt = $posPdo->query("SELECT * FROM modifiers ORDER BY modifier_group, name");
             echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
@@ -55,17 +64,127 @@ try {
         }
         
         if ($type === 'products') {
+            // Function to process uploaded image
+            $processImage = function() {
+                if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+                    return null;
+                }
+                $file = $_FILES['image'];
+                $tmpPath = $file['tmp_name'];
+                
+                // Strict MIME validation
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                $mimeType = finfo_file($finfo, $tmpPath);
+                finfo_close($finfo);
+                
+                if (!in_array($mimeType, ['image/jpeg', 'image/png'])) {
+                    throw new Exception("Invalid image format. Only JPG and PNG are allowed.");
+                }
+
+                // Load image via GD
+                $sourceImage = null;
+                if ($mimeType === 'image/jpeg') {
+                    $sourceImage = imagecreatefromjpeg($tmpPath);
+                } elseif ($mimeType === 'image/png') {
+                    $sourceImage = imagecreatefrompng($tmpPath);
+                }
+                
+                if (!$sourceImage) {
+                    throw new Exception("Failed to process image.");
+                }
+
+                // Get original dimensions
+                $origWidth = imagesx($sourceImage);
+                $origHeight = imagesy($sourceImage);
+                
+                // Calculate new dimensions (max 400x400)
+                $maxWidth = 400;
+                $maxHeight = 400;
+                
+                $ratio = min($maxWidth / $origWidth, $maxHeight / $origHeight);
+                $newWidth = $origWidth;
+                $newHeight = $origHeight;
+                
+                if ($ratio < 1) {
+                    $newWidth = (int)($origWidth * $ratio);
+                    $newHeight = (int)($origHeight * $ratio);
+                }
+
+                // Create new image and resize
+                $destImage = imagecreatetruecolor($newWidth, $newHeight);
+                
+                // Handle transparency for PNGs before conversion to WebP
+                if ($mimeType === 'image/png') {
+                    imagealphablending($destImage, false);
+                    imagesavealpha($destImage, true);
+                    $transparent = imagecolorallocatealpha($destImage, 255, 255, 255, 127);
+                    imagefilledrectangle($destImage, 0, 0, $newWidth, $newHeight, $transparent);
+                }
+
+                imagecopyresampled($destImage, $sourceImage, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
+
+                // Save as WebP
+                $uploadDir = __DIR__ . '/../../../Fika/cafe_pos/assets/products/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                
+                $filename = 'prod_' . uniqid() . '.webp';
+                $fullPath = $uploadDir . $filename;
+                
+                if (!imagewebp($destImage, $fullPath, 80)) {
+                    throw new Exception("Failed to save WebP image.");
+                }
+
+                imagedestroy($sourceImage);
+                imagedestroy($destImage);
+
+                return 'assets/products/' . $filename;
+            };
+
             if ($action === 'create') {
-                $stmt = $posPdo->prepare("INSERT INTO products (name, category, price, allowed_modifier_groups) VALUES (?, ?, ?, ?)");
-                $allowed = isset($input['allowed_modifier_groups']) ? implode(',', $input['allowed_modifier_groups']) : '';
-                $stmt->execute([$input['name'], $input['category'], $input['price'], $allowed]);
+                $imagePath = $processImage();
+                $stmt = $posPdo->prepare("INSERT INTO products (name, category, price, allowed_modifier_groups, image_path) VALUES (?, ?, ?, ?, ?)");
+                $allowed = isset($input['allowed_modifier_groups']) ? implode(',', (array)$input['allowed_modifier_groups']) : '';
+                $stmt->execute([$input['name'], $input['category'], $input['price'], $allowed, $imagePath]);
                 echo json_encode(['success' => true, 'id' => $posPdo->lastInsertId()]);
             } elseif ($action === 'update') {
-                $stmt = $posPdo->prepare("UPDATE products SET name = ?, category = ?, price = ?, allowed_modifier_groups = ? WHERE id = ?");
-                $allowed = isset($input['allowed_modifier_groups']) ? implode(',', $input['allowed_modifier_groups']) : '';
-                $stmt->execute([$input['name'], $input['category'], $input['price'], $allowed, $input['id']]);
+                $imagePath = $processImage();
+                
+                if ($imagePath) {
+                    // First get old image to delete it if it exists
+                    $oldStmt = $posPdo->prepare("SELECT image_path FROM products WHERE id = ?");
+                    $oldStmt->execute([$input['id']]);
+                    $oldImage = $oldStmt->fetchColumn();
+                    if ($oldImage) {
+                        $oldFullPath = __DIR__ . '/../../../Fika/cafe_pos/' . $oldImage;
+                        if (file_exists($oldFullPath)) {
+                            unlink($oldFullPath);
+                        }
+                    }
+                    
+                    $stmt = $posPdo->prepare("UPDATE products SET name = ?, category = ?, price = ?, allowed_modifier_groups = ?, image_path = ? WHERE id = ?");
+                    $allowed = isset($input['allowed_modifier_groups']) ? implode(',', (array)$input['allowed_modifier_groups']) : '';
+                    $stmt->execute([$input['name'], $input['category'], $input['price'], $allowed, $imagePath, $input['id']]);
+                } else {
+                    $stmt = $posPdo->prepare("UPDATE products SET name = ?, category = ?, price = ?, allowed_modifier_groups = ? WHERE id = ?");
+                    $allowed = isset($input['allowed_modifier_groups']) ? implode(',', (array)$input['allowed_modifier_groups']) : '';
+                    $stmt->execute([$input['name'], $input['category'], $input['price'], $allowed, $input['id']]);
+                }
+                
                 echo json_encode(['success' => true]);
             } elseif ($action === 'delete') {
+                // Delete image when product is deleted
+                $oldStmt = $posPdo->prepare("SELECT image_path FROM products WHERE id = ?");
+                $oldStmt->execute([$input['id']]);
+                $oldImage = $oldStmt->fetchColumn();
+                if ($oldImage) {
+                    $oldFullPath = __DIR__ . '/../../../Fika/cafe_pos/' . $oldImage;
+                    if (file_exists($oldFullPath)) {
+                        unlink($oldFullPath);
+                    }
+                }
+                
                 $stmt = $posPdo->prepare("DELETE FROM products WHERE id = ?");
                 $stmt->execute([$input['id']]);
                 echo json_encode(['success' => true]);

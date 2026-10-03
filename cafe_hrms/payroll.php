@@ -3,7 +3,7 @@ require_once __DIR__ . '/init.php';
 require_login();
 $user = current_user();
 
-$allowed_roles = ['Super Admin', 'Admin', 'Central HR', 'Global Accountant', 'Branch Manager'];
+$allowed_roles = [ROLE_SUPER_ADMIN, ROLE_EXECUTIVE, ROLE_CENTRAL_HR, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_MANAGER];
 if (!in_array($user['role'], $allowed_roles)) {
     die("Access denied.");
 }
@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $periodStart = $periodParts[0];
         $periodEnd = $periodParts[1];
         $userBranchId = $user['branch_id'] ?? null;
+        $branchFilter = get_branch_filter();
         $employeesQuery = $pdo->prepare('SELECT *, CONCAT(first_name, " ", last_name) AS full_name FROM employees WHERE (status IN ("Active", "Trainee") OR (status = "Terminated" AND termination_date >= ?))' . $branchFilter);
         $employeesQuery->execute([$periodStart]);
         $employees = $employeesQuery->fetchAll();
@@ -231,7 +232,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             die("Access denied: You do not have permission to approve payroll.");
         }
         $payrollId = $_POST['payroll_id'];
-        $pdo->prepare('UPDATE payroll SET status = "Approved" WHERE id = ?')->execute([$payrollId]);
+        $stmt = $pdo->prepare('UPDATE payroll SET status = "Approved" WHERE id = ? AND status = "Draft"');
+        $stmt->execute([$payrollId]);
+        if ($stmt->rowCount() === 0) {
+            die("Error: Payroll record not found or not in Draft state.");
+        }
         
         // Also update the parent run if all its records are now approved
         $runCheck = $pdo->prepare('SELECT run_id FROM payroll WHERE id = ?');
@@ -256,7 +261,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $payrollId = $_POST['payroll_id'];
         $paymentMethod = trim($_POST['payment_method']);
-        $pdo->prepare('UPDATE payroll SET status = "Released", payment_method = ? WHERE id = ?')->execute([$paymentMethod, $payrollId]);
+        $allowed_methods = ['Cash', 'Bank Transfer', 'eWallet'];
+        if (!in_array($paymentMethod, $allowed_methods)) {
+            die("Error: Invalid payment method.");
+        }
+        $stmt = $pdo->prepare('UPDATE payroll SET status = "Released", payment_method = ? WHERE id = ? AND status = "Approved"');
+        $stmt->execute([$paymentMethod, $payrollId]);
+        if ($stmt->rowCount() === 0) {
+            die("Error: Payroll record not found or not in Approved state.");
+        }
         
         // Also update the parent run if all its records are now released
         $runCheck = $pdo->prepare('SELECT run_id FROM payroll WHERE id = ?');

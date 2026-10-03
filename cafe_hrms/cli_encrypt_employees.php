@@ -13,7 +13,7 @@ try {
 }
 
 if (!defined('APP_KEY')) {
-    define('APP_KEY', 'xK9pL2vM8qJ5wH4tN7eR3yA6cZ1bF0dG');
+    die('Fatal Error: APP_KEY is not defined in config.php. System cannot safely initialize.');
 }
 require_once __DIR__ . '/functions.php';
 

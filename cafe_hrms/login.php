@@ -20,11 +20,11 @@ if (empty($_SESSION['user']) && !empty($_COOKIE['remember_me'])) {
             if (in_array($user['role_name'], ['System Admin', 'Super Admin', 'Central HR', 'Executives'])) {
                 redirect('dashboard');
             } elseif ($user['role_name'] === 'Cashier' || $user['role_name'] === 'Cashier Terminal') {
-                redirect('../cafe_pos/cashier');
+                redirect('../cafe_pos/cashier.php');
             } elseif ($user['role_name'] === 'Clock') {
                 redirect('attendance');
             } elseif (strpos(strtolower($user['role_name']), 'kiosk') !== false) {
-                redirect('../cafe_pos/kiosk');
+                redirect('../cafe_pos/kiosk.php');
             } else {
                 redirect('ess');
             }
@@ -36,11 +36,11 @@ if (!empty($_SESSION['user'])) {
     if (in_array($_SESSION['user']['role'], ['System Admin', 'Super Admin', 'Central HR', 'Executives'])) {
         redirect('dashboard');
     } elseif ($_SESSION['user']['role'] === 'Cashier' || $_SESSION['user']['role'] === 'Cashier Terminal') {
-        redirect('../cafe_pos/cashier');
+        redirect('../cafe_pos/cashier.php');
     } elseif ($_SESSION['user']['role'] === 'Clock') {
         redirect('attendance');
     } elseif (strpos(strtolower($_SESSION['user']['role']), 'kiosk') !== false) {
-        redirect('../cafe_pos/kiosk');
+        redirect('../cafe_pos/kiosk.php');
     } else {
         redirect('ess');
     }
@@ -81,11 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (in_array($user['role_name'], ['System Admin', 'Super Admin', 'Central HR', 'Executives'])) {
                     redirect('dashboard');
                 } elseif ($user['role_name'] === 'Cashier' || $user['role_name'] === 'Cashier Terminal') {
-                    redirect('../cafe_pos/cashier');
+                    redirect('../cafe_pos/cashier.php');
                 } elseif ($user['role_name'] === 'Clock') {
                     redirect('attendance');
                 } elseif (strpos(strtolower($user['role_name']), 'kiosk') !== false) {
-                    redirect('../cafe_pos/kiosk');
+                    redirect('../cafe_pos/kiosk.php');
                 } else {
                     redirect('ess');
                 }

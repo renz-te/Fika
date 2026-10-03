@@ -231,7 +231,7 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : ($_SESSION['u
             <button class="payment-method-btn" id="btn-manage-register" style="background: rgba(255,255,255,0.05); border: none; margin: 0;">
                 <i data-lucide="settings"></i> Manage Register Shift (Head Barista)
             </button>
-            <a href="../cafe_hrms/logout.php" style="color: #e74c3c; text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='rgba(231,76,60,0.1)'" onmouseout="this.style.background='transparent'">
+            <a href="/Fika/Fika/cafe_hrms/logout.php" style="color: #e74c3c; text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='rgba(231,76,60,0.1)'" onmouseout="this.style.background='transparent'">
                 <i data-lucide="power"></i> Log Off Terminal
             </a>
         </div>
@@ -324,8 +324,12 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : ($_SESSION['u
                         <span id="receipt-subtotal"></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>VAT (12%)</span>
+                        <span id="receipt-vat-label">VAT (12%)</span>
                         <span id="receipt-vat"></span>
+                    </div>
+                    <div id="receipt-discount-container" style="display: none; justify-content: space-between; margin-bottom: 4px; color: #e74c3c;">
+                        <span>Discount Applied</span>
+                        <span id="receipt-discount"></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 18px; font-weight: bold;">
                         <span>TOTAL</span>

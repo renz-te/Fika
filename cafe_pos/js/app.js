@@ -352,8 +352,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Checkout Logic ---
     btnCheckout.onclick = () => {
         if (cart.length === 0) return;
-        digitalRefContainer.style.display = 'none';
-        digitalRefInput.value = '';
         paymentModal.classList.add('active');
     };
 
@@ -366,17 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     btnPayDigital.onclick = () => {
-        digitalRefContainer.style.display = 'flex';
-        digitalRefInput.focus();
-    };
-
-    btnConfirmDigital.onclick = () => {
-        const ref = digitalRefInput.value.trim();
-        if (!ref) {
-            alert('Please enter a reference number.');
-            return;
-        }
-        submitCheckout('DIGITAL', ref, 'PAID');
+        submitCheckout('PAYMONGO', null, 'UNPAID');
     };
 
     async function submitCheckout(method, reference, status) {
@@ -408,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if (data.success) {
-                if (status === 'UNPAID') {
+                if (status === 'UNPAID' && method !== 'PAYMONGO') {
                     successIcon.innerHTML = '<i data-lucide="ticket"></i>';
                     successTitle.textContent = 'Order Placed!';
                     successMessage.textContent = 'Please proceed to the counter to pay and provide Queue Number:';
@@ -422,9 +410,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     cart = [];
                     renderCart();
                     btnCheckoutText.textContent = 'Place Order';
+                } else if (method === 'PAYMONGO') {
+                    // Trigger PayMongo Checkout
+                    try {
+                        const pmRes = await fetch('api/paymongo_checkout.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ order_id: data.order_id })
+                        });
+                        const pmData = await pmRes.json();
+                        
+                        if (pmData.success) {
+                            window.location.href = pmData.checkout_url;
+                        } else {
+                            alert("PayMongo Initialization failed: " + (pmData.error || "Unknown error"));
+                            btnCheckout.disabled = false;
+                            btnCheckoutText.textContent = 'Place Order';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert("Network error starting PayMongo checkout.");
+                        btnCheckout.disabled = false;
+                        btnCheckoutText.textContent = 'Place Order';
+                    }
                 } else {
                     // For DIGITAL payment, show receipt to print
-                    showReceiptModal(data.order_number, payload.cart);
+                    showReceiptModal(data.order_number, payload.cart, data);
                     
                     // Also clear cart in background
                     cart = [];
@@ -446,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showReceiptModal(orderNumber, cartData) {
+    function showReceiptModal(orderNumber, cartData, serverData) {
         document.getElementById('receipt-order-no').textContent = orderNumber;
         const now = new Date();
         document.getElementById('receipt-date').textContent = now.toLocaleDateString();
@@ -480,27 +491,42 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = itemSubtotal * item.quantity;
             subtotal += price;
             
+            const isVoided = item.quantity < 0;
+            
             let html = `
-                <td style="padding-bottom: 8px;">
-                    <div>${product.name}</div>
+                <td style="padding-bottom: 8px; ${isVoided ? 'text-decoration: line-through; color: #e74c3c;' : ''}">
+                    <div>${isVoided ? '[VOID] ' : ''}${product.name}</div>
             `;
             if (modNames.length > 0) {
-                html += `<div style="font-size: 11px; color: #777;">+ ${modNames.join(', ')}</div>`;
+                html += `<div style="font-size: 11px; color: ${isVoided ? '#e74c3c' : '#777'};">+ ${modNames.join(', ')}</div>`;
             }
             html += `</td>
-                <td style="text-align: center; padding-bottom: 8px;">${item.quantity}</td>
-                <td style="text-align: right; padding-bottom: 8px;">₱${price.toFixed(2)}</td>
+                <td style="text-align: center; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">${item.quantity}</td>
+                <td style="text-align: right; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">₱${price.toFixed(2)}</td>
             `;
             tr.innerHTML = html;
             tbody.appendChild(tr);
         });
+
+        document.getElementById('receipt-subtotal').textContent = '₱' + (serverData ? serverData.gross_total : subtotal).toFixed(2);
         
-        const vat = subtotal * 0.12;
-        const total = subtotal; 
-        const netSubtotal = total - vat;
+        const vat = serverData && serverData.vat_amount !== undefined ? serverData.vat_amount : (subtotal * 0.12);
+        if (vat > 0) {
+            document.getElementById('receipt-vat-label').textContent = 'VAT (12%)';
+            document.getElementById('receipt-vat').textContent = '₱' + vat.toFixed(2);
+        } else {
+            document.getElementById('receipt-vat-label').textContent = 'VAT (Exempt)';
+            document.getElementById('receipt-vat').textContent = '₱0.00';
+        }
         
-        document.getElementById('receipt-subtotal').textContent = '₱' + netSubtotal.toFixed(2);
-        document.getElementById('receipt-vat').textContent = '₱' + vat.toFixed(2);
+        if (serverData && serverData.discount_amount > 0) {
+            document.getElementById('receipt-discount-container').style.display = 'flex';
+            document.getElementById('receipt-discount').textContent = '-₱' + serverData.discount_amount.toFixed(2);
+        } else {
+            document.getElementById('receipt-discount-container').style.display = 'none';
+        }
+        
+        const total = serverData && serverData.net_payable !== undefined ? serverData.net_payable : subtotal;
         document.getElementById('receipt-total').textContent = '₱' + total.toFixed(2);
         
         document.getElementById('receipt-tender').textContent = '₱' + total.toFixed(2);
@@ -557,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnLogoutConfirm.onclick = () => {
             if (logoutPinInput.value === '1234') {
                 logoutModal.classList.remove('active');
-                window.location.href = '../cafe_hrms/logout.php';
+                window.location.href = '/Fika/Fika/cafe_hrms/logout.php';
             } else {
                 alert('Incorrect PIN');
                 logoutPinInput.value = '';

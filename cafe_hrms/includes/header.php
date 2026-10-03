@@ -177,7 +177,7 @@ if (isset($_SESSION['user']['id'])) {
                         </div>
                     </div>
 
-                    <?php if (in_array($role, ['Super Admin', 'Admin'])): ?>
+                    <?php if (in_array($role, [ROLE_SUPER_ADMIN, ROLE_BRANCH_MANAGER])): ?>
                     <!-- POS & INVENTORY -->
                     <div>
                         <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">POS & INVENTORY</span></div>
@@ -193,7 +193,7 @@ if (isset($_SESSION['user']['id'])) {
                             </a>
                             <?php
                                 $term_branch_id = $_SESSION['user']['branch_id'] ?? 1;
-                                $term_params = in_array($_SESSION['user']['role'], ['Super Admin', 'Admin']) ? "?mode=test&branch_id={$term_branch_id}" : "?branch_id={$term_branch_id}";
+                                $term_params = in_array($_SESSION['user']['role'], [ROLE_SUPER_ADMIN]) ? "?mode=test&branch_id={$term_branch_id}" : "?branch_id={$term_branch_id}";
                             ?>
                             <a href="../cafe_pos/cashier<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-slate-400 hover:text-white transition-colors mt-2 border-t border-slate-700/50 pt-2" title="Cashier Terminal">
                                 <i class="fa-solid fa-desktop w-5 text-center"></i> <span class="sidebar-text ml-2">Cashier Terminal <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>

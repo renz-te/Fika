@@ -22,29 +22,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = (item.unitPrice * item.quantity);
             subtotal += price;
             
+            const isVoided = item.quantity < 0;
+            
             let html = `
-                <td style="padding-bottom: 8px;">
-                    <div>${itemName}</div>
+                <td style="padding-bottom: 8px; ${isVoided ? 'text-decoration: line-through; color: #e74c3c;' : ''}">
+                    <div>${isVoided ? '[VOID] ' : ''}${itemName}</div>
             `;
-            if (item.modifiers.length > 0) {
+            if (item.modifiers && item.modifiers.length > 0) {
                 const mods = item.modifiers.map(m => m.name).join(', ');
-                html += `<div style="font-size: 11px; color: #777;">+ ${mods}</div>`;
+                html += `<div style="font-size: 11px; color: ${isVoided ? '#e74c3c' : '#777'};">+ ${mods}</div>`;
             }
             html += `</td>
-                <td style="text-align: center; padding-bottom: 8px;">${item.quantity}</td>
-                <td style="text-align: right; padding-bottom: 8px;">₱${price.toFixed(2)}</td>
+                <td style="text-align: center; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">${item.quantity}</td>
+                <td style="text-align: right; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">₱${price.toFixed(2)}</td>
             `;
             tr.innerHTML = html;
             tbody.appendChild(tr);
         });
         
-        const vat = subtotal * 0.12;
-        const total = subtotal; // Assuming prices are VAT inclusive. If exclusive, total = subtotal + vat;
-        // Let's assume inclusive for simplicity, so subtotal is total - vat
-        const netSubtotal = total - vat;
+        document.getElementById('receipt-subtotal').textContent = '₱' + (data.gross_total || subtotal).toFixed(2);
         
-        document.getElementById('receipt-subtotal').textContent = '₱' + netSubtotal.toFixed(2);
-        document.getElementById('receipt-vat').textContent = '₱' + vat.toFixed(2);
+        const vat = data.vat_amount !== undefined ? data.vat_amount : (subtotal * 0.12);
+        if (vat > 0) {
+            document.getElementById('receipt-vat-label').textContent = 'VAT (12%)';
+            document.getElementById('receipt-vat').textContent = '₱' + vat.toFixed(2);
+        } else {
+            document.getElementById('receipt-vat-label').textContent = 'VAT (Exempt)';
+            document.getElementById('receipt-vat').textContent = '₱0.00';
+        }
+        
+        if (data.discount_amount > 0) {
+            document.getElementById('receipt-discount-container').style.display = 'flex';
+            document.getElementById('receipt-discount').textContent = '-₱' + data.discount_amount.toFixed(2);
+        } else {
+            document.getElementById('receipt-discount-container').style.display = 'none';
+        }
+        
+        const total = data.net_payable !== undefined ? data.net_payable : subtotal;
         document.getElementById('receipt-total').textContent = '₱' + total.toFixed(2);
         
         document.getElementById('receipt-tender-label').textContent = data.method === 'CASH' ? 'Cash Received' : 'Digital Ref.';
@@ -829,7 +843,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     cashier: activeCashierName,
                     items: cart,
                     method: method,
-                    received: method === 'CASH' ? (parseFloat(cashReceivedInput.value.replace(/[^0-9.]/g, '')) || 0) : null
+                    received: method === 'CASH' ? (parseFloat(cashReceivedInput.value.replace(/[^0-9.]/g, '')) || 0) : null,
+                    gross_total: data.gross_total,
+                    vat_amount: data.vat_amount,
+                    discount_amount: data.discount_amount,
+                    net_payable: data.net_payable
                 });
                 
                 clearLoadedOrder();

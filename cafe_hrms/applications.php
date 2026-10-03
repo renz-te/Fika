@@ -712,7 +712,7 @@ $all_branches = $pdo->query("SELECT id, name FROM branches WHERE status = 'Activ
             INNER JOIN users u ON u.employee_id = e.id 
             INNER JOIN roles r ON u.role_id = r.id 
             WHERE e.status = 'Active' 
-            AND r.name IN ('Branch Admin', 'Central HR', 'Head Barista', 'Super Admin') 
+            AND r.name IN ('" . ROLE_BRANCH_MANAGER . "', '" . ROLE_CENTRAL_HR . "', 'Head Barista', '" . ROLE_SUPER_ADMIN . "') 
         ";
         $manager_params = [];
         
@@ -840,7 +840,7 @@ $all_branches = $pdo->query("SELECT id, name FROM branches WHERE status = 'Activ
                                 <?php if (!empty($dayInterviews)): ?>
                                     <div class="max-h-40 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                                     <?php foreach($dayInterviews as $interview): ?>
-                                        <div onclick="openInterviewActionModal(<?= $interview['id'] ?>, '<?= addslashes(h($interview['applicant_name'])) ?>', '<?= $interview['interview_date'] ?>', '<?= $interview['interview_time'] ?>', '<?= $interview['end_time'] ?>', <?= $interview['interviewer_id'] ?? 0 ?>, '<?= addslashes(h($interview['interviewer_name'] ?? 'Unassigned')) ?>')" 
+                                        <div onclick="openInterviewActionModal(<?= $interview['id'] ?>, <?= json_encode(htmlspecialchars($interview['applicant_name'], ENT_QUOTES, 'UTF-8')) ?>, '<?= $interview['interview_date'] ?>', '<?= $interview['interview_time'] ?>', '<?= $interview['end_time'] ?>', <?= $interview['interviewer_id'] ?? 0 ?>, <?= json_encode(htmlspecialchars($interview['interviewer_name'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8')) ?>)" 
                                              class="cursor-pointer group flex items-start justify-between border rounded px-1.5 py-1 text-xs text-left <?= $yAxisType === 'manager' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200' ?> hover:shadow-sm transition">
                                             
                                             <div class="leading-tight">
@@ -1105,7 +1105,7 @@ $all_branches = $pdo->query("SELECT id, name FROM branches WHERE status = 'Activ
                                         INNER JOIN users u ON u.employee_id = e.id 
                                         INNER JOIN roles r ON u.role_id = r.id 
                                         WHERE e.status = 'Active' 
-                                        AND r.name IN ('Branch Admin', 'Central HR', 'Head Barista', 'Super Admin') 
+                                        AND r.name IN ('" . ROLE_BRANCH_MANAGER . "', '" . ROLE_CENTRAL_HR . "', 'Head Barista', '" . ROLE_SUPER_ADMIN . "') 
                                         " . get_branch_filter('e') . " 
                                         ORDER BY e.first_name
                                     ");
@@ -1267,7 +1267,7 @@ $all_branches = $pdo->query("SELECT id, name FROM branches WHERE status = 'Activ
                                 INNER JOIN users u ON u.employee_id = e.id 
                                 INNER JOIN roles r ON u.role_id = r.id 
                                 WHERE e.status = 'Active' 
-                                AND r.name IN ('Branch Admin', 'Central HR', 'Head Barista', 'Super Admin') 
+                                AND r.name IN ('" . ROLE_BRANCH_MANAGER . "', '" . ROLE_CENTRAL_HR . "', 'Head Barista', '" . ROLE_SUPER_ADMIN . "') 
                                 " . get_branch_filter('e') . " 
                                 ORDER BY e.first_name
                             ");

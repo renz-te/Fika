@@ -33,7 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $birthdate_val = $_POST['birthdate'] ?? null;
     if ($birthdate_val) {
-        $bdate = new DateTime($birthdate_val);
+        try {
+            $bdate = new DateTime($birthdate_val);
+        } catch (Exception $e) {
+            die("Error: Invalid birthdate format.");
+        }
         $today = new DateTime('today');
         $age = $bdate->diff($today)->y;
         
@@ -73,24 +77,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valid_id_photo = null;
         $valid_id_back_photo = null;
         $resume = null;
+        $allowed_image_mimes = ['image/jpeg', 'image/png'];
+        $allowed_resume_mimes = ['application/pdf'];
 
         if (isset($_FILES['valid_id_photo']) && $_FILES['valid_id_photo']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['valid_id_photo']['name'], PATHINFO_EXTENSION);
-            $valid_id_photo = 'id_' . time() . '_' . rand(100, 999) . '.' . $ext;
-            move_uploaded_file($_FILES['valid_id_photo']['tmp_name'], $uploadDir . $valid_id_photo);
-        }
-
-        if (isset($_FILES['valid_id_back_photo']) && $_FILES['valid_id_back_photo']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['valid_id_back_photo']['name'], PATHINFO_EXTENSION);
-            $valid_id_back_photo = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $ext;
-            move_uploaded_file($_FILES['valid_id_back_photo']['tmp_name'], $uploadDir . $valid_id_back_photo);
-        }
-
-        if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
-            $ext = strtolower(pathinfo($_FILES['resume']['name'], PATHINFO_EXTENSION));
-            if ($ext !== 'pdf') {
-                $error = 'Resume must be a PDF document.';
+            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['valid_id_photo']['tmp_name']);
+            if (!in_array($mime, $allowed_image_mimes)) {
+                $error = 'Valid ID photo must be a JPEG or PNG image.';
             } else {
+                $ext = pathinfo($_FILES['valid_id_photo']['name'], PATHINFO_EXTENSION);
+                $valid_id_photo = 'id_' . time() . '_' . rand(100, 999) . '.' . $ext;
+                move_uploaded_file($_FILES['valid_id_photo']['tmp_name'], $uploadDir . $valid_id_photo);
+            }
+        }
+
+        if (empty($error) && isset($_FILES['valid_id_back_photo']) && $_FILES['valid_id_back_photo']['error'] === UPLOAD_ERR_OK) {
+            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['valid_id_back_photo']['tmp_name']);
+            if (!in_array($mime, $allowed_image_mimes)) {
+                $error = 'Valid ID back photo must be a JPEG or PNG image.';
+            } else {
+                $ext = pathinfo($_FILES['valid_id_back_photo']['name'], PATHINFO_EXTENSION);
+                $valid_id_back_photo = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $ext;
+                move_uploaded_file($_FILES['valid_id_back_photo']['tmp_name'], $uploadDir . $valid_id_back_photo);
+            }
+        }
+
+        if (empty($error) && isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
+            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['resume']['tmp_name']);
+            if (!in_array($mime, $allowed_resume_mimes)) {
+                $error = 'Resume must be a valid PDF document.';
+            } else {
+                $ext = strtolower(pathinfo($_FILES['resume']['name'], PATHINFO_EXTENSION));
                 $resume = 'resume_' . time() . '_' . rand(100, 999) . '.' . $ext;
                 move_uploaded_file($_FILES['resume']['tmp_name'], $uploadDir . $resume);
             }

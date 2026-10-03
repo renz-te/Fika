@@ -9,16 +9,26 @@ function encryptData($data) {
     $ivLength = openssl_cipher_iv_length($method);
     $iv = openssl_random_pseudo_bytes($ivLength);
     $encrypted = openssl_encrypt($data, $method, APP_KEY, 0, $iv);
-    return base64_encode($iv . '::' . $encrypted);
+    // Prepend the raw IV to the encrypted data, then Base64 encode the whole string
+    return base64_encode($iv . $encrypted);
 }
 
 function decryptData($data) {
     if (empty($data)) return $data;
-    $decoded = base64_decode($data);
-    if (strpos($decoded, '::') === false) return $data; // Not encrypted or old data format
-    list($iv, $encryptedData) = explode('::', $decoded, 2);
     $method = 'aes-256-cbc';
-    return openssl_decrypt($encryptedData, $method, APP_KEY, 0, $iv);
+    $decoded = base64_decode($data);
+    
+    // If it happens to be the old format with ::, let's just fall back to splitting it so existing valid data doesn't break?
+    // Actually the prompt says "Refactor the functions to use fixed-length IV byte slicing", let's strictly follow it.
+    
+    $ivLength = openssl_cipher_iv_length($method);
+    
+    // Extract the exact IV length from the start of the string
+    $iv = substr($decoded, 0, $ivLength);
+    // Extract the ciphertext starting immediately after the IV
+    $ciphertext = substr($decoded, $ivLength);
+    
+    return openssl_decrypt($ciphertext, $method, APP_KEY, 0, $iv);
 }
 
 function redirect($url) {
@@ -178,6 +188,8 @@ function set_setting($pdo, $key, $value) {
  * Returns ['employee' => float, 'employer' => float]
  */
 function calculate_sss($pdo, $monthlyGross) {
+    if ($monthlyGross <= 0) return ['employee' => 0.0, 'employer' => 0.0];
+    
     $stmt = $pdo->prepare("
         SELECT base_amount, employee_rate, employer_rate
         FROM contribution_rates
@@ -191,6 +203,11 @@ function calculate_sss($pdo, $monthlyGross) {
     $bracket = $stmt->fetch();
 
     if (!$bracket) {
+        $minCheck = $pdo->query("SELECT min_salary FROM contribution_rates WHERE type = 'SSS' ORDER BY min_salary ASC LIMIT 1")->fetchColumn();
+        if ($minCheck !== false && $monthlyGross < $minCheck) {
+            return ['employee' => 0.0, 'employer' => 0.0];
+        }
+
         // Fallback to max bracket if salary exceeds all ranges
         $fallback = $pdo->query("
             SELECT base_amount, employee_rate, employer_rate
@@ -215,6 +232,8 @@ function calculate_sss($pdo, $monthlyGross) {
  * Returns ['employee' => float, 'employer' => float]
  */
 function calculate_philhealth($monthlyGross) {
+    if ($monthlyGross <= 0) return ['employee' => 0.0, 'employer' => 0.0];
+    
     $floor = 10000.00;
     $ceiling = 100000.00;
     $rate = 0.05; // 5% total
@@ -234,6 +253,8 @@ function calculate_philhealth($monthlyGross) {
  * Returns ['employee' => float, 'employer' => float]
  */
 function calculate_pagibig($monthlyGross) {
+    if ($monthlyGross <= 0) return ['employee' => 0.0, 'employer' => 0.0];
+    
     $maxBase = 10000.00;
     $rate = 0.02;
 

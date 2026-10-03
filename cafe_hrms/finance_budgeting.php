@@ -6,7 +6,7 @@ $user_role = $user['role'] ?? '';
 $user_branch_id = $user['branch_id'] ?? null;
 
 // RBAC Gate: Only Super Admin, Central HR, Global Accountant, and Branch Manager
-$allowed_roles = ['Super Admin', 'Central HR', 'Global Accountant', 'Branch Manager', 'Branch Accountant'];
+$allowed_roles = [ROLE_SUPER_ADMIN, ROLE_EXECUTIVE, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_MANAGER, ROLE_BRANCH_ACCOUNTANT];
 if (!in_array($user_role, $allowed_roles)) {
     redirect('dashboard');
 }
@@ -89,12 +89,13 @@ $budget_query = "
         b.id AS branch_id,
         b.name AS branch_name,
         master.report_month AS budget_month,
-        COALESCE(bb.allocated_labor_budget, 0) AS allocated_labor_budget,
+        bb.allocated_labor_budget,
         COALESCE(actual.total_labor_cost, 0) AS actual_labor_cost,
         COALESCE(rev.gross_revenue, 0) AS gross_revenue,
         COALESCE(cogs.total_cogs, 0) AS total_cogs,
         (COALESCE(rev.gross_revenue, 0) - COALESCE(cogs.total_cogs, 0) - COALESCE(actual.total_labor_cost, 0)) AS margin_before_overhead,
-        (COALESCE(actual.total_labor_cost, 0) > COALESCE(bb.allocated_labor_budget, 0)) AS is_over_budget
+        (bb.allocated_labor_budget IS NOT NULL AND COALESCE(actual.total_labor_cost, 0) > bb.allocated_labor_budget) AS is_over_budget,
+        (bb.allocated_labor_budget - COALESCE(actual.total_labor_cost, 0)) AS budget_variance
     FROM branches b
     CROSS JOIN (
         SELECT DISTINCT budget_month AS report_month FROM branch_budgets
@@ -126,9 +127,13 @@ $budget_query = "
         SELECT 
             branch_id, 
             DATE_FORMAT(transaction_date, '%Y-%m') AS cogs_month, 
-            SUM(quantity * COALESCE(unit_cost_snapshot, cost)) AS total_cogs
+            SUM(CASE 
+                WHEN type IN ('Usage', 'Write-off') THEN quantity * COALESCE(unit_cost_snapshot, cost)
+                WHEN type = 'Restock' THEN -(quantity * COALESCE(unit_cost_snapshot, cost))
+                ELSE 0 
+            END) AS total_cogs
         FROM inventory_transactions
-        WHERE type IN ('Usage', 'Write-off') AND status = 'Completed'
+        WHERE type IN ('Usage', 'Write-off', 'Restock') AND status = 'Completed'
         GROUP BY branch_id, DATE_FORMAT(transaction_date, '%Y-%m')
     ) cogs ON cogs.branch_id = b.id AND cogs.cogs_month = master.report_month
     WHERE master.report_month IS NOT NULL
@@ -253,7 +258,9 @@ require_once __DIR__ . '/includes/header.php';
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider">Month</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Revenue</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">COGS</th>
+                    <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Labor Budget</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Labor Cost</th>
+                    <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Variance</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Margin Before Overhead</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-center">Status</th>
                     <th class="py-4 px-6 font-semibold text-xs text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -262,7 +269,7 @@ require_once __DIR__ . '/includes/header.php';
             <tbody class="divide-y divide-slate-100">
                 <?php if (empty($budget_rows)): ?>
                     <tr>
-                        <td colspan="8" class="py-12 text-center text-slate-400">
+                        <td colspan="10" class="py-12 text-center text-slate-400">
                             <i class="fa-solid fa-chart-pie text-4xl mb-3 block text-slate-300"></i>
                             No data found for the selected criteria.
                         </td>
@@ -287,7 +294,15 @@ require_once __DIR__ . '/includes/header.php';
                         </td>
                         <td class="py-4 px-6 text-sm text-emerald-600 font-medium text-right">₱<?= number_format($revenue, 2) ?></td>
                         <td class="py-4 px-6 text-sm text-red-500 font-medium text-right">₱<?= number_format($cogs, 2) ?></td>
+                        <?php 
+                            $allocated = $row['allocated_labor_budget'];
+                            $variance = $row['budget_variance'];
+                        ?>
+                        <td class="py-4 px-6 text-sm text-slate-600 font-medium text-right"><?= $allocated !== null ? '₱' . number_format($allocated, 2) : '<span class="text-slate-400 italic font-normal">Unbudgeted</span>' ?></td>
                         <td class="py-4 px-6 text-sm text-red-500 font-medium text-right">₱<?= number_format($labor, 2) ?></td>
+                        <td class="py-4 px-6 text-sm font-medium text-right <?= $variance !== null ? ($variance < 0 ? 'text-red-500' : 'text-emerald-500') : 'text-slate-400' ?>">
+                            <?= $variance !== null ? ($variance < 0 ? '' : '+') . '₱' . number_format($variance, 2) : '-' ?>
+                        </td>
                         <td class="py-4 px-6 text-sm font-bold text-right <?= $is_loss ? 'text-red-600' : 'text-emerald-600' ?>">
                             <?= $net >= 0 ? '+' : '' ?>₱<?= number_format($net, 2) ?>
                         </td>
@@ -303,6 +318,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                         </td>
                         <td class="py-4 px-6 text-right">
+                            <?php if ($row['budget_id']): ?>
                             <button type="button" onclick="editBudget(<?= htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8') ?>)" class="text-slate-400 hover:text-blue-600 transition-colors mr-2" title="Edit">
                                 <i class="fa-solid fa-pen-to-square"></i>
                             </button>
@@ -314,6 +330,9 @@ require_once __DIR__ . '/includes/header.php';
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </form>
+                            <?php else: ?>
+                                <span class="text-slate-300 italic text-xs">No Actions</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

@@ -132,10 +132,6 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : 1;
                 <button class="payment-method-btn" id="btn-pay-cash" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="footprints" style="width: 20px; height: 20px;"></i> Pay Cash at Counter</button>
                 <div class="digital-payment-section">
                     <button class="payment-method-btn" id="btn-pay-digital" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="credit-card" style="width: 20px; height: 20px;"></i> Online Payment (E-Wallet/Card)</button>
-                    <div id="digital-ref-container" style="display: none; margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
-                        <input type="text" id="digital-ref-input" placeholder="Enter Reference Number..." class="ref-input">
-                        <button class="add-to-cart-btn" id="btn-confirm-digital">Confirm Payment</button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -208,8 +204,12 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : 1;
                         <span id="receipt-subtotal"></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>VAT (12%)</span>
+                        <span id="receipt-vat-label">VAT (12%)</span>
                         <span id="receipt-vat"></span>
+                    </div>
+                    <div id="receipt-discount-container" style="display: none; justify-content: space-between; margin-bottom: 4px; color: #e74c3c;">
+                        <span>Discount Applied</span>
+                        <span id="receipt-discount"></span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 18px; font-weight: bold;">
                         <span>TOTAL</span>
