@@ -3,23 +3,6 @@ require_once __DIR__ . '/init.php';
 require_login();
 require_role(['Admin', 'Super Admin', 'HR', 'HR Admin']);
 
-// 1. Connect to POS Database
-$posHost = '127.0.0.1';
-$posDb   = 'cafe_pos';
-$posUser = 'root';
-$posPass = '';
-$posCharset = 'utf8mb4';
-
-$posDsn = "mysql:host=$posHost;dbname=$posDb;charset=$posCharset";
-try {
-    $posPdo = new PDO($posDsn, $posUser, $posPass, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
-} catch (\PDOException $e) {
-    die("Could not connect to POS database. Make sure the 'cafe_pos' database exists.");
-}
 
 $user_role = $_SESSION['user']['role'];
 $user_branch_id = $_SESSION['user']['branch_id'] ?? null;
@@ -31,7 +14,7 @@ if (in_array($user_role, ['Super Admin', 'Admin'])) {
 $selected_branch_id = $_GET['branch_id'] ?? $user_branch_id ?? 1;
 
 // 2. Fetch Open Register Sessions (Active Cashiers)
-$sessionStmt = $posPdo->prepare("
+$sessionStmt = $pdo->prepare("
     SELECT cs.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
     FROM cash_sessions cs 
     LEFT JOIN users u ON cs.cashier_id = u.id 
@@ -42,7 +25,7 @@ $sessionStmt->execute([$selected_branch_id]);
 $activeSessions = $sessionStmt->fetchAll();
 
 // 3. POS KPIs
-$posKpiStmt = $posPdo->prepare("
+$posKpiStmt = $pdo->prepare("
     SELECT 
         (SELECT COUNT(*) FROM orders WHERE payment_status = 'UNPAID' AND branch_id = ? AND is_test = 0) as queued_orders,
         (SELECT COUNT(*) FROM orders WHERE payment_status = 'PAID' AND branch_id = ? AND is_test = 0) as billed_orders,
@@ -57,7 +40,7 @@ $cashSales = $posKpis['cash_sales'] ?? 0;
 $digitalSales = $posKpis['digital_sales'] ?? 0;
 
 // 4. POS Best Sellers (Grouped by Category)
-$bestSellersStmt = $posPdo->prepare("
+$bestSellersStmt = $pdo->prepare("
     SELECT p.category, p.name, SUM(oi.quantity) as sold_qty
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
@@ -81,7 +64,7 @@ foreach ($bestSellersRaw as $row) {
 }
 
 // 5. Fetch Closed Sessions (Shift Audits)
-$auditsStmt = $posPdo->prepare("
+$auditsStmt = $pdo->prepare("
     SELECT ps.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
     FROM cash_sessions ps 
     LEFT JOIN users u ON ps.cashier_id = u.id 
@@ -93,7 +76,7 @@ $auditsStmt->execute([$selected_branch_id]);
 $closedSessions = $auditsStmt->fetchAll();
 
 // 6. Fetch Recent Receipts
-$receiptsStmt = $posPdo->prepare("SELECT * FROM orders WHERE payment_status = 'PAID' AND branch_id = ? AND is_test = 0 ORDER BY created_at DESC LIMIT 10");
+$receiptsStmt = $pdo->prepare("SELECT * FROM orders WHERE payment_status = 'PAID' AND branch_id = ? AND is_test = 0 ORDER BY created_at DESC LIMIT 10");
 $receiptsStmt->execute([$selected_branch_id]);
 $recentReceipts = $receiptsStmt->fetchAll();
 
