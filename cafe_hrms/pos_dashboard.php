@@ -34,8 +34,8 @@ $selected_branch_id = $_GET['branch_id'] ?? $user_branch_id ?? 1;
 $sessionStmt = $posPdo->prepare("
     SELECT cs.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
     FROM cash_sessions cs 
-    LEFT JOIN hrms.users u ON cs.cashier_id = u.id 
-    LEFT JOIN hrms.employees e ON u.employee_id = e.id 
+    LEFT JOIN users u ON cs.cashier_id = u.id 
+    LEFT JOIN employees e ON u.employee_id = e.id 
     WHERE cs.status = 'OPEN' AND cs.branch_id = ?
 ");
 $sessionStmt->execute([$selected_branch_id]);
@@ -84,8 +84,8 @@ foreach ($bestSellersRaw as $row) {
 $auditsStmt = $posPdo->prepare("
     SELECT ps.*, CONCAT(e.first_name, ' ', e.last_name) as head_barista_name 
     FROM cash_sessions ps 
-    LEFT JOIN hrms.users u ON ps.cashier_id = u.id 
-    LEFT JOIN hrms.employees e ON u.employee_id = e.id 
+    LEFT JOIN users u ON ps.cashier_id = u.id 
+    LEFT JOIN employees e ON u.employee_id = e.id 
     WHERE ps.status = 'CLOSED' AND ps.branch_id = ?
     ORDER BY ps.closed_at DESC LIMIT 10
 ");

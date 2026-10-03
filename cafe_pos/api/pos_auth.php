@@ -12,11 +12,7 @@ $hrmsPass = '';
 $posDb = 'cafe_pos';
 
 try {
-    $pdoHrms = new PDO("mysql:host=$hrmsHost;dbname=$hrmsDb;charset=utf8mb4", $hrmsUser, $hrmsPass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-    $pdoPos = new PDO("mysql:host=$hrmsHost;dbname=$posDb;charset=utf8mb4", $hrmsUser, $hrmsPass, [
+    $pdo = new PDO("mysql:host=$hrmsHost;dbname=$hrmsDb;charset=utf8mb4", $hrmsUser, $hrmsPass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
@@ -30,7 +26,7 @@ $action = $_GET['action'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($action === 'get_active_baristas') {
         // Fetch users who are currently clocked in (time_in today, no time_out)
-        $stmt = $pdoHrms->prepare("
+        $stmt = $pdo->prepare("
             SELECT u.id as user_id, u.username, CONCAT(e.first_name, ' ', e.last_name) AS full_name, e.position 
             FROM attendance a 
             JOIN employees e ON a.employee_id = e.id 
@@ -60,14 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (is_numeric($userId)) {
-            $stmt = $pdoHrms->prepare("
+            $stmt = $pdo->prepare("
                 SELECT u.id, u.password, u.role_id, CONCAT(e.first_name, ' ', e.last_name) AS full_name, e.position 
                 FROM users u 
                 LEFT JOIN employees e ON u.employee_id = e.id 
                 WHERE u.id = ?
             ");
         } else {
-            $stmt = $pdoHrms->prepare("
+            $stmt = $pdo->prepare("
                 SELECT u.id, u.password, u.role_id, CONCAT(e.first_name, ' ', e.last_name) AS full_name, e.position 
                 FROM users u 
                 LEFT JOIN employees e ON u.employee_id = e.id 
@@ -104,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            $stmt = $pdoHrms->prepare("
+            $stmt = $pdo->prepare("
                 SELECT u.id, u.password, u.role_id, CONCAT(e.first_name, ' ', e.last_name) AS full_name, e.position 
                 FROM users u 
                 LEFT JOIN employees e ON u.employee_id = e.id 
@@ -121,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Check if this HB already has an open shift on ANY terminal
-                $stmt2 = $pdoPos->prepare("SELECT id FROM cash_sessions WHERE cashier_id = ? AND status = 'OPEN'");
+                $stmt2 = $pdo->prepare("SELECT id FROM cash_sessions WHERE cashier_id = ? AND status = 'OPEN'");
                 $stmt2->execute([$user['id']]);
                 $openShift = $stmt2->fetch();
 

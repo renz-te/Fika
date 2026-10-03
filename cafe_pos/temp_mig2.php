@@ -3,9 +3,9 @@ $pdo = new PDO('mysql:host=127.0.0.1;dbname=cafe_pos;charset=utf8mb4', 'root', '
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 try {
-    $pdo->exec("ALTER TABLE inventory_transactions ADD COLUMN financial_impact DECIMAL(10,2) DEFAULT 0.00");
+    $pdo->exec("ALTER TABLE pos_inventory_transactions ADD COLUMN financial_impact DECIMAL(10,2) DEFAULT 0.00");
     
-    $pdo->exec("CREATE TABLE IF NOT EXISTS purchase_requests (
+    $pdo->exec("CREATE TABLE IF NOT EXISTS pos_purchase_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
         branch_id INT NOT NULL,
         inventory_id INT NOT NULL,

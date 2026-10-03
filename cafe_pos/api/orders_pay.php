@@ -28,8 +28,7 @@ $branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
 $cashier_name = null;
 if ($cashier_id) {
     try {
-        $pdoHrms = new PDO("mysql:host=127.0.0.1;dbname=hrms;charset=utf8mb4", 'root', '');
-        $stmtUser = $pdoHrms->prepare("SELECT e.full_name FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.id = ?");
+        $stmtUser = $pdo->prepare("SELECT e.full_name FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.id = ?");
         $stmtUser->execute([$cashier_id]);
         $cashier_name = $stmtUser->fetchColumn() ?: 'Unknown';
     } catch (Exception $e) {}

@@ -32,7 +32,7 @@ try {
         $prodRec->execute([$item['product_id']]);
         foreach ($prodRec->fetchAll() as $r) {
             $addAmount = (float)$r['quantity'] * $qty;
-            $upd = $pdo->prepare("UPDATE inventory SET stock = stock + ? WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE pos_inventory SET stock = stock + ? WHERE id = ?");
             $upd->execute([$addAmount, $r['inventory_id']]);
         }
         
@@ -46,7 +46,7 @@ try {
             $modRec->execute([$mod['modifier_id']]);
             foreach ($modRec->fetchAll() as $mr) {
                 $addAmount = (float)$mr['quantity'] * $qty;
-                $upd = $pdo->prepare("UPDATE inventory SET stock = stock + ? WHERE id = ?");
+                $upd = $pdo->prepare("UPDATE pos_inventory SET stock = stock + ? WHERE id = ?");
                 $upd->execute([$addAmount, $mr['inventory_id']]);
             }
         }

@@ -1,6 +1,6 @@
 <?php
 $host = '127.0.0.1';
-$db   = 'cafe_pos';
+$db   = 'hrms';
 $user = 'root'; // default Laragon MySQL user
 $pass = '';     // default Laragon MySQL password
 $charset = 'utf8mb4';

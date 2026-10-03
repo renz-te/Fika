@@ -4,7 +4,7 @@ error_reporting(0);
 header('Content-Type: application/json');
 
 $posHost = '127.0.0.1';
-$posDb = 'cafe_pos';
+$posDb = 'hrms';
 $posUser = 'root';
 $posPass = '';
 
@@ -26,8 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $session = $stmt->fetch();
         if ($session) {
             try {
-                $pdoHrms = new PDO("mysql:host=127.0.0.1;dbname=hrms;charset=utf8mb4", 'root', '');
-                $stmtUser = $pdoHrms->prepare("SELECT username FROM users WHERE id = ?");
+                $stmtUser = $pdo->prepare("SELECT username FROM users WHERE id = ?");
                 $stmtUser->execute([$session['cashier_id']]);
                 $session['head_barista_username'] = $stmtUser->fetchColumn();
             } catch (Exception $e) {}

@@ -3,7 +3,7 @@
 header('Content-Type: application/json');
 
 $posHost = '127.0.0.1';
-$posDb = 'cafe_pos';
+$posDb = 'hrms';
 $posUser = 'root';
 $posPass = '';
 
@@ -12,10 +12,6 @@ try {
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
-    
-    $pdoHrms = new PDO("mysql:host=127.0.0.1;dbname=hrms;charset=utf8mb4", 'root', '');
-    $pdoHrms->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdoHrms->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     echo json_encode(['success' => false, 'error' => 'Database connection failed']);
     exit;
@@ -40,7 +36,7 @@ if (!in_array($action, ['VOID', 'REFUND']) || !$order_id || !$supervisor_id || e
 
 try {
     // Authenticate supervisor
-    $stmtSup = $pdoHrms->prepare("SELECT id, role, branch_id FROM users WHERE id = ?");
+    $stmtSup = $pdo->prepare("SELECT id, role, branch_id FROM users WHERE id = ?");
     $stmtSup->execute([$supervisor_id]);
     $supervisor = $stmtSup->fetch();
     
@@ -50,7 +46,7 @@ try {
     }
 
     $pdo->beginTransaction();
-    $pdoHrms->beginTransaction();
+    // Transaction is already started on $pdo above
 
     // Fetch Order
     $stmtOrder = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
@@ -101,12 +97,12 @@ try {
                     $updStock->execute([$refundAmount, $r['inventory_id'], $branch_id]);
                     
                     // Get unit cost snapshot to log reversal
-                    $stmtInv = $pdo->prepare("SELECT name, unit_cost FROM inventory WHERE id = ?");
+                    $stmtInv = $pdo->prepare("SELECT name, unit_cost FROM pos_inventory WHERE id = ?");
                     $stmtInv->execute([$r['inventory_id']]);
                     $inv = $stmtInv->fetch();
                     
                     if ($inv) {
-                        $updTrans = $pdoHrms->prepare("INSERT INTO inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
+                        $updTrans = $pdo->prepare("INSERT INTO pos_inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
                         $updTrans->execute([$branch_id, $r['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor_id]);
                     }
                 }
@@ -127,12 +123,12 @@ try {
                         $updStock = $pdo->prepare("UPDATE inventory_stock SET stock = stock + ? WHERE inventory_id = ? AND branch_id = ?");
                         $updStock->execute([$refundAmount, $mr['inventory_id'], $branch_id]);
                         
-                        $stmtInv = $pdo->prepare("SELECT name, unit_cost FROM inventory WHERE id = ?");
+                        $stmtInv = $pdo->prepare("SELECT name, unit_cost FROM pos_inventory WHERE id = ?");
                         $stmtInv->execute([$mr['inventory_id']]);
                         $inv = $stmtInv->fetch();
                         
                         if ($inv) {
-                            $updTrans = $pdoHrms->prepare("INSERT INTO inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
+                            $updTrans = $pdo->prepare("INSERT INTO pos_inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
                             $updTrans->execute([$branch_id, $mr['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor_id]);
                         }
                     }
@@ -142,13 +138,13 @@ try {
     }
 
     $pdo->commit();
-    $pdoHrms->commit();
+    // $pdo commit handles everything
 
     echo json_encode(['success' => true, 'message' => "Order {$order['order_number']} successfully {$action}ED."]);
 
 } catch (\Exception $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    if ($pdoHrms->inTransaction()) { $pdoHrms->rollBack(); }
+    // $pdo->rollBack() handles everything
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>

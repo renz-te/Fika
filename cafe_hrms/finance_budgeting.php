@@ -100,7 +100,7 @@ $budget_query = "
     CROSS JOIN (
         SELECT DISTINCT budget_month AS report_month FROM branch_budgets
         UNION
-        SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') FROM cafe_pos.orders WHERE payment_status = 'PAID'
+        SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') FROM orders WHERE payment_status = 'PAID'
         UNION
         SELECT DISTINCT DATE_FORMAT(period_end, '%Y-%m') FROM payroll WHERE status != 'Draft'
     ) master
@@ -119,7 +119,7 @@ $budget_query = "
             o.branch_id, 
             DATE_FORMAT(o.created_at, '%Y-%m') AS rev_month, 
             SUM(o.total_price) AS gross_revenue
-        FROM cafe_pos.orders o
+        FROM orders o
         WHERE o.payment_status = 'PAID'
         GROUP BY o.branch_id, DATE_FORMAT(o.created_at, '%Y-%m')
     ) rev ON rev.branch_id = b.id AND rev.rev_month = master.report_month
