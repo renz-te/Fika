@@ -1,19 +1,17 @@
 name: Deploy to InfinityFree
-
 on:
   push:
     branches:
       - main
-
 jobs:
-  deploy:
+  ftp-deploy:
+    name: Deploy via FTP
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Sync Files
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
