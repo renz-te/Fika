@@ -17,3 +17,16 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /htdocs/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            cafe_hrms/**
+            cafe_pos/**
+            tests/**
+            tools/**
+            docs/**
+            *.md
+            *.txt
+            *.sql
+            temp_mig*.php
