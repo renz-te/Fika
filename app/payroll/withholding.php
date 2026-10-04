@@ -16,18 +16,18 @@ class Withholding {
             return 0;
         } elseif ($taxableIncomeCentavos <= 1666667) {
             // 16,666.67 PHP
-            return (int) (0.15 * ($taxableIncomeCentavos - 1041667));
+            return (int) round(0.15 * ($taxableIncomeCentavos - 1041667));
         } elseif ($taxableIncomeCentavos <= 3333333) {
             // 33,333.33 PHP
-            return 93750 + (int) (0.20 * ($taxableIncomeCentavos - 1666667));
+            return 93750 + (int) round(0.20 * ($taxableIncomeCentavos - 1666667));
         } elseif ($taxableIncomeCentavos <= 8333333) {
             // 83,333.33 PHP
-            return 427083 + (int) (0.25 * ($taxableIncomeCentavos - 3333333));
+            return 427083 + (int) round(0.25 * ($taxableIncomeCentavos - 3333333));
         } elseif ($taxableIncomeCentavos <= 33333333) {
             // 333,333.33 PHP
-            return 1677083 + (int) (0.30 * ($taxableIncomeCentavos - 8333333));
+            return 1677083 + (int) round(0.30 * ($taxableIncomeCentavos - 8333333));
         } else {
-            return 9177083 + (int) (0.35 * ($taxableIncomeCentavos - 33333333));
+            return 9177083 + (int) round(0.35 * ($taxableIncomeCentavos - 33333333));
         }
     }
 }
