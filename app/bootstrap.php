@@ -84,8 +84,11 @@ spl_autoload_register(function ($class) {
     }
     
     $file = APP_ROOT . '/app/' . $path . '.php';
+    $coreFile = APP_ROOT . '/app/core/' . $path . '.php';
     
     if (file_exists($file)) {
         require_once $file;
+    } elseif (file_exists($coreFile)) {
+        require_once $coreFile;
     }
 });
