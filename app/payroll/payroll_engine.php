@@ -18,23 +18,33 @@ class PayrollEngine {
      */
     public static function calculate_payslip(
         int $monthlyBasePayCentavos,
-        float $hoursWorked,
+        float $hoursWorked, // Keep name for compat, used as worked units if HOURLY
         float $overtimeHours,
-        float $standardHoursPerPeriod,
+        float $standardHoursPerPeriod, // Ignored for MONTHLY now
         int $bonusCentavos,
-        bool $deductContributions
+        bool $deductContributions,
+        string $payType = 'MONTHLY',
+        float $absentDays = 0.0,
+        int $lateMinutes = 0,
+        int $cutoffNumber = 1
     ): array {
         $periodBasePayCentavos = (int) ($monthlyBasePayCentavos / 2);
         
-        // Standardized Daily/Hourly computation based on DOLE (22 working days/mo, 8 hrs/day = 176 hrs/mo)
+        // DOLE: 22 working days/mo, 8 hrs/day = 176 hrs/mo
+        $dailyRateCentavos = (int) ($monthlyBasePayCentavos / 22);
         $hourlyRateCentavos = (int) ($monthlyBasePayCentavos / 176); 
 
-        // Basic Pay computation (prorated if hours worked < standard)
-        if ($hoursWorked >= $standardHoursPerPeriod) {
-            $basicPayCentavos = $periodBasePayCentavos;
+        if ($payType === 'MONTHLY') {
+            // Formula: period base pay minus (absent days x daily rate) minus late/undertime at the hourly rate
+            $absentDeduction = (int) ($absentDays * $dailyRateCentavos);
+            $lateDeduction = (int) ($lateMinutes * ($hourlyRateCentavos / 60));
+            $basicPayCentavos = $periodBasePayCentavos - $absentDeduction - $lateDeduction;
         } else {
+            // DAILY/HOURLY: days or hours worked x rate
             $basicPayCentavos = (int) ($hoursWorked * $hourlyRateCentavos);
         }
+        
+        if ($basicPayCentavos < 0) $basicPayCentavos = 0;
         
         // Overtime (125% of basic hourly rate)
         $otRateCentavos = (int) ($hourlyRateCentavos * 1.25);
@@ -48,8 +58,29 @@ class PayrollEngine {
         $breakdown = [];
         if ($deductContributions) {
             $contribs = Contributions::calculateTotalDeductions($monthlyBasePayCentavos);
-            $totalContributions = $contribs['employee'];
-            $breakdown = $contribs['breakdown'];
+            
+            $employeeTotal = $contribs['employee'];
+            $sssTotal = $contribs['breakdown']['sss']['employee'];
+            $phTotal = $contribs['breakdown']['philhealth']['employee'];
+            $piTotal = $contribs['breakdown']['pagibig']['employee'];
+
+            if ($cutoffNumber === 1) {
+                $totalContributions = (int)floor($employeeTotal / 2);
+                $breakdown = [
+                    'sss' => (int)floor($sssTotal / 2),
+                    'philhealth' => (int)floor($phTotal / 2),
+                    'pagibig' => (int)floor($piTotal / 2)
+                ];
+            } else { // Cutoff 2 handles any rounding remainder
+                $firstTotal = (int)floor($employeeTotal / 2);
+                $totalContributions = $employeeTotal - $firstTotal;
+                
+                $breakdown = [
+                    'sss' => $sssTotal - (int)floor($sssTotal / 2),
+                    'philhealth' => $phTotal - (int)floor($phTotal / 2),
+                    'pagibig' => $piTotal - (int)floor($piTotal / 2)
+                ];
+            }
         }
 
         // Taxable Income (Simplified: Gross - Contributions)
@@ -71,13 +102,14 @@ class PayrollEngine {
             'bonus_pay' => $bonusCentavos,
             'deductions' => [
                 'total_contributions' => $totalContributions,
-                'sss' => $breakdown['sss']['employee'] ?? 0,
-                'philhealth' => $breakdown['philhealth']['employee'] ?? 0,
-                'pagibig' => $breakdown['pagibig']['employee'] ?? 0,
+                'sss' => $breakdown['sss'] ?? 0,
+                'philhealth' => $breakdown['philhealth'] ?? 0,
+                'pagibig' => $breakdown['pagibig'] ?? 0,
                 'withholding_tax' => $taxCentavos
             ],
             'net_pay' => $netPayCentavos,
-            'hourly_rate' => $hourlyRateCentavos
+            'hourly_rate' => $hourlyRateCentavos,
+            'daily_rate' => $dailyRateCentavos
         ];
     }
 }
