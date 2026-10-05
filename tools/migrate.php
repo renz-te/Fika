@@ -18,7 +18,35 @@ foreach ($files as $file) {
     $sql = file_get_contents($file);
     
     try {
-        $pdo->exec($sql);
+        // Handle DELIMITER commands for procedures
+        if (strpos($sql, 'DELIMITER') !== false) {
+            $statements = [];
+            $currentStmt = '';
+            $delimiter = ';';
+            
+            $lines = explode("\n", $sql);
+            foreach ($lines as $line) {
+                $trimmed = trim($line);
+                if (preg_match('/^DELIMITER\s+(.+)$/i', $trimmed, $matches)) {
+                    $delimiter = trim($matches[1]);
+                    continue;
+                }
+                $currentStmt .= $line . "\n";
+                if (substr(rtrim($currentStmt), -strlen($delimiter)) === $delimiter) {
+                    // Remove delimiter from the end
+                    $stmtToRun = substr(rtrim($currentStmt), 0, -strlen($delimiter));
+                    if (trim($stmtToRun) !== '') {
+                        $pdo->exec($stmtToRun);
+                    }
+                    $currentStmt = '';
+                }
+            }
+            if (trim($currentStmt) !== '') {
+                $pdo->exec($currentStmt);
+            }
+        } else {
+            $pdo->exec($sql);
+        }
         echo " -> Success\n";
     } catch (PDOException $e) {
         echo " -> Failed: " . $e->getMessage() . "\n";
