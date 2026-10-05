@@ -31,6 +31,16 @@ try {
         throw new Exception("A payroll run already exists for this branch and period.");
     }
     
+    // Check if attendance is certified for this BRANCH
+    $certStmt = $pdo->prepare("
+        SELECT id FROM attendance_certifications 
+        WHERE scope = 'BRANCH' AND branch_id = ? AND period_start = ? AND period_end = ? AND status = 'CERTIFIED'
+    ");
+    $certStmt->execute([$branchId, $periodStart, $periodEnd]);
+    if (!$certStmt->fetch()) {
+        throw new Exception("Attendance for this period must be certified before payroll can be generated.");
+    }
+    
     $user = Auth::user();
     
     // Create Run

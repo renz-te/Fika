@@ -38,6 +38,37 @@ try {
     if (!strtotime($newClockIn) || !strtotime($newClockOut)) {
         throw new Exception("Invalid date format provided.");
     }
+
+    // Determine employee scope to check if period is certified
+    $userStmt = $pdo->prepare("SELECT branch_id FROM users WHERE employee_id = ?");
+    $userStmt->execute([$log['employee_id']]);
+    $u = $userStmt->fetch();
+    $scope = 'BRANCH';
+    $empIdForCert = null;
+    $branchIdForCert = $log['branch_id'];
+    
+    if ($u !== false) {
+        if ($u['branch_id'] === null) {
+            $scope = 'HQ';
+            $branchIdForCert = null;
+            $empIdForCert = $log['employee_id'];
+        } else {
+            $scope = 'OFFICIALS';
+            $branchIdForCert = null; // officials cert is global
+        }
+    }
+
+    // Check certification
+    $certStmt = $pdo->prepare("
+        SELECT id FROM attendance_certifications 
+        WHERE scope = ? AND IFNULL(branch_id, 0) = ? AND IFNULL(employee_id, 0) = ?
+        AND status = 'CERTIFIED'
+        AND ? BETWEEN period_start AND period_end
+    ");
+    $certStmt->execute([$scope, $branchIdForCert ?? 0, $empIdForCert ?? 0, $log['work_date']]);
+    if ($certStmt->fetch()) {
+        throw new Exception("Cannot adjust attendance. The period containing this date is already certified. Please reopen certification first.");
+    }
     
     // Update
     $updStmt = $pdo->prepare("
