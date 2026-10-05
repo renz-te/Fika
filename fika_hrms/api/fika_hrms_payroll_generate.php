@@ -39,7 +39,7 @@ try {
     $runId = $pdo->lastInsertId();
     
     // Get Employees
-    $empStmt = $pdo->prepare("SELECT id, basic_salary FROM employees WHERE branch_id = ? AND deleted_at IS NULL");
+    $empStmt = $pdo->prepare("SELECT id, basic_salary FROM employees WHERE branch_id = ? AND status = 'ACTIVE' AND deleted_at IS NULL");
     $empStmt->execute([$branchId]);
     $employees = $empStmt->fetchAll();
     

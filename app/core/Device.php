@@ -36,7 +36,10 @@ class Device {
             SELECT u.id, u.role_id, u.employee_id, u.branch_id, u.password 
             FROM users u
             JOIN role_permissions rp ON rp.role_id = u.role_id
-            WHERE u.branch_id = ? AND u.deleted_at IS NULL AND rp.permission_name = 'pos.access'
+            LEFT JOIN employees e ON e.id = u.employee_id
+            WHERE u.branch_id = ? AND u.deleted_at IS NULL 
+              AND rp.permission_name = 'pos.access'
+              AND (e.id IS NULL OR e.status = 'ACTIVE')
         ");
         $stmt->execute([$branchId]);
         
