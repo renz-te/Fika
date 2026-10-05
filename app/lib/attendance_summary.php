@@ -11,12 +11,16 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
         $graceMins = (int)$val;
     }
 
+    $modeStmt = $pdo->prepare("SELECT attendance_mode FROM employees WHERE id = ?");
+    $modeStmt->execute([$employee_id]);
+    $mode = $modeStmt->fetchColumn() ?: 'CLOCK';
+
     // 2. Fetch all valid attendance logs
     $stmt = $pdo->prepare("
         SELECT * FROM attendance_logs 
         WHERE employee_id = ? 
         AND work_date BETWEEN ? AND ? 
-        AND status IN ('CLOSED', 'ADJUSTED')
+        AND status IN ('CLOSED', 'ADJUSTED', 'ABSENT')
     ");
     $stmt->execute([$employee_id, $date_from, $date_to]);
     $logs = $stmt->fetchAll();
@@ -25,10 +29,16 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
     $lateMinutes = 0;
     $otMinutes = 0;
     $ndMinutes = 0;
+    $explicitAbsences = 0;
 
     $workedDates = [];
 
     foreach ($logs as $log) {
+        if ($log['status'] === 'ABSENT') {
+            $explicitAbsences++;
+            continue;
+        }
+
         if (!in_array($log['work_date'], $workedDates)) {
             $workedDates[] = $log['work_date'];
             $daysWorked++;
@@ -98,9 +108,16 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
         }
     }
     
-    $totalAccounted = $daysWorked + $paidLeaveDays + $unpaidLeaveDays + $holidayDays;
-    $abs = $businessDays - $totalAccounted;
-    $absences = $abs > 0 ? $abs : 0;
+    if ($mode === 'FIXED') {
+        $absences = $explicitAbsences;
+        $totalAccounted = $absences + $paidLeaveDays + $unpaidLeaveDays + $holidayDays;
+        $dw = $businessDays - $totalAccounted;
+        $daysWorked = $dw > 0 ? $dw : 0;
+    } else {
+        $totalAccounted = $daysWorked + $paidLeaveDays + $unpaidLeaveDays + $holidayDays;
+        $abs = $businessDays - $totalAccounted;
+        $absences = $abs > 0 ? $abs : 0;
+    }
 
     return [
         'days_worked' => $daysWorked,
