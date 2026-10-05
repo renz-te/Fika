@@ -54,4 +54,17 @@ class Rbac {
             die(json_encode(["error" => "Forbidden. Branch scope mismatch."]));
         }
     }
+
+    /**
+     * Returns the SQL condition and parameters for branch scoping.
+     * Use in EVERY query on employee/attendance/payroll data.
+     */
+    public static function branch_scope(string $tablePrefix = ''): array {
+        $user = Auth::user();
+        if ($user['branch_id'] === null) {
+            return ["", []];
+        }
+        $prefix = $tablePrefix !== '' ? $tablePrefix . '.' : '';
+        return [" AND {$prefix}branch_id = ?", [$user['branch_id']]];
+    }
 }
