@@ -95,6 +95,14 @@ function display_sensitive(?string $encryptedValue, bool $canViewSensitive): str
                         </select>
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-gray-700">Staff Class *</label>
+                        <select name="staff_class" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                            <option value="CREW" <?= ($employee['staff_class'] ?? '') === 'CREW' ? 'selected' : '' ?>>CREW</option>
+                            <option value="OFFICIAL" <?= ($employee['staff_class'] ?? '') === 'OFFICIAL' ? 'selected' : '' ?>>OFFICIAL</option>
+                            <option value="HQ" <?= ($employee['staff_class'] ?? '') === 'HQ' ? 'selected' : '' ?>>HQ</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-gray-700">First Name *</label>
                         <input type="text" name="first_name" value="<?= e($employee['first_name'] ?? '') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>

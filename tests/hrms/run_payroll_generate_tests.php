@@ -22,11 +22,11 @@ global $pdo;
 
 // Cleanup old tests
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
-$pdo->exec("DELETE FROM payroll_items WHERE employee_id IN (991, 992, 993, 994)");
-$pdo->exec("DELETE FROM payroll_runs WHERE branch_id = 999 AND period_start = '2026-10-01'");
-$pdo->exec("DELETE FROM attendance_certifications WHERE branch_id = 999");
-$pdo->exec("DELETE FROM attendance_logs WHERE employee_id IN (991, 992, 993, 994)");
-$pdo->exec("DELETE FROM employees WHERE branch_id = 999");
+$pdo->exec("DELETE FROM payroll_items WHERE employee_id IN (991, 992, 993, 994, 995, 996)");
+$pdo->exec("DELETE FROM payroll_runs WHERE period_start = '2026-10-01'");
+$pdo->exec("DELETE FROM attendance_certifications WHERE period_start = '2026-10-01'");
+$pdo->exec("DELETE FROM attendance_logs WHERE employee_id IN (991, 992, 993, 994, 995, 996)");
+$pdo->exec("DELETE FROM employees WHERE branch_id = 999 OR id IN (991, 992, 993, 994, 995, 996)");
 $pdo->exec("DELETE FROM branches WHERE id = 999");
 $pdo->exec("DELETE FROM users WHERE id IN (1001, 1002, 1003)");
 
@@ -90,8 +90,20 @@ for ($i=0; $i<10; $i++) {
     $pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, work_date, clock_in, clock_out, status) VALUES (994, 999, '$ds', '$ds 08:00:00', '$ds 16:00:00', 'CLOSED')");
 }
 
-// Certify the attendance
+// 995: OFFICIAL (Branch Manager)
+$pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, last_name, email, employment_type, basic_salary, status, staff_class) 
+            VALUES (995, 'T995', 999, 'Branch', 'Manager', '995@t.com', 'REGULAR', 50000, 'ACTIVE', 'OFFICIAL')");
+
+// 996: HQ (Corporate HR)
+$pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, last_name, email, employment_type, basic_salary, status, staff_class) 
+            VALUES (996, 'T996', NULL, 'Corp', 'HR', '996@t.com', 'REGULAR', 60000, 'ACTIVE', 'HQ')");
+
+// Certify the attendance for OFFICIALS and HQ (they require global certification or we can just mock the certification)
 $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('BRANCH', 999, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
+$pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('OFFICIALS', NULL, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
+$pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('HQ', NULL, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
+// For overlap test
+$pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('HQ', NULL, '$start', '2026-10-20', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $testUserId = $pdo->query("SELECT id FROM users LIMIT 1")->fetchColumn();
@@ -197,6 +209,44 @@ if ($res1['status'] === 200) {
     ]);
     
     assertTest("Generating twice is rejected", $res2['status'] === 400 && strpos($res2['body']['error'], 'already exists') !== false, json_encode($res2));
+    
+    // Test overlap
+    $resOverlap = callGenerateApi([
+        'scope' => 'OFFICIALS',
+        'branch_id' => null,
+        'period_start' => $start,
+        'period_end' => $end,
+        'cutoff_number' => 1
+    ]);
+    assertTest("OFFICIALS generation succeeds", $resOverlap['status'] === 200, json_encode($resOverlap));
+    
+    // Now verify 995 is in OFFICIALS run and not BRANCH run
+    $branchItems = $pdo->query("SELECT employee_id FROM payroll_items WHERE payroll_run_id = $runId")->fetchAll(PDO::FETCH_COLUMN);
+    assertTest("BA/BM's own pay is not in the branch run", !in_array(995, $branchItems), "Found 995 in branch run");
+    
+    $offRunId = $resOverlap['body']['payroll_run_id'];
+    $offItems = $pdo->query("SELECT employee_id FROM payroll_items WHERE payroll_run_id = $offRunId")->fetchAll(PDO::FETCH_COLUMN);
+    assertTest("Crew never appear in OFFICIALS", !in_array(991, $offItems), "Found crew 991 in OFFICIALS");
+    
+    // HQ 
+    $resHQ = callGenerateApi([
+        'scope' => 'HQ',
+        'payee_employee_id' => 996,
+        'period_start' => $start,
+        'period_end' => $end,
+        'cutoff_number' => 1
+    ]);
+    assertTest("HQ generation succeeds for specific payee", $resHQ['status'] === 200, json_encode($resHQ));
+    
+    // If we try to generate HQ again for the same person on an overlapping date:
+    $resHQOverlap = callGenerateApi([
+        'scope' => 'HQ',
+        'payee_employee_id' => 996,
+        'period_start' => $start, 
+        'period_end' => '2026-10-20', // different period, but overlaps
+        'cutoff_number' => 1
+    ]);
+    assertTest("Same employee in two overlapping runs is rejected", $resHQOverlap['status'] === 400 && strpos($resHQOverlap['body']['error'], 'Overlap detected') !== false, json_encode($resHQOverlap));
     
     // Verify Items
     $items = $pdo->query("SELECT employee_id, net_pay FROM payroll_items WHERE payroll_run_id = $runId")->fetchAll(PDO::FETCH_KEY_PAIR);

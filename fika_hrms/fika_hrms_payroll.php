@@ -24,6 +24,7 @@ $runs = $stmt->fetchAll();
 
 // Fetch branches for dropdown
 $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name")->fetchAll();
+$hqEmployees = $pdo->query("SELECT id, first_name, last_name, employee_code FROM employees WHERE staff_class = 'HQ' AND status = 'ACTIVE' ORDER BY first_name")->fetchAll();
 
 $canGenerate = Rbac::can('payroll.generate');
 
@@ -171,6 +172,15 @@ function can_perform_action($run, $action, $user, $pdo) {
                     </select>
                 </div>
 
+                <div class="mb-4 hidden" id="hqDiv">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">HQ Employee</label>
+                    <select id="genPayeeId" class="w-full p-2 border rounded">
+                        <?php foreach ($hqEmployees as $h): ?>
+                            <option value="<?= $h['id'] ?>"><?= e($h['first_name'] . ' ' . $h['last_name'] . ' (' . $h['employee_code'] . ')') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">Period Start</label>
@@ -205,14 +215,16 @@ function can_perform_action($run, $action, $user, $pdo) {
             const scope = document.getElementById('genScope').value;
             const branchDiv = document.getElementById('branchDiv');
             const branchSel = document.getElementById('genBranch');
-            if (scope === 'BRANCH') {
-                branchDiv.style.display = 'block';
-                branchSel.required = true;
-            } else {
-                branchDiv.style.display = 'none';
-                branchSel.required = false;
-                branchSel.value = '';
-            }
+            const hqDiv = document.getElementById('hqDiv');
+            const hqSel = document.getElementById('genPayeeId');
+            
+            branchDiv.style.display = scope === 'BRANCH' ? 'block' : 'none';
+            branchSel.required = scope === 'BRANCH';
+            if (scope !== 'BRANCH') branchSel.value = '';
+
+            hqDiv.style.display = scope === 'HQ' ? 'block' : 'none';
+            hqSel.required = scope === 'HQ';
+            if (scope !== 'HQ') hqSel.value = '';
         }
         
         async function generateRun(e) {
@@ -226,6 +238,7 @@ function can_perform_action($run, $action, $user, $pdo) {
             const payload = {
                 scope: document.getElementById('genScope').value,
                 branch_id: document.getElementById('genBranch').value || null,
+                payee_employee_id: document.getElementById('genPayeeId').value || null,
                 period_start: document.getElementById('genStart').value,
                 period_end: document.getElementById('genEnd').value,
                 cutoff_number: parseInt(document.getElementById('genCutoff').value, 10),

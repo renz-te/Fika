@@ -22,6 +22,7 @@ $employmentType = trim($_POST['employment_type'] ?? 'REGULAR');
 $status = trim($_POST['status'] ?? 'ACTIVE');
 $dateHired = trim($_POST['date_hired'] ?? '');
 $basicSalaryRaw = trim($_POST['basic_salary'] ?? '0');
+$staffClass = trim($_POST['staff_class'] ?? 'CREW');
 $pin = trim($_POST['pin'] ?? '');
 
 $bankNo = trim($_POST['bank_no'] ?? '');
@@ -42,6 +43,7 @@ if ($basicSalaryCentavos <= 0) $errors[] = "Basic salary must be greater than 0.
 if ($pin !== '' && !preg_match('/^\d{4,6}$/', $pin)) $errors[] = "PIN must be exactly 4 to 6 digits.";
 if (!in_array($employmentType, ['REGULAR', 'PROBATIONARY', 'PART_TIME'])) $errors[] = "Invalid employment type.";
 if (!in_array($status, ['ACTIVE', 'INACTIVE', 'SEPARATED'])) $errors[] = "Invalid status.";
+if (!in_array($staffClass, ['CREW', 'OFFICIAL', 'HQ'])) $errors[] = "Invalid staff class.";
 
 // Ensure user has permission for the selected branch (even for creation)
 Rbac::assert_branch_access($branchId);
@@ -109,6 +111,7 @@ try {
         'department' => ['Department', $department],
         'employment_type' => ['Type', $employmentType],
         'status' => ['Status', $status],
+        'staff_class' => ['Staff Class', $staffClass],
         'date_hired' => ['Date Hired', $dateHired ?: null],
         'basic_salary' => ['Basic Salary', Money::toDecimal($basicSalaryCentavos)],
     ];
