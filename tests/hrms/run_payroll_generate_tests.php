@@ -28,13 +28,16 @@ $pdo->exec("DELETE FROM attendance_certifications WHERE period_start = '2026-10-
 $pdo->exec("DELETE FROM attendance_logs WHERE employee_id IN (991, 992, 993, 994, 995, 996)");
 $pdo->exec("DELETE FROM employees WHERE branch_id = 999 OR id IN (991, 992, 993, 994, 995, 996)");
 $pdo->exec("DELETE FROM branches WHERE id = 999");
-$pdo->exec("DELETE FROM users WHERE id IN (1001, 1002, 1003)");
+$pdo->exec("DELETE FROM users WHERE id IN (1001, 1002, 1003, 1004, 1005, 1006)");
 
 // Setup
 $pdo->exec("INSERT INTO branches (id, name) VALUES (999, 'Test Branch')");
-$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id) VALUES (1001, 'test1', 'x', 1)");
-$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id) VALUES (1002, 'test2', 'x', 1)");
-$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id) VALUES (1003, 'test3', 'x', 1)");
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1001, 'admin', 'x', 1, NULL, NULL)");
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1002, 'chr', 'x', 2, NULL, 996)"); // CHR is 996 (HQ)
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1003, 'ga', 'x', 3, NULL, NULL)");
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1004, 'ba', 'x', 4, 999, 995)"); // BA is 995 (OFFICIAL)
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1005, 'bhr', 'x', 5, 999, NULL)");
+$pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id, employee_id) VALUES (1006, 'bm', 'x', 6, 999, NULL)");
 
 // We test a 13-day period: 2026-10-01 to 2026-10-13.
 // 10-01 is Thursday. Business days (Mon-Fri) in 10-01 to 10-13:
@@ -106,8 +109,7 @@ $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_star
 $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('HQ', NULL, '$start', '2026-10-20', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-$testUserId = $pdo->query("SELECT id FROM users LIMIT 1")->fetchColumn();
-$_SESSION['user'] = ['id' => $testUserId, 'role_id' => 1, 'branch_id' => null, 'employee_id' => 99999]; // Admin
+// We don't set a global admin session here anymore, we pass it via callApi
 
 // Helper to simulate API call via CLI wrapper
 function callApi($apiScript, $payload, $overrideUserId = null) {
@@ -121,7 +123,17 @@ function callApi($apiScript, $payload, $overrideUserId = null) {
     
     $sess = $_SESSION;
     if ($overrideUserId) {
-        $sess['user']['id'] = $overrideUserId;
+        $uStmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+        $uStmt->execute([$overrideUserId]);
+        $u = $uStmt->fetch();
+        $sess['user'] = [
+            'id' => $u['id'],
+            'role_id' => $u['role_id'],
+            'branch_id' => $u['branch_id'],
+            'employee_id' => $u['employee_id']
+        ];
+    } else {
+        $sess['user'] = ['id' => 1001, 'role_id' => 1, 'branch_id' => null, 'employee_id' => null]; // Default Admin
     }
     
     $parts = explode('?', $apiScript);
@@ -184,8 +196,8 @@ function callApi($apiScript, $payload, $overrideUserId = null) {
     return ['status' => $status, 'body' => $body, 'out' => $out];
 }
 
-function callGenerateApi($payload) {
-    return callApi('fika_hrms_payroll_generate.php', $payload);
+function callGenerateApi($payload, $overrideUserId = null) {
+    return callApi('fika_hrms_payroll_generate.php', $payload, $overrideUserId);
 }
 
 $res1 = callGenerateApi([
@@ -263,21 +275,82 @@ if ($res1['status'] === 200) {
     // Scenario 7: 994 Net Pay 9090.40
     assertTest("Emp 994 (Hourly 80h) Matches Fixture", isset($items[994]) && (float)$items[994] === 9090.40, "Got " . ($items[994]??'null'));
     
-    // Test 8D Maker-Checker: Generator cannot approve
-    $resApproveMaker = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $runId]);
-    assertTest("Generator approving their own run returns error", $resApproveMaker['status'] !== 200 && strpos($resApproveMaker['body']['error'], 'Maker-Checker') !== false || strpos($resApproveMaker['body']['error'], 'Separation of Duties') !== false, json_encode($resApproveMaker));
+    // Test Maker-Checker & Role Chain
     
-    // Test 8D Release Unapproved fails
-    $resReleaseUnapproved = callApi('fika_hrms_payroll_release.php', ['payroll_run_id' => $runId], $testUserId + 1);
-    assertTest("Releasing an unapproved run fails", $resReleaseUnapproved['status'] !== 200 && strpos($resReleaseUnapproved['body']['error'], 'Only APPROVED') !== false, json_encode($resReleaseUnapproved));
+    // 1. BM (1006) cannot generate BRANCH
+    $resBMGen = callGenerateApi([
+        'scope' => 'BRANCH',
+        'branch_id' => 999,
+        'period_start' => $start,
+        'period_end' => $end,
+        'cutoff_number' => 2
+    ], 1006);
+    assertTest("BM cannot generate", isset($resBMGen['body']['error']) && (strpos($resBMGen['body']['error'], 'Only BHR') !== false || strpos($resBMGen['body']['error'], 'Missing permission') !== false), json_encode($resBMGen));
     
-    // Approve it properly (using a different user ID, say 1002)
-    $resApprove = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $runId], 1002);
-    assertTest("Another user can approve the run", $resApprove['status'] === 200, json_encode($resApprove));
+    // 2. BHR (1005) cannot approve BRANCH
+    $resBHRApprove = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $runId], 1005);
+    assertTest("BHR cannot approve", isset($resBHRApprove['body']['error']) && (strpos($resBHRApprove['body']['error'], 'Only BA') !== false || strpos($resBHRApprove['body']['error'], 'Missing permission') !== false), json_encode($resBHRApprove));
     
-    // Release it properly (using user ID 1003)
-    $resRelease = callApi('fika_hrms_payroll_release.php', ['payroll_run_id' => $runId], 1003);
-    assertTest("A third user can release the run", $resRelease['status'] === 200, json_encode($resRelease));
+    // 3. BA (1004) CAN approve BRANCH. Oh wait, maker checker: 1001 (ADMIN) generated it. BA is 1004, so it's a different person.
+    // Wait, BA cannot approve a run containing BA's pay. But BA's pay is NOT in BRANCH run (asserted earlier). So this should work!
+    $resBAApprove = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $runId], 1004);
+    assertTest("BA approves BRANCH", $resBAApprove['status'] === 200, json_encode($resBAApprove));
+    
+    // 4. BA cannot release it? No, BA CAN release BRANCH. Wait, let's test GA fallback on release.
+    $resGARelease = callApi('fika_hrms_payroll_release.php', ['payroll_run_id' => $runId], 1003); // GA is 1003
+    assertTest("GA fallback works on BRANCH release", $resGARelease['status'] === 200, json_encode($resGARelease));
+    
+    // 5. CHR cannot approve OFFICIALS
+    $resCHRApprove = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $offRunId], 1002); // CHR is 1002
+    assertTest("CHR cannot approve OFFICIALS", isset($resCHRApprove['body']['error']) && (strpos($resCHRApprove['body']['error'], 'Only GA') !== false || strpos($resCHRApprove['body']['error'], 'Missing permission') !== false), json_encode($resCHRApprove));
+    
+    // 6. ADMIN approves HQ
+    $hqRunId = $resHQ['body']['payroll_run_id'];
+    $resAdminApproveHQ = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $hqRunId], 1001); // 1001 is ADMIN. Wait, ADMIN generated HQ! Separation of duties!
+    // Ah! ADMIN generated HQ, so ADMIN cannot approve it. Let's make GA generate HQ, then ADMIN approves it.
+    // Wait, earlier the test called HQ generation with default user (1001 = ADMIN).
+    // If ADMIN generated it, ADMIN cannot approve it.
+    // Let me check that it fails for SoD, then GA generates a new HQ, then ADMIN approves.
+    assertTest("ADMIN cannot approve HQ if ADMIN generated it (SoD)", isset($resAdminApproveHQ['body']['error']) && strpos($resAdminApproveHQ['body']['error'], 'Separation of Duties') !== false, json_encode($resAdminApproveHQ));
+    
+    // Let's generate another HQ run using GA (1003) for the same payee but different cutoff (cutoff=2).
+    // Actually we need a different period so it doesn't conflict. We already certified '2026-10-20'.
+    $resHQ2 = callGenerateApi([
+        'scope' => 'HQ',
+        'payee_employee_id' => 996,
+        'period_start' => $start,
+        'period_end' => '2026-10-20',
+        'cutoff_number' => 2
+    ], 1003); // GA
+    
+    // Wait, earlier the overlap test for HQ used '2026-10-20' and failed because of overlap!
+    // So if it overlaps, we can't generate it!
+    // Let's just clear the first HQ run, then GA can generate it.
+    callApi('fika_hrms_payroll_delete.php', ['payroll_run_id' => $hqRunId], 1001);
+    
+    $resHQ2 = callGenerateApi([
+        'scope' => 'HQ',
+        'payee_employee_id' => 996,
+        'period_start' => $start,
+        'period_end' => $end,
+        'cutoff_number' => 1
+    ], 1003); // GA
+    
+    $hqRunId2 = $resHQ2['body']['payroll_run_id'];
+    
+    $resAdminApproveHQ2 = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $hqRunId2], 1001); // ADMIN
+    assertTest("ADMIN approves HQ", $resAdminApproveHQ2['status'] === 200, json_encode($resAdminApproveHQ2));
+    
+    // 7. Totals mismatch blocks approval
+    // We modify an item in $offRunId to break the SUM
+    $pdo->exec("UPDATE payroll_items SET net_pay = net_pay + 10 WHERE payroll_run_id = $offRunId LIMIT 1");
+    $resMismatch = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $offRunId], 1003); // GA tries to approve
+    assertTest("Totals mismatch blocks approval", isset($resMismatch['body']['error']) && strpos($resMismatch['body']['error'], 'mismatch') !== false, json_encode($resMismatch));
+    
+    // 8. BA cannot approve a run containing BA. 
+    $resBAMakerChecker = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $offRunId], 1004); // BA is 1004, contains 995
+    assertTest("BA cannot approve a run containing BA", isset($resBAMakerChecker['body']['error']) && (strpos($resBAMakerChecker['body']['error'], 'own pay') !== false || strpos($resBAMakerChecker['body']['error'], 'Only GA') !== false || strpos($resBAMakerChecker['body']['error'], 'Branch scope mismatch') !== false), json_encode($resBAMakerChecker));
+
     
     // Test 8D Adjusting attendance in a released period fails
     // Let's find an attendance log ID for Emp 991

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../app/bootstrap.php';
+require_once __DIR__ . '/../../app/lib/payroll_conflict.php';
 header('Content-Type: application/json');
 
 Auth::requireLogin();
@@ -38,6 +39,11 @@ try {
         Rbac::assert_branch_access(null);
     }
     
+    $user = Auth::user();
+    
+    // Payroll conflict and chain validation
+    payroll_conflict($user, $run, 'DELETE');
+    
     // Delete items first
     $pdo->prepare("DELETE FROM payroll_items WHERE payroll_run_id = ?")->execute([$runId]);
     // Delete run
@@ -48,6 +54,9 @@ try {
     
     echo json_encode(["success" => true, "message" => "Payroll draft cleared."]);
 } catch (Exception $e) {
+    if (isset($runId) && $runId) {
+        Audit::log('PAYROLL_DELETE_REJECTED', "Payroll Run ID {$runId} delete rejected for User " . Auth::user()['id'] . ": " . $e->getMessage());
+    }
     $pdo->rollBack();
     http_response_code(403);
     exit(json_encode(["error" => $e->getMessage()]));

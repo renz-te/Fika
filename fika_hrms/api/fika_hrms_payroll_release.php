@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../app/bootstrap.php';
+require_once __DIR__ . '/../../app/lib/payroll_conflict.php';
 header('Content-Type: application/json');
 
 Auth::requireLogin();
@@ -39,13 +40,9 @@ try {
     }
     
     $user = Auth::user();
-    if ($user['employee_id']) {
-        $check = $pdo->prepare("SELECT id FROM payroll_items WHERE payroll_run_id = ? AND employee_id = ?");
-        $check->execute([$runId, $user['employee_id']]);
-        if ($check->fetch()) {
-            throw new Exception("Maker-Checker violation: You cannot release a payroll run that contains your own pay.");
-        }
-    }
+    
+    // Payroll conflict and chain validation
+    payroll_conflict($user, $run, 'RELEASE');
     
     $pdo->prepare("UPDATE payroll_runs SET status = 'RELEASED' WHERE id = ?")->execute([$runId]);
     
@@ -54,6 +51,9 @@ try {
     
     echo json_encode(["success" => true, "message" => "Payroll released successfully."]);
 } catch (Exception $e) {
+    if (isset($runId) && $runId) {
+        Audit::log('PAYROLL_RELEASE_REJECTED', "Payroll Run ID {$runId} release rejected for User {$user['id']}: " . $e->getMessage());
+    }
     $pdo->rollBack();
     http_response_code(403);
     exit(json_encode(["error" => $e->getMessage()]));

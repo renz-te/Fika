@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../app/bootstrap.php';
+require_once __DIR__ . '/../../app/lib/payroll_conflict.php';
 header('Content-Type: application/json');
 
 Auth::requireLogin();
@@ -39,24 +40,29 @@ try {
         Rbac::assert_branch_access(null);
     }
     
-    // Strict Separation of Duties (Maker-Checker principle)
-    if ((int)$run['processed_by'] === (int)$user['id']) {
-        throw new Exception("Separation of Duties violation: The user who generated the payroll cannot also approve it.");
-    }
-    
-    // Cannot contain own pay
-    if ($user['employee_id']) {
-        $check = $pdo->prepare("SELECT id FROM payroll_items WHERE payroll_run_id = ? AND employee_id = ?");
-        $check->execute([$runId, $user['employee_id']]);
-        if ($check->fetch()) {
-            throw new Exception("Maker-Checker violation: You cannot approve a payroll run that contains your own pay.");
-        }
-    }
+    // Payroll conflict and chain validation
+    payroll_conflict($user, $run, 'APPROVE');
     
     // Additional check: Does it sum up correctly?
-    $itemStmt = $pdo->query("SELECT SUM(net_pay) FROM payroll_items WHERE payroll_run_id = $runId");
-    $totalNet = (float)$itemStmt->fetchColumn();
-    // In a full system, you would sum basic_pay+ot+bonus - deductions and assert it equals total_net here again.
+    $itemStmt = $pdo->prepare("
+        SELECT 
+            SUM(basic_pay) as sum_basic,
+            SUM(overtime_pay) as sum_ot,
+            SUM(bonus_pay) as sum_bonus,
+            SUM(sss_deduction + philhealth_deduction + pagibig_deduction + tax_deduction) as sum_deductions,
+            SUM(net_pay) as sum_net
+        FROM payroll_items 
+        WHERE payroll_run_id = ?
+    ");
+    $itemStmt->execute([$runId]);
+    $totals = $itemStmt->fetch(PDO::FETCH_ASSOC);
+    
+    $expectedNet = round($totals['sum_basic'] + $totals['sum_ot'] + $totals['sum_bonus'] - $totals['sum_deductions'], 2);
+    $actualNet = round($totals['sum_net'], 2);
+    
+    if (abs($expectedNet - $actualNet) > 0.01) {
+        throw new Exception("Payroll totals mismatch: Expected {$expectedNet}, but got {$actualNet}.");
+    }
     
     $pdo->prepare("UPDATE payroll_runs SET status = 'APPROVED' WHERE id = ?")->execute([$runId]);
     
@@ -65,6 +71,9 @@ try {
     
     echo json_encode(["success" => true, "message" => "Payroll run finalized."]);
 } catch (Exception $e) {
+    if (isset($runId) && $runId) {
+        Audit::log('PAYROLL_APPROVAL_REJECTED', "Payroll Run ID {$runId} approval rejected for User {$user['id']}: " . $e->getMessage());
+    }
     $pdo->rollBack();
     http_response_code(403);
     exit(json_encode(["error" => $e->getMessage()]));

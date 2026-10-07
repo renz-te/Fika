@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../app/bootstrap.php';
+require_once __DIR__ . '/../../app/lib/payroll_conflict.php';
 require_once __DIR__ . '/../../app/payroll/payroll_engine.php';
 header('Content-Type: application/json');
 
@@ -85,6 +86,14 @@ try {
     }
     
     $user = Auth::user();
+    
+    // Check generation conflict
+    $fakeRunForConflict = [
+        'scope' => $scope,
+        'branch_id' => $scope === 'BRANCH' ? $branchId : null,
+        'processed_by' => $user['id']
+    ];
+    payroll_conflict($user, $fakeRunForConflict, 'GENERATE');
     
     // Create Run
     $runStmt = $pdo->prepare("INSERT INTO payroll_runs (scope, branch_id, payee_employee_id, period_start, period_end, status, processed_by, created_at) VALUES (?, ?, ?, ?, ?, 'GENERATED', ?, NOW())");
@@ -182,6 +191,7 @@ try {
     
     echo json_encode(["success" => true, "payroll_run_id" => $runId]);
 } catch (Exception $e) {
+    Audit::log('PAYROLL_GENERATE_REJECTED', "Payroll Run generation rejected for User " . Auth::user()['id'] . ": " . $e->getMessage());
     $pdo->rollBack();
     http_response_code(400);
     exit(json_encode(["error" => $e->getMessage()]));
