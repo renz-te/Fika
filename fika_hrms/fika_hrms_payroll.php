@@ -25,10 +25,12 @@ $runs = $stmt->fetchAll();
 // Fetch branches for dropdown
 $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name")->fetchAll();
 
-$canManage = Rbac::can('payroll.manage');
+$canGenerate = Rbac::can('payroll.generate');
 
 function can_perform_action($run, $action, $user, $pdo) {
-    if (!Rbac::can('payroll.manage')) return false;
+    if ($action === 'APPROVE' && !Rbac::can('payroll.approve')) return false;
+    if ($action === 'RELEASE' && !Rbac::can('payroll.release')) return false;
+    if ($action === 'DELETE' && !Rbac::can('payroll.delete')) return false;
 
     if ($action === 'APPROVE' && $run['processed_by'] == $user['id']) {
         return false; // Drafter cannot approve
@@ -61,7 +63,7 @@ function can_perform_action($run, $action, $user, $pdo) {
             </div>
             <div class="text-right flex gap-3">
                 <a href="pos_dashboard.php" class="text-blue-600 hover:underline mt-2 inline-block">Back to Dashboard</a>
-                <?php if ($canManage): ?>
+                <?php if ($canGenerate): ?>
                     <button onclick="document.getElementById('generateModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
                         Generate New Run
                     </button>
@@ -119,7 +121,9 @@ function can_perform_action($run, $action, $user, $pdo) {
                                     <?php if (can_perform_action($r, 'APPROVE', $user, $pdo)): ?>
                                         <button onclick="approveRun(<?= $r['id'] ?>)" class="text-green-600 hover:underline text-xs font-bold">Approve</button>
                                     <?php endif; ?>
-                                    <button onclick="clearRun(<?= $r['id'] ?>)" class="text-red-600 hover:underline text-xs font-bold">Clear Draft</button>
+                                    <?php if (can_perform_action($r, 'DELETE', $user, $pdo)): ?>
+                                        <button onclick="clearRun(<?= $r['id'] ?>)" class="text-red-600 hover:underline text-xs font-bold">Clear Draft</button>
+                                    <?php endif; ?>
                                 <?php elseif ($r['status'] === 'APPROVED'): ?>
                                     <?php if (can_perform_action($r, 'RELEASE', $user, $pdo)): ?>
                                         <button onclick="releaseRun(<?= $r['id'] ?>)" class="text-purple-600 hover:underline text-xs font-bold">Release</button>

@@ -4,7 +4,7 @@ header('Content-Type: application/json');
 
 Auth::requireLogin();
 Csrf::requireValid();
-Rbac::require_permission('payroll.manage');
+Rbac::require_permission('payroll.approve');
 
 $input = json_decode(file_get_contents('php://input'), true);
 $runId = (int) ($input['payroll_run_id'] ?? 0);

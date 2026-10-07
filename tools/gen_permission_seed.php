@@ -8,25 +8,46 @@ if (php_sapi_name() !== 'cli') {
 $permissions = require __DIR__ . '/../config/permissions.php';
 
 $roles = [
-    'Super Admin' => $permissions, // all permissions
-    'Admin' => array_diff($permissions, ['roles.manage', 'branches.manage']),
-    'Branch Manager' => [
+    'ADMIN' => $permissions,
+    'CHR' => [
+        'users.view', 'roles.view', 'branches.view', 'settings.manage',
+        'hr.employee.view', 'hr.employee.create', 'hr.employee.edit', 'hr.employee.view_sensitive',
+        'hr.attendance.view', 'hr.attendance.adjust', 'hr.attendance.certify',
+        'hr.leave.view', 'hr.leave.manage', 'hr.leave.approve',
+        'payroll.view', 'payroll.generate', 'payroll.delete', 'payroll.export'
+    ],
+    'GA' => [
+        'branches.view', 'payroll.view', 'payroll.export', 'payroll.release',
+        'finance.view', 'finance.manage',
+        'payroll.generate', 'payroll.delete', 'hr.attendance.certify', 'payroll.approve', 'hr.employee.view_sensitive'
+    ],
+    'BA' => [
+        'branches.view', 'payroll.view', 'payroll.approve', 'payroll.release', 'payroll.export', 'finance.view'
+    ],
+    'BHR' => [
+        'users.view', 'branches.view',
+        'hr.employee.view', 'hr.employee.create', 'hr.employee.edit', 'hr.employee.view_sensitive',
+        'hr.attendance.view', 'hr.attendance.adjust',
+        'hr.leave.view', 'hr.leave.manage',
+        'payroll.view', 'payroll.generate', 'payroll.delete'
+    ],
+    'BM' => [
+        'users.view', 'branches.view',
         'pos.access', 'pos.void_order', 'pos.refund_order',
         'inventory.view', 'inventory.manage',
-        'employees.view', 'attendance.view', 'attendance.manage'
+        'hr.employee.view',
+        'hr.attendance.view', 'hr.attendance.adjust', 'hr.attendance.certify',
+        'hr.leave.view', 'hr.leave.approve',
+        'payroll.view', 'finance.view'
     ],
-    'Cashier' => ['pos.access'],
-    'Barista' => ['inventory.view'],
-    'HR' => [
-        'employees.view', 'employees.manage',
-        'attendance.view', 'attendance.manage',
-        'payroll.view', 'payroll.manage'
+    'STAFF' => [
+        'pos.access', 'inventory.view'
     ]
 ];
 
 $sql = "-- ==========================================================\n";
-$sql .= "-- Migration: 010_seed_roles_permissions.sql\n";
-$sql .= "-- Description: Insert default roles and permissions\n";
+$sql .= "-- Migration: 014_seed_roles_permissions.sql\n";
+$sql .= "-- Description: Insert actual PAM roles and permissions\n";
 $sql .= "-- ==========================================================\n\n";
 
 $sql .= "SET FOREIGN_KEY_CHECKS = 0;\n\n";
@@ -55,7 +76,7 @@ foreach ($roles as $roleName => $rolePerms) {
 
 $sql .= "SET FOREIGN_KEY_CHECKS = 1;\n";
 
-$outPath = __DIR__ . '/../migrations/010_seed_roles_permissions.sql';
+$outPath = __DIR__ . '/../migrations/014_seed_roles_permissions.sql';
 file_put_contents($outPath, $sql);
 
 echo "Seed SQL generated at: {$outPath}\n";

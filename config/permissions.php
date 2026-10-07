@@ -19,12 +19,23 @@ return [
     'inventory.manage',
 
     // HRMS & Payroll
-    'employees.view',
-    'employees.manage',
-    'attendance.view',
-    'attendance.manage',
+    'hr.employee.view',
+    'hr.employee.create',
+    'hr.employee.edit',
+    'hr.employee.view_sensitive',
+    'hr.attendance.view',
+    'hr.attendance.adjust',
+    'hr.attendance.certify',
+    'hr.leave.view',
+    'hr.leave.approve',
+    'hr.leave.manage',
     'payroll.view',
-    'payroll.manage',
+    'payroll.generate',
+    'payroll.approve',
+    'payroll.release',
+    'payroll.delete',
+    'payroll.export',
+    'settings.manage',
 
     // Finance
     'finance.view',

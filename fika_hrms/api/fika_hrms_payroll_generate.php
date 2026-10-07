@@ -5,7 +5,7 @@ header('Content-Type: application/json');
 
 Auth::requireLogin();
 Csrf::requireValid();
-Rbac::require_permission('payroll.manage');
+Rbac::require_permission('payroll.generate');
 
 require_once __DIR__ . '/../../app/lib/attendance_summary.php';
 

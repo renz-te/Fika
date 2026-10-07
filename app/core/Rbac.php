@@ -4,10 +4,19 @@ class Rbac {
     
     private static array $cache = [];
 
+    private static ?array $knownPermissions = null;
+
     /**
      * Check if current user has a specific permission
      */
     public static function can(string $permission): bool {
+        if (self::$knownPermissions === null) {
+            self::$knownPermissions = require __DIR__ . '/../../config/permissions.php';
+        }
+        
+        if (!in_array($permission, self::$knownPermissions, true)) {
+            throw new \Exception("RBAC Error: Permission '{$permission}' is not declared in config/permissions.php");
+        }
         if (!Auth::check()) {
             return false;
         }
