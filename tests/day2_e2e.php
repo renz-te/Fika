@@ -98,7 +98,7 @@ function callApi($method, $scriptPath, $payload = [], $userId = 1, $isGet = fals
     file_put_contents($wrapper, $code);
     
     $out = shell_exec(PHP_BINARY . " " . escapeshellarg($wrapper) . " 2>&1");
-    // unlink($wrapper);
+    unlink($wrapper);
     
     // Find JSON response
     preg_match('/\{.*\}/s', $out, $matches);

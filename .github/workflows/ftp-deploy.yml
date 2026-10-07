@@ -18,15 +18,13 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /htdocs/
           exclude: |
-            **/.git*
-            **/.git*/**
-            .github/**
-            cafe_hrms/**
-            cafe_pos/**
-            tests/**
-            tools/**
-            docs/**
-            *.md
-            *.txt
-            *.sql
-            temp_mig*.php
+            **/*
+            !app/**
+            !config/**
+            config/config.example.php
+            !fika_hrms/**
+            !fika_pos/**
+            !fika_finance/**
+            !fika_inventory/**
+            !*.php
+            !.htaccess
