@@ -18,9 +18,41 @@ $periodEnd = $input['period_end'] ?? '';
 $cutoffNumber = (int) ($input['cutoff_number'] ?? 1);
 $payeeId = (int) ($input['payee_employee_id'] ?? 0);
 
-if (empty($scope) || empty($periodStart) || empty($periodEnd) || !in_array($cutoffNumber, [1, 2])) {
+if (empty($scope) || empty($periodStart) || empty($periodEnd)) {
     http_response_code(400);
-    exit(json_encode(["error" => "Missing or invalid required fields."]));
+    exit(json_encode(["error" => "Missing required fields."]));
+}
+
+// Derive cutoff number and valid period
+$startDt = new DateTime($periodStart);
+$endDt = new DateTime($periodEnd);
+$startDay = (int) $startDt->format('d');
+$endDay = (int) $endDt->format('d');
+$endLastDay = (int) $endDt->format('t');
+$startMonth = $startDt->format('Y-m');
+$endMonth = $endDt->format('Y-m');
+
+if ($startMonth !== $endMonth) {
+    http_response_code(400);
+    exit(json_encode(["error" => "Period must be within the same month."]));
+}
+
+if ($startDay === 1 && $endDay === 15) {
+    $cutoffNumber = 1;
+} else if ($startDay === 16 && $endDay === $endLastDay) {
+    $cutoffNumber = 2;
+} else {
+    http_response_code(400);
+    exit(json_encode(["error" => "Period is not a valid standard cutoff (1st-15th or 16th-EOM)."]));
+}
+
+// Calculate Standard Hours (Weekdays * 8)
+$standardHoursPerPeriod = 0;
+$dtPeriod = new DatePeriod($startDt, new DateInterval('P1D'), (clone $endDt)->modify('+1 day'));
+foreach ($dtPeriod as $dt) {
+    if ($dt->format('N') < 6) {
+        $standardHoursPerPeriod += 8;
+    }
 }
 
 if ($scope === 'BRANCH' && !$branchId) {
@@ -144,6 +176,13 @@ try {
         throw new Exception("Overlap detected: Employee #{$overlap['employee_id']} is already in a non-cleared run that overlaps this period.");
     }
     
+    // Fetch Contribution Settings
+    $setStmt = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'contrib_%'");
+    $contribSettings = [];
+    while ($r = $setStmt->fetch()) {
+        $contribSettings[$r['setting_key']] = $r['setting_value'] === '1';
+    }
+
     $itemStmt = $pdo->prepare("
         INSERT INTO payroll_items 
         (payroll_run_id, employee_id, basic_pay, overtime_pay, bonus_pay, sss_deduction, philhealth_deduction, pagibig_deduction, tax_deduction, net_pay, created_at) 
@@ -154,18 +193,25 @@ try {
         $summary = attendance_summary($emp['id'], $periodStart, $periodEnd);
         
         $payType = strtoupper($emp['employment_type']) === 'PART_TIME' ? 'HOURLY' : 'MONTHLY';
+        $empType = strtoupper($emp['employment_type']);
+        $deductContributions = $contribSettings['contrib_' . $empType] ?? false;
         
         $absentDays = $summary['absences'] + $summary['unpaid_leave_days'];
-        $totalHours = $summary['days_worked'] * 8; // Standard 8-hour days
         $otHours = $summary['ot_minutes'] / 60.0;
+        
+        if ($payType === 'HOURLY') {
+            $totalHours = $summary['total_worked_minutes'] / 60.0;
+        } else {
+            $totalHours = $summary['days_worked'] * 8; // Standard 8-hour days
+        }
         
         $slip = PayrollEngine::calculate_payslip(
             monthlyBasePayCentavos: Money::toCentavos($emp['basic_salary']),
             hoursWorked: $totalHours,
             overtimeHours: $otHours,
-            standardHoursPerPeriod: 104,
+            standardHoursPerPeriod: $standardHoursPerPeriod,
             bonusCentavos: 0,
-            deductContributions: $payType === 'MONTHLY',
+            deductContributions: $deductContributions,
             payType: $payType,
             absentDays: $absentDays,
             lateMinutes: $summary['late_minutes'],

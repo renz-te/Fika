@@ -46,6 +46,29 @@ $leaveTypes = $leaveStmt->fetchAll();
                 </div>
             </div>
 
+            <!-- Contributions Settings -->
+            <div class="bg-white shadow rounded p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Contributions by Employment Type</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="contrib_FULL_TIME" value="1" <?= !empty($settings['contrib_FULL_TIME']) ? 'checked' : '' ?> class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label class="ml-2 block text-sm text-gray-900">Full-Time (Deduct SSS/PH/Pag-IBIG)</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" name="contrib_PART_TIME" value="1" <?= !empty($settings['contrib_PART_TIME']) ? 'checked' : '' ?> class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label class="ml-2 block text-sm text-gray-900">Part-Time (Deduct)</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" name="contrib_CONTRACTUAL" value="1" <?= !empty($settings['contrib_CONTRACTUAL']) ? 'checked' : '' ?> class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label class="ml-2 block text-sm text-gray-900">Contractual (Deduct)</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" name="contrib_INTERN" value="1" <?= !empty($settings['contrib_INTERN']) ? 'checked' : '' ?> class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label class="ml-2 block text-sm text-gray-900">Intern (Deduct)</label>
+                    </div>
+                </div>
+            </div>
+
             <!-- Leave Types -->
             <div class="bg-white shadow rounded p-6 mb-6">
                 <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Leave Types Configuration</h2>

@@ -18,8 +18,14 @@ try {
     $pdo->beginTransaction();
     
     // Save settings
-    $stmt = $pdo->prepare("UPDATE settings SET setting_value = ?, updated_by = ?, updated_at = NOW() WHERE setting_key = 'late_grace_minutes'");
-    $stmt->execute([(string)$grace, $user['id']]);
+    $stmt = $pdo->prepare("UPDATE settings SET setting_value = ?, updated_by = ?, updated_at = NOW() WHERE setting_key = ?");
+    $stmt->execute([(string)$grace, $user['id'], 'late_grace_minutes']);
+    
+    $contribs = ['contrib_FULL_TIME', 'contrib_PART_TIME', 'contrib_CONTRACTUAL', 'contrib_INTERN'];
+    foreach ($contribs as $c) {
+        $val = !empty($input[$c]) ? '1' : '0';
+        $stmt->execute([$val, $user['id'], $c]);
+    }
     
     // Save leave types
     $leaveStmt = $pdo->prepare("UPDATE leave_types SET name = ?, is_paid = ?, annual_days = ?, min_service_months = ?, statutory = ? WHERE code = ?");

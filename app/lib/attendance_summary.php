@@ -29,6 +29,7 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
     $lateMinutes = 0;
     $otMinutes = 0;
     $ndMinutes = 0;
+    $totalWorkedMinutes = 0;
     $explicitAbsences = 0;
 
     $workedDates = [];
@@ -52,6 +53,7 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
         $lateMinutes += $calc['late_minutes'];
         $otMinutes += $calc['overtime_minutes'];
         $ndMinutes += $calc['night_diff_minutes'];
+        $totalWorkedMinutes += $calc['worked_minutes'];
     }
 
     // 3. Fetch Leaves
@@ -125,5 +127,6 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
         'paid_leave_days' => $paidLeaveDays,
         'unpaid_leave_days' => $unpaidLeaveDays,
         'absences' => $absences,
+        'total_worked_minutes' => $totalWorkedMinutes,
     ];
 }

@@ -162,6 +162,20 @@ $res7 = PayrollEngine::calculate_payslip(
 );
 assertPayroll("Scenario 7 (Hourly Part-timer)", $res7, 909040);
 
+// Scenario 8: Working Student with short shifts
+$res8 = PayrollEngine::calculate_payslip(
+    monthlyBasePayCentavos: 1500000,
+    hoursWorked: 32.5,
+    overtimeHours: 0,
+    standardHoursPerPeriod: 104,
+    bonusCentavos: 0,
+    deductContributions: false,
+    payType: 'HOURLY'
+);
+// 15000 / 176 = 85.22 => 8522 centavos * 32.5 = 276965 centavos
+assertPayroll("Scenario 8 (Working Student short shifts)", $res8, 276965);
+$changed[] = "Scenario 8 (Working Student short shifts)";
+
 
 echo "\n--- Changed Fixtures ---\n";
 foreach ($changed as $c) {

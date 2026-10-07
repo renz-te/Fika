@@ -36,7 +36,7 @@ if ($run['scope'] === 'BRANCH') {
 
 // Fetch Items
 $itemsStmt = $pdo->prepare("
-    SELECT pi.*, e.employee_code, e.first_name, e.last_name, e.employment_type, e.bank_account
+    SELECT pi.*, e.employee_code, e.first_name, e.last_name, e.employment_type, e.bank_no_enc
     FROM payroll_items pi
     JOIN employees e ON pi.employee_id = e.id
     WHERE pi.payroll_run_id = ?
@@ -75,7 +75,7 @@ fputcsv($output, [
 $canViewSensitive = Rbac::can('hr.employee.view_sensitive');
 
 foreach ($items as $it) {
-    $bank = $it['bank_account'];
+    $bank = $it['bank_no_enc'];
     if ($bank) {
         try {
             $bank = Crypto::decrypt($bank);

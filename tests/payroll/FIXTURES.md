@@ -76,3 +76,12 @@
 - **Taxable Income**: ₱9,090.40
 - **Tax**: Bracket 1 (<= 10416.67) = ₱0.00
 - **Net Pay**: **₱9,090.40**
+
+## Scenario 8: Working Student short shifts (CHANGED - needs accountant re-verification)
+- **Inputs**: Base ₱15,000/mo, PayType: HOURLY, Worked: 32.5 hours, Contributions: No
+- **Hourly Rate**: 15000 / 176 = ₱85.22
+- **Gross Pay**: 32.5 * 85.22 = ₱2,769.65
+- **Contributions**: ₱0.00
+- **Taxable Income**: ₱2,769.65
+- **Tax**: Bracket 1 (<= 10416.67) = ₱0.00
+- **Net Pay**: **₱2,769.65**
