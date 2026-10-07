@@ -58,7 +58,19 @@ try {
         }
     }
 
-    // Check certification
+    // 1. Check if locked by a RELEASED payroll run
+    $releaseCheck = $pdo->prepare("
+        SELECT pr.id FROM payroll_runs pr
+        JOIN payroll_items pi ON pr.id = pi.payroll_run_id
+        WHERE pi.employee_id = ? AND pr.status = 'RELEASED'
+        AND ? BETWEEN pr.period_start AND pr.period_end
+    ");
+    $releaseCheck->execute([$log['employee_id'], $log['work_date']]);
+    if ($releaseCheck->fetch()) {
+        throw new Exception("Cannot adjust attendance. A payroll run covering this date has already been released (locked). Reversal flow required.");
+    }
+    
+    // 2. Check certification
     $certStmt = $pdo->prepare("
         SELECT id FROM attendance_certifications 
         WHERE scope = ? AND IFNULL(branch_id, 0) = ? AND IFNULL(employee_id, 0) = ?

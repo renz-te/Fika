@@ -44,11 +44,8 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
             $daysWorked++;
         }
 
-        // Heuristic: Guess scheduled start by rounding clock_in to the nearest hour
-        // (Since we have no shift schedule table, this reasonably assumes shifts start on the hour)
-        $ts = strtotime($log['clock_in'] . ' UTC');
-        $roundedTs = round($ts / 3600) * 3600;
-        $assumedSchedule = gmdate('Y-m-d H:i:s', $roundedTs);
+        // Heuristic: Assume standard 08:00 AM shift start
+        $assumedSchedule = substr($log['clock_in'], 0, 10) . ' 08:00:00';
         
         $calc = AttendanceCalc::calculate($log['clock_in'], $log['clock_out'], $assumedSchedule, $graceMins);
         

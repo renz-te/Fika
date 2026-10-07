@@ -7,36 +7,61 @@ Auth::requireLogin();
 Csrf::requireValid();
 Rbac::require_permission('payroll.manage');
 
+require_once __DIR__ . '/../../app/lib/attendance_summary.php';
+
 $input = json_decode(file_get_contents('php://input'), true);
+$scope = $input['scope'] ?? '';
 $branchId = (int) ($input['branch_id'] ?? 0);
 $periodStart = $input['period_start'] ?? '';
 $periodEnd = $input['period_end'] ?? '';
+$cutoffNumber = (int) ($input['cutoff_number'] ?? 1);
 
-if (!$branchId || empty($periodStart) || empty($periodEnd)) {
+if (empty($scope) || empty($periodStart) || empty($periodEnd) || !in_array($cutoffNumber, [1, 2])) {
     http_response_code(400);
-    exit(json_encode(["error" => "Missing required fields."]));
+    exit(json_encode(["error" => "Missing or invalid required fields."]));
 }
 
-Rbac::assert_branch_access($branchId);
+if ($scope === 'BRANCH' && !$branchId) {
+    http_response_code(400);
+    exit(json_encode(["error" => "Branch is required for BRANCH scope."]));
+}
+
+if ($scope === 'BRANCH') {
+    Rbac::assert_branch_access($branchId);
+} else {
+    // OFFICIALS and HQ scopes require global view
+    Rbac::assert_branch_access(null); 
+}
 
 global $pdo;
 
 try {
     $pdo->beginTransaction();
     
-    // Check if payroll already exists for this branch & period
-    $chkStmt = $pdo->prepare("SELECT id FROM payroll_runs WHERE branch_id = ? AND period_start = ? AND period_end = ?");
-    $chkStmt->execute([$branchId, $periodStart, $periodEnd]);
-    if ($chkStmt->fetch()) {
-        throw new Exception("A payroll run already exists for this branch and period.");
+    // Check if payroll already exists for this scope & period
+    $chkSql = "SELECT id FROM payroll_runs WHERE scope = ? AND period_start = ? AND period_end = ?";
+    $chkParams = [$scope, $periodStart, $periodEnd];
+    if ($scope === 'BRANCH') {
+        $chkSql .= " AND branch_id = ?";
+        $chkParams[] = $branchId;
     }
     
-    // Check if attendance is certified for this BRANCH
-    $certStmt = $pdo->prepare("
-        SELECT id FROM attendance_certifications 
-        WHERE scope = 'BRANCH' AND branch_id = ? AND period_start = ? AND period_end = ? AND status = 'CERTIFIED'
-    ");
-    $certStmt->execute([$branchId, $periodStart, $periodEnd]);
+    $chkStmt = $pdo->prepare($chkSql);
+    $chkStmt->execute($chkParams);
+    if ($chkStmt->fetch()) {
+        throw new Exception("A payroll run already exists for this scope and period.");
+    }
+    
+    // Check if attendance is certified
+    $certSql = "SELECT id FROM attendance_certifications WHERE scope = ? AND period_start = ? AND period_end = ? AND status = 'CERTIFIED'";
+    $certParams = [$scope, $periodStart, $periodEnd];
+    if ($scope === 'BRANCH') {
+        $certSql .= " AND branch_id = ?";
+        $certParams[] = $branchId;
+    }
+    
+    $certStmt = $pdo->prepare($certSql);
+    $certStmt->execute($certParams);
     if (!$certStmt->fetch()) {
         throw new Exception("Attendance for this period must be certified before payroll can be generated.");
     }
@@ -44,17 +69,34 @@ try {
     $user = Auth::user();
     
     // Create Run
-    $runStmt = $pdo->prepare("INSERT INTO payroll_runs (branch_id, period_start, period_end, status, processed_by, created_at) VALUES (?, ?, ?, 'DRAFT', ?, NOW())");
-    $runStmt->execute([$branchId, $periodStart, $periodEnd, $user['id']]);
+    $runStmt = $pdo->prepare("INSERT INTO payroll_runs (scope, branch_id, period_start, period_end, status, processed_by, created_at) VALUES (?, ?, ?, ?, 'GENERATED', ?, NOW())");
+    $runStmt->execute([$scope, $scope === 'BRANCH' ? $branchId : null, $periodStart, $periodEnd, $user['id']]);
     $runId = $pdo->lastInsertId();
     
     // Get Employees
-    $empStmt = $pdo->prepare("SELECT id, basic_salary FROM employees WHERE branch_id = ? AND status = 'ACTIVE' AND deleted_at IS NULL");
-    $empStmt->execute([$branchId]);
+    $empSql = "SELECT id, basic_salary, employment_type FROM employees WHERE status = 'ACTIVE' AND deleted_at IS NULL";
+    $empParams = [];
+    if ($scope === 'BRANCH') {
+        $empSql .= " AND branch_id = ?";
+        $empParams[] = $branchId;
+    } else if ($scope === 'OFFICIALS') {
+        $empSql .= " AND branch_id IS NOT NULL"; // Officials have a branch, but they are drafted centrally
+    } else {
+        $empSql .= " AND branch_id IS NULL"; // HQ
+    }
+    
+    $empStmt = $pdo->prepare($empSql);
+    $empStmt->execute($empParams);
     $employees = $empStmt->fetchAll();
     
     if (empty($employees)) {
-        throw new Exception("No active employees found for this branch.");
+        throw new Exception("No active employees found for this scope.");
+    }
+    
+    // Maker-Checker validation
+    $employeeIds = array_column($employees, 'id');
+    if ($user['employee_id'] && in_array($user['employee_id'], $employeeIds)) {
+        throw new Exception("Maker-Checker violation: You cannot generate a payroll run that contains your own pay.");
     }
     
     $itemStmt = $pdo->prepare("
@@ -63,26 +105,26 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ");
     
-    $attStmt = $pdo->prepare("
-        SELECT SUM(total_hours) as hours_worked 
-        FROM attendance 
-        WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'Present'
-    ");
-    
-    // Assume 104 standard hours for a typical semi-monthly period (13 days * 8 hours)
-    $standardHours = 104; 
-    
     foreach ($employees as $emp) {
-        $attStmt->execute([$emp['id'], $periodStart, $periodEnd]);
-        $hoursWorked = (float) $attStmt->fetchColumn();
+        $summary = attendance_summary($emp['id'], $periodStart, $periodEnd);
+        
+        $payType = strtoupper($emp['employment_type']) === 'PART_TIME' ? 'HOURLY' : 'MONTHLY';
+        
+        $absentDays = $summary['absences'] + $summary['unpaid_leave_days'];
+        $totalHours = $summary['days_worked'] * 8; // Standard 8-hour days
+        $otHours = $summary['ot_minutes'] / 60.0;
         
         $slip = PayrollEngine::calculate_payslip(
             monthlyBasePayCentavos: Money::toCentavos($emp['basic_salary']),
-            hoursWorked: $hoursWorked,
-            overtimeHours: 0, // In real scenario, fetch OT from attendance/timesheets
-            standardHoursPerPeriod: $standardHours,
+            hoursWorked: $totalHours,
+            overtimeHours: $otHours,
+            standardHoursPerPeriod: 104,
             bonusCentavos: 0,
-            deductContributions: true
+            deductContributions: $payType === 'MONTHLY',
+            payType: $payType,
+            absentDays: $absentDays,
+            lateMinutes: $summary['late_minutes'],
+            cutoffNumber: $cutoffNumber
         );
         
         $itemStmt->execute([

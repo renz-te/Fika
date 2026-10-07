@@ -27,8 +27,8 @@ try {
         throw new Exception("Payroll run not found.");
     }
     
-    if ($run['status'] !== 'APPROVED') {
-        throw new Exception("Only APPROVED payroll runs can be released.");
+    if (!in_array($run['status'], ['DRAFT', 'GENERATED'])) {
+        throw new Exception("Only DRAFT or GENERATED payroll runs can be cleared.");
     }
     
     // Scoping fallback check
@@ -38,21 +38,15 @@ try {
         Rbac::assert_branch_access(null);
     }
     
-    $user = Auth::user();
-    if ($user['employee_id']) {
-        $check = $pdo->prepare("SELECT id FROM payroll_items WHERE payroll_run_id = ? AND employee_id = ?");
-        $check->execute([$runId, $user['employee_id']]);
-        if ($check->fetch()) {
-            throw new Exception("Maker-Checker violation: You cannot release a payroll run that contains your own pay.");
-        }
-    }
+    // Delete items first
+    $pdo->prepare("DELETE FROM payroll_items WHERE payroll_run_id = ?")->execute([$runId]);
+    // Delete run
+    $pdo->prepare("DELETE FROM payroll_runs WHERE id = ?")->execute([$runId]);
     
-    $pdo->prepare("UPDATE payroll_runs SET status = 'RELEASED' WHERE id = ?")->execute([$runId]);
-    
-    Audit::log('PAYROLL_RELEASED', "Payroll Run ID {$runId} released/paid by Finance.");
+    Audit::log('PAYROLL_CLEARED', "Payroll Run ID {$runId} was cleared/deleted by User " . Auth::user()['id']);
     $pdo->commit();
     
-    echo json_encode(["success" => true, "message" => "Payroll released successfully."]);
+    echo json_encode(["success" => true, "message" => "Payroll draft cleared."]);
 } catch (Exception $e) {
     $pdo->rollBack();
     http_response_code(403);
