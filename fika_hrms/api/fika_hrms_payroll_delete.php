@@ -20,7 +20,7 @@ global $pdo;
 try {
     $pdo->beginTransaction();
     
-    $stmt = $pdo->prepare("SELECT branch_id, scope, status FROM payroll_runs WHERE id = ? FOR UPDATE");
+    $stmt = $pdo->prepare("SELECT id, branch_id, scope, status, processed_by FROM payroll_runs WHERE id = ? FOR UPDATE");
     $stmt->execute([$runId]);
     $run = $stmt->fetch();
     
