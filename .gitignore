@@ -2,5 +2,8 @@ vendor/
 
 config.php
 *.sql
-uploads/
 .env
+cafe_hrms/uploads/
+uploads/menu/*
+!uploads/menu/.htaccess
+!uploads/menu/.gitkeep
