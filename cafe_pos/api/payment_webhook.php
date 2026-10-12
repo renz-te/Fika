@@ -88,6 +88,75 @@ if (isset($innerAttr['amount'])) {
     }
 }
 
+// 3. Event-Type Gate
+$isPaidEvent = in_array($eventType, ['payment.paid', 'checkout_session.payment.paid'], true);
+
+if (!$isPaidEvent) {
+    if ($eventType === 'payment.failed') {
+        if (!$intentId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Missing intent_id in payload']);
+            exit;
+        }
+
+        try {
+            $payStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ?");
+            $payStmt->execute([$intentId]);
+            $existingPayment = $payStmt->fetch();
+
+            if (!$existingPayment && $orderId > 0) {
+                $payOrderStmt = $pdo->prepare("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC LIMIT 1");
+                $payOrderStmt->execute([$orderId]);
+                $existingPayment = $payOrderStmt->fetch();
+            }
+
+            if ($existingPayment) {
+                $updFail = $pdo->prepare("UPDATE payments SET status = 'failed', raw_payload = ? WHERE id = ?");
+                $updFail->execute([$rawPayload, $existingPayment['id']]);
+            } else {
+                $shiftId = (int)($metadata['shift_id'] ?? 1);
+                $amountInCents = (int)($innerAttr['amount'] ?? 0);
+                $grossDecimal = $amountInCents > 0 ? ($amountInCents / 100) : 0.00;
+
+                $insPayment = $pdo->prepare("
+                    INSERT INTO payments (
+                        order_id, shift_id, intent_id, method, 
+                        gross_amount, fee_amount, net_amount, status, raw_payload, created_at
+                    ) VALUES (
+                        ?, ?, ?, ?, 
+                        ?, 0.00, ?, 'failed', ?, NOW()
+                    )
+                ");
+                $insPayment->execute([
+                    $orderId, $shiftId, $intentId, $method, 
+                    $grossDecimal, $grossDecimal, $rawPayload
+                ]);
+            }
+
+            http_response_code(200);
+            echo json_encode([
+                'status' => 'failed_recorded',
+                'message' => 'Payment failure recorded.',
+                'intent_id' => $intentId
+            ]);
+            exit;
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to record failed payment: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    // Any other event type: return 200 {"status":"ignored"} with no DB writes
+    http_response_code(200);
+    echo json_encode([
+        'status' => 'ignored',
+        'message' => 'Unhandled event type ignored.',
+        'event_type' => $eventType
+    ]);
+    exit;
+}
+
 if (!$intentId) {
     http_response_code(400);
     echo json_encode(['error' => 'Missing intent_id in payload']);
