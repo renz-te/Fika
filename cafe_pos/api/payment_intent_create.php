@@ -103,7 +103,11 @@ try {
     $secretKey = $paymongoConfig['secret_key'];
     $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     $currentUri = $_SERVER['REQUEST_URI'] ?? '';
-    $kioskUrl = $baseUrl . '/cafe_pos/kiosk.php';
+    $subPath = '';
+    if (preg_match('#^(.*?)/cafe_pos/#', $currentUri, $m)) {
+        $subPath = $m[1];
+    }
+    $kioskUrl = $baseUrl . $subPath . '/cafe_pos/kiosk.php';
 
     // 4. Request PayMongo Checkout Session
     $payload = [

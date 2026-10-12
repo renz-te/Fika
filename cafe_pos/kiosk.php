@@ -1,4 +1,145 @@
 <?php
+if (isset($_GET['payment']) && $_GET['payment'] === 'mock_checkout') {
+    require_once __DIR__ . '/database.php';
+    $paymongoConfig = require __DIR__ . '/../config/paymongo.php';
+    $orderId = (int)($_GET['order_id'] ?? 0);
+    $intentId = htmlspecialchars($_GET['intent_id'] ?? '');
+    $method = htmlspecialchars($_GET['method'] ?? 'gcash');
+
+    $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+    $stmt->execute([$orderId]);
+    $order = $stmt->fetch();
+
+    $notice = null;
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['authorize_mock_payment']) && $order) {
+        $amountInCents = (int)round((float)$order['total_price'] * 100);
+        $payload = [
+            'data' => [
+                'id' => 'evt_mock_' . bin2hex(random_bytes(12)),
+                'type' => 'event',
+                'attributes' => [
+                    'type' => 'payment.paid',
+                    'livemode' => false,
+                    'data' => [
+                        'id' => 'pay_mock_' . bin2hex(random_bytes(12)),
+                        'type' => 'payment',
+                        'attributes' => [
+                            'amount' => $amountInCents,
+                            'fee' => 0,
+                            'net_amount' => $amountInCents,
+                            'currency' => 'PHP',
+                            'status' => 'paid',
+                            'source' => [
+                                'id' => 'src_mock_' . bin2hex(random_bytes(10)),
+                                'type' => $method === 'paymaya' ? 'paymaya' : 'gcash'
+                            ],
+                            'payment_intent_id' => $intentId,
+                            'description' => 'Mock Sandbox Payment for Order #' . $order['order_number'],
+                            'metadata' => [
+                                'order_id' => (string)$order['id'],
+                                'shift_id' => (string)($order['pos_session_id'] ?: 1),
+                                'method' => $method,
+                                'branch_id' => (string)$order['branch_id']
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        $rawBody = json_encode($payload);
+        $t = time();
+        $sig = hash_hmac('sha256', "{$t}.{$rawBody}", $paymongoConfig['webhook_secret']);
+        $sigHeader = "t={$t},te={$sig}";
+
+        $subPath = '';
+        if (preg_match('#^(.*?)/cafe_pos/#', $_SERVER['REQUEST_URI'] ?? '', $m)) {
+            $subPath = $m[1];
+        }
+        $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        $webhookUrl = $baseUrl . $subPath . '/cafe_pos/api/payment_webhook.php';
+
+        $ch = curl_init($webhookUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $rawBody);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Paymongo-Signature: ' . $sigHeader
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $res = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch();
+        $notice = ($code === 200) ? 'SUCCESS' : 'ERROR: Webhook returned HTTP ' . $code . ' (' . htmlspecialchars((string)$res) . ')';
+    }
+
+    $paidAlready = ($order && $order['payment_status'] === 'PAID');
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PayMongo Test Checkout</title>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0b0f19; font-family: 'Outfit', sans-serif; color: #f3f4f6; margin: 0; padding: 20px; box-sizing: border-box; }
+            .checkout-card { background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 32px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+            .badge { display: inline-block; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 16px; }
+            .badge-gcash { background: rgba(0, 122, 255, 0.2); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3); }
+            .badge-maya { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+            .amount { font-size: 38px; font-weight: 700; color: #f59e0b; margin: 16px 0 24px; }
+            .btn-pay { width: 100%; padding: 14px; border: none; border-radius: 10px; background: #10b981; color: white; font-weight: 600; font-size: 16px; cursor: pointer; transition: background 0.2s; }
+            .btn-pay:hover { background: #059669; }
+            .success-msg { background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 16px; border-radius: 10px; margin-top: 16px; line-height: 1.5; }
+            .error-msg { background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; padding: 16px; border-radius: 10px; margin-top: 16px; }
+        </style>
+    </head>
+    <body>
+        <div class="checkout-card">
+            <span class="badge <?= $method === 'paymaya' ? 'badge-maya' : 'badge-gcash' ?>"><?= htmlspecialchars(strtoupper($method)) ?> Test Sandbox</span>
+            <h2 style="margin: 0 0 8px; font-size: 22px;">PayMongo Simulation</h2>
+            <p style="color: #9ca3af; font-size: 14px; margin: 0 0 20px;">Customer Payment Authorization Screen</p>
+
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px; text-align: left; font-size: 14px; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span style="color: #9ca3af;">Order No:</span>
+                    <strong><?= htmlspecialchars($order['order_number'] ?? 'N/A') ?></strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #9ca3af;">Payment Status:</span>
+                    <strong style="color: <?= $paidAlready ? '#10b981' : '#f59e0b' ?>"><?= $paidAlready ? 'PAID' : 'PENDING' ?></strong>
+                </div>
+            </div>
+
+            <div class="amount">₱<?= number_format((float)($order['total_price'] ?? 0), 2) ?></div>
+
+            <?php if ($paidAlready): ?>
+                <div class="success-msg">
+                    <strong style="font-size: 16px;">✓ Payment Confirmed!</strong><br>
+                    This order has been verified and marked as PAID.<br>
+                    You can return to the kiosk tablet screen.
+                </div>
+            <?php else: ?>
+                <?php if ($notice && $notice !== 'SUCCESS'): ?>
+                    <div class="error-msg"><?= $notice ?></div>
+                <?php endif; ?>
+                <form method="POST">
+                    <input type="hidden" name="authorize_mock_payment" value="1">
+                    <button type="submit" class="btn-pay">Authorize & Complete Payment</button>
+                </form>
+            <?php endif; ?>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
 $is_test = isset($_GET['mode']) && $_GET['mode'] === 'test' ? 1 : 0;
 $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : 1;
 ?>
