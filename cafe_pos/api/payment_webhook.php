@@ -72,6 +72,14 @@ $metadata = $innerAttr['metadata'] ?? [];
 $orderId = isset($metadata['order_id']) ? (int)$metadata['order_id'] : 0;
 $method = strtolower($metadata['method'] ?? 'gcash');
 
+// Extract provider payment ID (pay_...) if present
+$providerPaymentId = null;
+if (!empty($innerAttr['payments'][0]['id'])) {
+    $providerPaymentId = $innerAttr['payments'][0]['id'];
+} elseif (is_string($innerData['id']) && str_starts_with($innerData['id'], 'pay_')) {
+    $providerPaymentId = $innerData['id'];
+}
+
 // Extract amount and fees in centavos
 $amountInCents = 0;
 $feeInCents = 0;
@@ -164,21 +172,10 @@ if (!$intentId) {
 }
 
 try {
-    // 3. Idempotency Check: check payments table by intent_id
+    // 4. Resolve payment record by intent_id or order_id fallback
     $payStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ?");
     $payStmt->execute([$intentId]);
     $existingPayment = $payStmt->fetch();
-
-    if ($existingPayment && $existingPayment['status'] === 'paid') {
-        // Replayed webhook -> return 200 OK immediately as no-op
-        http_response_code(200);
-        echo json_encode([
-            'status' => 'noop', 
-            'message' => 'Payment already processed and marked paid (idempotent no-op).',
-            'intent_id' => $intentId
-        ]);
-        exit;
-    }
 
     // Fallback: If payment record not found by intent_id, find by order_id
     if (!$existingPayment && $orderId > 0) {
@@ -191,7 +188,18 @@ try {
         $orderId = (int)$existingPayment['order_id'];
     }
 
-    // 4. Fetch Order & Verify Amount
+    // 1. After resolving order_id/intent_id fallback, return 200 no-op if already paid
+    if ($existingPayment && $existingPayment['status'] === 'paid') {
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'noop', 
+            'message' => 'Payment already processed and marked paid (idempotent no-op).',
+            'intent_id' => $intentId
+        ]);
+        exit;
+    }
+
+    // 5. Fetch Order & Verify Amount
     $orderStmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
     $orderStmt->execute([$orderId]);
     $order = $orderStmt->fetch();
@@ -202,14 +210,25 @@ try {
         exit;
     }
 
+    // If order itself is already marked PAID, return 200 no-op
+    if ($order['payment_status'] === 'PAID') {
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'noop', 
+            'message' => 'Order already processed and marked paid (idempotent no-op).',
+            'intent_id' => $intentId
+        ]);
+        exit;
+    }
+
     $expectedCents = (int)round((float)$order['total_price'] * 100);
 
     // Amount Verification: Discrepancy check
     if ($amountInCents > 0 && $amountInCents !== $expectedCents) {
         // Amount Mismatch: Flag it, do NOT mark paid
         if ($existingPayment) {
-            $pdo->prepare("UPDATE payments SET status = 'failed', raw_payload = ? WHERE id = ?")
-                ->execute([$rawPayload, $existingPayment['id']]);
+            $pdo->prepare("UPDATE payments SET status = 'failed', provider_payment_id = COALESCE(?, provider_payment_id), raw_payload = ? WHERE id = ?")
+                ->execute([$providerPaymentId, $rawPayload, $existingPayment['id']]);
         }
         $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason) VALUES (?, ?, 'PAYMENT_MISMATCH', ?)")
             ->execute([$order['branch_id'], $orderId, "Amount mismatch: Webhook sent {$amountInCents} cents, expected {$expectedCents} cents"]);
@@ -223,16 +242,55 @@ try {
         exit;
     }
 
-    // 5. Atomic Single Database Transaction
+    // 6. Atomic Single Database Transaction with Pessimistic Locking
     $pdo->beginTransaction();
 
-    $grossDecimal = $amountInCents > 0 ? ($amountInCents / 100) : (float)$order['total_price'];
+    // 2. Pessimistic lock on orders row
+    $lockOrderStmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? FOR UPDATE");
+    $lockOrderStmt->execute([$orderId]);
+    $lockedOrder = $lockOrderStmt->fetch();
+
+    if (!$lockedOrder) {
+        $pdo->rollBack();
+        http_response_code(404);
+        echo json_encode(['error' => "Order #{$orderId} not found during lock acquisition"]);
+        exit;
+    }
+
+    // Pessimistic lock on payments row
+    $lockedPayment = null;
+    if ($existingPayment) {
+        $lockPayStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ? FOR UPDATE");
+        $lockPayStmt->execute([$existingPayment['id']]);
+        $lockedPayment = $lockPayStmt->fetch();
+    } else {
+        $lockPayStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ? OR order_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
+        $lockPayStmt->execute([$intentId, $orderId]);
+        $lockedPayment = $lockPayStmt->fetch();
+    }
+
+    // Re-check status immediately after acquiring lock before writing (race condition defense)
+    if (($lockedPayment && $lockedPayment['status'] === 'paid') || ($lockedOrder['payment_status'] === 'PAID')) {
+        $pdo->rollBack();
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'noop', 
+            'message' => 'Payment already processed and marked paid (concurrent race avoided).',
+            'intent_id' => $intentId
+        ]);
+        exit;
+    }
+
+    $grossDecimal = $amountInCents > 0 ? ($amountInCents / 100) : (float)$lockedOrder['total_price'];
     $feeDecimal = $feeInCents / 100;
     $netDecimal = $grossDecimal - $feeDecimal;
-    $shiftId = $existingPayment ? (int)$existingPayment['shift_id'] : (int)($order['pos_session_id'] ?: 1);
+    $shiftId = $lockedPayment ? (int)$lockedPayment['shift_id'] : (int)($lockedOrder['pos_session_id'] ?: 1);
+
+    // 3. Ensure that inventory deduction runs ONLY on the pending -> paid transition
+    $wasPending = (!$lockedPayment || $lockedPayment['status'] === 'pending') && ($lockedOrder['payment_status'] !== 'PAID');
 
     // Update or Insert payments row
-    if ($existingPayment) {
+    if ($lockedPayment) {
         $updPayment = $pdo->prepare("
             UPDATE payments 
             SET status = 'paid', 
@@ -240,22 +298,23 @@ try {
                 gross_amount = ?, 
                 fee_amount = ?, 
                 net_amount = ?, 
+                provider_payment_id = COALESCE(?, provider_payment_id), 
                 raw_payload = ? 
             WHERE id = ?
         ");
-        $updPayment->execute([$grossDecimal, $feeDecimal, $netDecimal, $rawPayload, $existingPayment['id']]);
+        $updPayment->execute([$grossDecimal, $feeDecimal, $netDecimal, $providerPaymentId, $rawPayload, $lockedPayment['id']]);
     } else {
         $insPayment = $pdo->prepare("
             INSERT INTO payments (
-                order_id, shift_id, intent_id, method, 
+                order_id, shift_id, intent_id, provider_payment_id, method, 
                 gross_amount, fee_amount, net_amount, status, paid_at, raw_payload, created_at
             ) VALUES (
-                ?, ?, ?, ?, 
+                ?, ?, ?, ?, ?, 
                 ?, ?, ?, 'paid', NOW(), ?, NOW()
             )
         ");
         $insPayment->execute([
-            $orderId, $shiftId, $intentId, $method, 
+            $orderId, $shiftId, $intentId, $providerPaymentId, $method, 
             $grossDecimal, $feeDecimal, $netDecimal, $rawPayload
         ]);
     }
@@ -272,9 +331,9 @@ try {
     ");
     $updOrder->execute([$formattedMethod, $intentId, $orderId]);
 
-    // Inventory Deduction (if not a test order and items exist)
-    if (empty($order['is_test'])) {
-        $branchId = (int)$order['branch_id'];
+    // Inventory Deduction: Ensure that inventory deduction runs ONLY on the pending -> paid transition
+    if ($wasPending && empty($lockedOrder['is_test'])) {
+        $branchId = (int)$lockedOrder['branch_id'];
         $itemsStmt = $pdo->prepare("SELECT product_id, quantity, id FROM order_items WHERE order_id = ?");
         $itemsStmt->execute([$orderId]);
         $orderItems = $itemsStmt->fetchAll();
