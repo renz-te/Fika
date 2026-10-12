@@ -87,15 +87,20 @@ if (!empty($innerAttr['payments'][0]['id'])) {
 }
 
 // Extract amount and fees in centavos
+$hasAmountField = false;
 $amountInCents = 0;
 $feeInCents = 0;
 
 if (isset($innerAttr['amount'])) {
+    $hasAmountField = true;
     $amountInCents = (int)$innerAttr['amount'];
     $feeInCents = (int)($innerAttr['fee'] ?? 0);
 } elseif (!empty($innerAttr['payments'][0]['attributes'])) {
     $pAttr = $innerAttr['payments'][0]['attributes'];
-    $amountInCents = (int)($pAttr['amount'] ?? 0);
+    if (isset($pAttr['amount'])) {
+        $hasAmountField = true;
+        $amountInCents = (int)$pAttr['amount'];
+    }
     $feeInCents = (int)($pAttr['fee'] ?? 0);
     if (isset($pAttr['source']['type'])) {
         $method = strtolower($pAttr['source']['type']);
@@ -227,16 +232,35 @@ try {
         exit;
     }
 
+    // 5b. Validate Payment Amount: missing amount field or amount <= 0
+    if (!$hasAmountField || $amountInCents <= 0) {
+        if ($existingPayment) {
+            $pdo->prepare("UPDATE payments SET status = 'failed', provider_payment_id = COALESCE(?, provider_payment_id), raw_payload = ? WHERE id = ?")
+                ->execute([$providerPaymentId, $rawPayload, $existingPayment['id']]);
+        }
+        $rejectReason = !$hasAmountField ? 'Payment amount missing in webhook payload' : "Payment amount <= 0 ({$amountInCents} cents)";
+        $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason, created_at) VALUES (?, ?, 'PAYMENT_AMOUNT_INVALID', ?, NOW())")
+            ->execute([$order['branch_id'], $orderId, $rejectReason]);
+
+        http_response_code(400);
+        echo json_encode([
+            'error' => 'Invalid payment amount in payload. Amount must be present and greater than 0.',
+            'has_amount_field' => $hasAmountField,
+            'amount_cents' => $amountInCents
+        ]);
+        exit;
+    }
+
     $expectedCents = (int)round((float)$order['total_price'] * 100);
 
     // Amount Verification: Discrepancy check
-    if ($amountInCents > 0 && $amountInCents !== $expectedCents) {
+    if ($amountInCents !== $expectedCents) {
         // Amount Mismatch: Flag it, do NOT mark paid
         if ($existingPayment) {
             $pdo->prepare("UPDATE payments SET status = 'failed', provider_payment_id = COALESCE(?, provider_payment_id), raw_payload = ? WHERE id = ?")
                 ->execute([$providerPaymentId, $rawPayload, $existingPayment['id']]);
         }
-        $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason) VALUES (?, ?, 'PAYMENT_MISMATCH', ?)")
+        $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason, created_at) VALUES (?, ?, 'PAYMENT_MISMATCH', ?, NOW())")
             ->execute([$order['branch_id'], $orderId, "Amount mismatch: Webhook sent {$amountInCents} cents, expected {$expectedCents} cents"]);
 
         http_response_code(400);

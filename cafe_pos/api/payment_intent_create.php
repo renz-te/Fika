@@ -155,13 +155,24 @@ try {
 
     $responseData = json_decode($response, true);
 
+    $isTest = !empty($paymongoConfig['is_test']);
+
     if ($httpCode >= 200 && $httpCode < 300 && isset($responseData['data']['id'])) {
         $intentId = $responseData['data']['id'];
         $checkoutUrl = $responseData['data']['attributes']['checkout_url'] ?? null;
-    } else {
-        // If external API fails (e.g., test dummy keys in local sandbox), generate compliant test intent
+    } elseif ($isTest) {
+        // Explicit test mode only: generate compliant mock test intent and checkout URL
         $intentId = 'cs_test_' . bin2hex(random_bytes(16));
         $checkoutUrl = $kioskUrl . '?payment=mock_checkout&intent_id=' . $intentId . '&order_id=' . $order['id'] . '&method=' . $selectedMethod;
+    } else {
+        // Production/Live mode: PayMongo API call failed -> Return HTTP 502 Bad Gateway and do NOT insert pending row
+        $errDetail = $responseData['errors'][0]['detail'] ?? ($curlErr ?: 'Failed to create checkout session with PayMongo gateway');
+        http_response_code(502);
+        echo json_encode([
+            'success' => false,
+            'error'   => "Bad Gateway: PayMongo API call failed: {$errDetail}"
+        ]);
+        exit;
     }
 
     // 5. Store pending payment in payments table
