@@ -6,11 +6,17 @@ require_once __DIR__ . '/../database.php';
 $paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') 
     ? require __DIR__ . '/../../config/paymongo.php' 
     : [
-        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: 'whk_test_xxyz1234',
+        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: '',
         'is_test' => true
     ];
 
-$webhookSecret = $paymongoConfig['webhook_secret'];
+$webhookSecret = (string)($paymongoConfig['webhook_secret'] ?? '');
+
+if (empty($webhookSecret)) {
+    http_response_code(503);
+    echo json_encode(['error' => 'Service Unavailable: PayMongo webhook secret is not configured']);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

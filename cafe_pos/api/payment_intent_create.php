@@ -6,11 +6,22 @@ require_once __DIR__ . '/../database.php';
 $paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') 
     ? require __DIR__ . '/../../config/paymongo.php' 
     : [
-        'secret_key' => getenv('PAYMONGO_SECRET_KEY') ?: 'sk_test_xxyz1234',
-        'public_key' => getenv('PAYMONGO_PUBLIC_KEY') ?: 'pk_test_xxyz1234',
-        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: 'whk_test_xxyz1234',
+        'secret_key' => getenv('PAYMONGO_SECRET_KEY') ?: '',
+        'public_key' => getenv('PAYMONGO_PUBLIC_KEY') ?: '',
+        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: '',
         'is_test' => true
     ];
+
+$secretKey = (string)($paymongoConfig['secret_key'] ?? '');
+
+if (empty($secretKey)) {
+    http_response_code(503);
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Service Unavailable: PayMongo secret key is not configured'
+    ]);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
