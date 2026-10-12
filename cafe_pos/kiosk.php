@@ -124,16 +124,54 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : 1;
 
     <!-- Payment Modal -->
     <div class="modal-overlay" id="payment-modal">
-        <div class="modal-content glass-panel">
+        <div class="modal-content glass-panel" style="max-width: 440px;">
             <div class="modal-header">
                 <h3>Select Payment Method</h3>
                 <button class="close-modal" id="btn-close-payment">&times;</button>
             </div>
-            <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
-                <button class="payment-method-btn" id="btn-pay-cash" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="footprints" style="width: 20px; height: 20px;"></i> Pay Cash at Counter</button>
-                <div class="digital-payment-section">
-                    <button class="payment-method-btn" id="btn-pay-digital" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="credit-card" style="width: 20px; height: 20px;"></i> Online Payment (E-Wallet/Card)</button>
-                </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+                <button class="payment-method-btn" id="btn-pay-cash" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="footprints" style="width: 22px; height: 22px;"></i> Pay Cash at Counter
+                </button>
+                <button class="payment-method-btn btn-pay-gcash-style" id="btn-pay-gcash" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="smartphone" style="width: 22px; height: 22px;"></i> Pay with GCash
+                </button>
+                <button class="payment-method-btn btn-pay-maya-style" id="btn-pay-maya" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="wallet" style="width: 22px; height: 22px;"></i> Pay with Maya
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kiosk PayMongo QR Display Modal -->
+    <div class="modal-overlay" id="kiosk-qr-modal" style="z-index: 1010;">
+        <div class="modal-content glass-panel" style="max-width: 420px; text-align: center; padding: 28px 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span id="kiosk-qr-badge" style="background: rgba(0, 122, 255, 0.2); color: #93c5fd; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;">GCASH</span>
+                <button class="close-modal" id="btn-close-kiosk-qr" style="position: static; font-size: 24px;">&times;</button>
+            </div>
+            <h3 id="kiosk-qr-title" style="margin-bottom: 6px; font-size: 22px; color: var(--text-light);">Scan to Pay</h3>
+            <p id="kiosk-qr-subtitle" style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">Open your e-wallet app and scan the QR code to complete payment.</p>
+            
+            <div class="qr-code-wrapper" id="kiosk-qr-wrapper">
+                <img id="kiosk-qr-img" src="" alt="Payment QR Code">
+            </div>
+
+            <div style="margin: 12px 0 6px 0;">
+                <span style="font-size: 13px; color: var(--text-muted);">Amount Due</span>
+                <div id="kiosk-qr-amount" style="font-size: 28px; font-weight: bold; color: var(--accent);">₱0.00</div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #f59e0b; margin: 16px 0 20px 0; font-size: 13px; font-weight: 500;">
+                <span class="payment-spinner"></span>
+                <span id="kiosk-qr-status">Waiting for payment confirmation...</span>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <a id="kiosk-qr-direct-link" href="#" target="_blank" class="payment-method-btn" style="flex: 1; text-align: center; font-size: 13px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px;">
+                    <i data-lucide="external-link" style="width: 15px; height: 15px;"></i> Pay on Device
+                </a>
+                <button class="add-to-cart-btn" id="btn-cancel-kiosk-qr" style="flex: 1; background: #e74c3c; border-radius: 8px; padding: 12px; font-size: 14px;">Cancel</button>
             </div>
         </div>
     </div>

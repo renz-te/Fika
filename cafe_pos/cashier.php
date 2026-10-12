@@ -159,20 +159,64 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : ($_SESSION['u
 
     <!-- Payment Selection Modal -->
     <div class="modal-overlay" id="payment-modal">
-        <div class="modal-content glass-panel">
+        <div class="modal-content glass-panel" style="max-width: 440px;">
             <div class="modal-header">
                 <h3>Select Payment Method</h3>
                 <button class="close-modal" id="btn-close-payment">&times;</button>
             </div>
-            <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
-                <button class="payment-method-btn" id="btn-pay-cash" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="banknote" style="width: 20px; height: 20px;"></i> Physical Cash</button>
-                <div class="digital-payment-section">
-                    <button class="payment-method-btn" id="btn-pay-digital" style="display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="credit-card" style="width: 20px; height: 20px;"></i> Digital Payment (E-Wallet/Card)</button>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+                <button class="payment-method-btn" id="btn-pay-cash" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="banknote" style="width: 22px; height: 22px;"></i> Physical Cash
+                </button>
+                <button class="payment-method-btn btn-pay-gcash-style" id="btn-pay-gcash" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="smartphone" style="width: 22px; height: 22px;"></i> PayMongo &bull; GCash
+                </button>
+                <button class="payment-method-btn btn-pay-maya-style" id="btn-pay-maya" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <i data-lucide="wallet" style="width: 22px; height: 22px;"></i> PayMongo &bull; Maya
+                </button>
+                
+                <div class="digital-payment-section" style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 4px;">
+                    <button class="payment-method-btn" id="btn-pay-digital-manual" style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; opacity: 0.75;">
+                        <i data-lucide="receipt" style="width: 16px; height: 16px;"></i> Manual Reference (Offline / Other)
+                    </button>
                     <div id="digital-ref-container" style="display: none; margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
                         <input type="text" id="digital-ref-input" placeholder="Enter Reference Number..." class="ref-input">
-                        <button class="add-to-cart-btn" id="btn-confirm-digital">Confirm Payment</button>
+                        <button class="add-to-cart-btn" id="btn-confirm-digital">Confirm Manual Payment</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PayMongo Dynamic QR & Polling Modal -->
+    <div class="modal-overlay" id="paymongo-modal" style="z-index: 1010;">
+        <div class="modal-content glass-panel" style="max-width: 420px; text-align: center; padding: 28px 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span id="paymongo-badge-method" style="background: rgba(0, 122, 255, 0.2); color: #93c5fd; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase;">GCASH</span>
+                <button class="close-modal" id="btn-close-paymongo" style="position: static; font-size: 24px;">&times;</button>
+            </div>
+            <h3 id="paymongo-modal-title" style="margin-bottom: 6px; font-size: 22px; color: var(--text-light);">Scan to Pay</h3>
+            <p id="paymongo-modal-subtitle" style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">Customer scans this QR code with their mobile e-wallet.</p>
+            
+            <div class="qr-code-wrapper" id="paymongo-qr-wrapper">
+                <img id="paymongo-qr-img" src="" alt="Payment QR Code">
+            </div>
+
+            <div style="margin: 12px 0 6px 0;">
+                <span style="font-size: 13px; color: var(--text-muted);">Amount Due</span>
+                <div id="paymongo-modal-amount" style="font-size: 28px; font-weight: bold; color: var(--accent);">₱0.00</div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; color: #f59e0b; margin: 16px 0 20px 0; font-size: 13px; font-weight: 500;">
+                <span class="payment-spinner"></span>
+                <span id="paymongo-poll-status-text">Awaiting customer payment confirmation...</span>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <a id="paymongo-checkout-btn" href="#" target="_blank" class="payment-method-btn" style="flex: 1; text-align: center; font-size: 13px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px;">
+                    <i data-lucide="external-link" style="width: 15px; height: 15px;"></i> Checkout Link
+                </a>
+                <button class="add-to-cart-btn" id="btn-cancel-paymongo" style="flex: 1; background: #e74c3c; border-radius: 8px; padding: 12px; font-size: 14px;">Cancel</button>
             </div>
         </div>
     </div>

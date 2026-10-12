@@ -50,10 +50,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const paymentModal = document.getElementById('payment-modal');
     const btnClosePayment = document.getElementById('btn-close-payment');
     const btnPayCash = document.getElementById('btn-pay-cash');
+    const btnPayGcash = document.getElementById('btn-pay-gcash');
+    const btnPayMaya = document.getElementById('btn-pay-maya');
     const btnPayDigital = document.getElementById('btn-pay-digital');
     const digitalRefContainer = document.getElementById('digital-ref-container');
     const digitalRefInput = document.getElementById('digital-ref-input');
     const btnConfirmDigital = document.getElementById('btn-confirm-digital');
+
+    const kioskQrModal = document.getElementById('kiosk-qr-modal');
+    const btnCloseKioskQr = document.getElementById('btn-close-kiosk-qr');
+    const btnCancelKioskQr = document.getElementById('btn-cancel-kiosk-qr');
+    const kioskQrBadge = document.getElementById('kiosk-qr-badge');
+    const kioskQrTitle = document.getElementById('kiosk-qr-title');
+    const kioskQrSubtitle = document.getElementById('kiosk-qr-subtitle');
+    const kioskQrImg = document.getElementById('kiosk-qr-img');
+    const kioskQrAmount = document.getElementById('kiosk-qr-amount');
+    const kioskQrStatus = document.getElementById('kiosk-qr-status');
+    const kioskQrDirectLink = document.getElementById('kiosk-qr-direct-link');
+    let kioskPollInterval = null;
 
     // --- Initialization ---
     updateClock();
@@ -440,9 +454,152 @@ document.addEventListener('DOMContentLoaded', () => {
         submitCheckout('CASH_AT_COUNTER', null, 'UNPAID');
     };
 
-    btnPayDigital.onclick = () => {
-        submitCheckout('PAYMONGO', null, 'UNPAID');
-    };
+    if (btnPayGcash) {
+        btnPayGcash.onclick = () => {
+            initiateKioskDigitalPayment('gcash');
+        };
+    }
+
+    if (btnPayMaya) {
+        btnPayMaya.onclick = () => {
+            initiateKioskDigitalPayment('paymaya');
+        };
+    }
+
+    if (btnPayDigital) {
+        btnPayDigital.onclick = () => {
+            initiateKioskDigitalPayment('gcash');
+        };
+    }
+
+    async function initiateKioskDigitalPayment(method) {
+        if (cart.length === 0) return;
+        paymentModal.classList.remove('active');
+        btnCheckout.disabled = true;
+        btnCheckoutText.textContent = 'Processing...';
+
+        const methodUpper = method.toUpperCase() === 'PAYMAYA' ? 'MAYA' : method.toUpperCase();
+        const displayMethod = methodUpper === 'MAYA' ? 'Maya' : 'GCash';
+
+        // Set modal styles and text
+        if (kioskQrBadge) {
+            kioskQrBadge.textContent = displayMethod;
+            kioskQrBadge.style.background = methodUpper === 'MAYA' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0, 122, 255, 0.2)';
+            kioskQrBadge.style.color = methodUpper === 'MAYA' ? '#6ee7b7' : '#93c5fd';
+        }
+        if (kioskQrTitle) kioskQrTitle.textContent = `Pay with ${displayMethod}`;
+        if (kioskQrSubtitle) kioskQrSubtitle.textContent = `Open your ${displayMethod} app and scan this QR code to complete payment.`;
+        if (kioskQrStatus) kioskQrStatus.textContent = `Waiting for ${displayMethod} payment confirmation...`;
+        if (kioskQrImg) {
+            kioskQrImg.src = '';
+            kioskQrImg.style.display = 'none';
+        }
+
+        const payload = {
+            table_source: 'Table 1',
+            payment_status: 'UNPAID',
+            payment_method: methodUpper,
+            payment_reference: null,
+            is_test: window.POS_CONFIG ? window.POS_CONFIG.is_test : 0,
+            branch_id: window.POS_CONFIG ? window.POS_CONFIG.branch_id : 1,
+            cart: cart.map(item => ({
+                product_id: item.product.id,
+                quantity: item.quantity,
+                modifier_ids: item.modifiers.map(m => m.id)
+            }))
+        };
+
+        try {
+            // 1. Create order
+            const res = await fetch('api/orders.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to place order');
+            }
+
+            const targetOrderId = data.order_id;
+            const orderNumber = data.order_number;
+
+            // 2. Request PayMongo checkout intent
+            const intentRes = await fetch('api/payment_intent_create.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: targetOrderId,
+                    method: method
+                })
+            });
+            const intentData = await intentRes.json();
+            if (!intentData.success) {
+                throw new Error(intentData.error || 'Failed to initialize payment');
+            }
+
+            // 3. Populate and show Kiosk QR Modal
+            if (kioskQrAmount) kioskQrAmount.textContent = `₱${parseFloat(intentData.gross_amount || data.total_price).toFixed(2)}`;
+            if (kioskQrImg) {
+                kioskQrImg.src = intentData.qr_code_url;
+                kioskQrImg.style.display = 'block';
+            }
+            if (kioskQrDirectLink) {
+                kioskQrDirectLink.href = intentData.checkout_url || '#';
+            }
+
+            kioskQrModal.classList.add('active');
+
+            // 4. Start polling payment_status.php every 2s
+            if (kioskPollInterval) clearInterval(kioskPollInterval);
+            kioskPollInterval = setInterval(async () => {
+                try {
+                    const stRes = await fetch(`api/payment_status.php?order_id=${targetOrderId}`);
+                    const stData = await stRes.json();
+
+                    if (stData.success && stData.is_paid) {
+                        clearInterval(kioskPollInterval);
+                        kioskPollInterval = null;
+                        kioskQrModal.classList.remove('active');
+
+                        // Show success overlay
+                        successIcon.innerHTML = '<i data-lucide="check-circle" style="color: #2ecc71;"></i>';
+                        successTitle.textContent = 'Payment Confirmed!';
+                        successMessage.textContent = `Your payment via ${displayMethod} was successful! Please wait for Queue Number:`;
+                        successOrderNum.textContent = orderNumber;
+                        if (window.lucide) window.lucide.createIcons();
+                        successOverlay.classList.add('active');
+
+                        // Clear cart
+                        cart = [];
+                        renderCart();
+                        btnCheckoutText.textContent = 'Place Order';
+                    }
+                } catch (pollErr) {
+                    console.error('Polling error:', pollErr);
+                }
+            }, 2000);
+
+        } catch (err) {
+            console.error(err);
+            alert("Error starting " + displayMethod + " payment: " + (err.message || 'Unknown error'));
+            btnCheckout.disabled = false;
+            btnCheckoutText.textContent = 'Place Order';
+        }
+    }
+
+    function stopKioskQrPolling() {
+        if (kioskPollInterval) {
+            clearInterval(kioskPollInterval);
+            kioskPollInterval = null;
+        }
+        if (kioskQrModal) kioskQrModal.classList.remove('active');
+        btnCheckout.disabled = false;
+        btnCheckoutText.textContent = 'Place Order';
+    }
+
+    if (btnCloseKioskQr) btnCloseKioskQr.onclick = stopKioskQrPolling;
+    if (btnCancelKioskQr) btnCancelKioskQr.onclick = stopKioskQrPolling;
 
     async function submitCheckout(method, reference, status) {
         paymentModal.classList.remove('active');

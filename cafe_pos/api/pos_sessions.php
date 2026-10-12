@@ -3,20 +3,7 @@
 error_reporting(0);
 header('Content-Type: application/json');
 
-$posHost = '127.0.0.1';
-$posDb = 'hrms';
-$posUser = 'root';
-$posPass = '';
-
-try {
-    $pdo = new PDO("mysql:host=$posHost;dbname=$posDb;charset=utf8mb4", $posUser, $posPass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(['success' => false, 'error' => 'Database connection failed']);
-    exit;
-}
+require_once __DIR__ . '/../database.php';
 
 $action = $_GET['action'] ?? '';
 
@@ -96,8 +83,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $refundStmt->execute([$sessionId]);
         $cashRefunds = $refundStmt->fetchColumn() ?: 0;
 
-        $expectedCash = $session['opening_float'] + $cashSales - $cashRefunds;
-        $variance = $actualCash - $expectedCash;
+        // Calculate expected cash strictly from physical cash transactions:
+        // expected_cash = opening_float + cash_sales - cash_refunds
+        $expectedCash = (float)$session['opening_float'] + (float)$cashSales - (float)$cashRefunds;
+        $variance = (float)$actualCash - $expectedCash;
+
+        // Separate Digital Settlement calculation (GCash, Maya, Card)
+        $digitalGross = 0.00;
+        $digitalFee = 0.00;
+        $digitalNet = 0.00;
+        $digitalCount = 0;
+
+        try {
+            $digStmt = $pdo->prepare("
+                SELECT COUNT(*) as d_cnt, 
+                       COALESCE(SUM(gross_amount), 0) as d_gross, 
+                       COALESCE(SUM(fee_amount), 0) as d_fee, 
+                       COALESCE(SUM(net_amount), 0) as d_net
+                FROM payments 
+                WHERE shift_id = ? AND status = 'paid'
+            ");
+            $digStmt->execute([$sessionId]);
+            $digData = $digStmt->fetch();
+            if ($digData) {
+                $digitalCount = (int)$digData['d_cnt'];
+                $digitalGross = (float)$digData['d_gross'];
+                $digitalFee = (float)$digData['d_fee'];
+                $digitalNet = (float)$digData['d_net'];
+            }
+        } catch (Exception $e) {}
 
         $updateStmt = $pdo->prepare("
             UPDATE cash_sessions 
@@ -109,12 +123,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE id = ?
         ");
         
+        $syncPosStmt = $pdo->prepare("
+            UPDATE pos_sessions 
+            SET closed_at = CURRENT_TIMESTAMP, 
+                expected_cash = ?, 
+                closing_cash = ?, 
+                variance = ?, 
+                status = 'CLOSED' 
+            WHERE id = ?
+        ");
+
         if ($updateStmt->execute([$expectedCash, $actualCash, $variance, $sessionId])) {
+            try { $syncPosStmt->execute([$expectedCash, $actualCash, $variance, $sessionId]); } catch(Exception $e){}
             echo json_encode([
                 'success' => true, 
                 'expected' => $expectedCash, 
-                'actual' => $actualCash, 
-                'variance' => $variance
+                'actual' => (float)$actualCash, 
+                'variance' => $variance,
+                'digital_settlement' => [
+                    'count' => $digitalCount,
+                    'gross' => $digitalGross,
+                    'fee'   => $digitalFee,
+                    'net'   => $digitalNet
+                ]
             ]);
         } else {
             echo json_encode(['success' => false, 'error' => 'Failed to close shift']);

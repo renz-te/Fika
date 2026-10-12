@@ -676,3 +676,59 @@ body {
 
 /* Print styling is handled by assets/css/receipt.css */
 
+/* PayMongo Digital Payment & QR Styling */
+.btn-pay-gcash-style {
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.15), rgba(0, 80, 200, 0.25)) !important;
+    border: 1px solid #007aff !important;
+    color: #93c5fd !important;
+    font-weight: 600;
+}
+.btn-pay-gcash-style:hover {
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.3), rgba(0, 80, 200, 0.4)) !important;
+    box-shadow: 0 0 15px rgba(0, 122, 255, 0.3);
+}
+
+.btn-pay-maya-style {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.25)) !important;
+    border: 1px solid #10b981 !important;
+    color: #6ee7b7 !important;
+    font-weight: 600;
+}
+.btn-pay-maya-style:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.4)) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.payment-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--primary, #d4a373);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+.qr-code-wrapper {
+    background: #ffffff;
+    padding: 16px;
+    border-radius: 16px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    margin: 12px auto;
+}
+
+.qr-code-wrapper img {
+    display: block;
+    width: 200px;
+    height: 200px;
+    border-radius: 8px;
+}
+

@@ -272,10 +272,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const paymentModal = document.getElementById('payment-modal');
     const btnClosePayment = document.getElementById('btn-close-payment');
     const btnPayCash = document.getElementById('btn-pay-cash');
+    const btnPayGcash = document.getElementById('btn-pay-gcash');
+    const btnPayMaya = document.getElementById('btn-pay-maya');
     const btnPayDigital = document.getElementById('btn-pay-digital');
+    const btnPayDigitalManual = document.getElementById('btn-pay-digital-manual');
     const digitalRefContainer = document.getElementById('digital-ref-container');
     const digitalRefInput = document.getElementById('digital-ref-input');
     const btnConfirmDigital = document.getElementById('btn-confirm-digital');
+
+    const paymongoModal = document.getElementById('paymongo-modal');
+    const btnClosePaymongo = document.getElementById('btn-close-paymongo');
+    const btnCancelPaymongo = document.getElementById('btn-cancel-paymongo');
+    const paymongoQrImg = document.getElementById('paymongo-qr-img');
+    const paymongoModalAmount = document.getElementById('paymongo-modal-amount');
+    const paymongoModalTitle = document.getElementById('paymongo-modal-title');
+    const paymongoBadgeMethod = document.getElementById('paymongo-badge-method');
+    const paymongoCheckoutBtn = document.getElementById('paymongo-checkout-btn');
+    const paymongoPollStatusText = document.getElementById('paymongo-poll-status-text');
+    let paymongoPollInterval = null;
 
     const confirmModal = document.getElementById('confirm-modal');
     const btnConfirmNo = document.getElementById('btn-confirm-no');
@@ -880,10 +894,25 @@ document.addEventListener('DOMContentLoaded', () => {
         openCashRegister(total);
     };
 
-    btnPayDigital.onclick = () => {
-        digitalRefContainer.style.display = 'flex';
-        digitalRefInput.focus();
-    };
+    if (btnPayGcash) {
+        btnPayGcash.onclick = () => initiatePayMongoCheckout('gcash');
+    }
+
+    if (btnPayMaya) {
+        btnPayMaya.onclick = () => initiatePayMongoCheckout('paymaya');
+    }
+
+    if (btnPayDigitalManual) {
+        btnPayDigitalManual.onclick = () => {
+            digitalRefContainer.style.display = digitalRefContainer.style.display === 'flex' ? 'none' : 'flex';
+            if (digitalRefContainer.style.display === 'flex') digitalRefInput.focus();
+        };
+    } else if (btnPayDigital) {
+        btnPayDigital.onclick = () => {
+            digitalRefContainer.style.display = 'flex';
+            digitalRefInput.focus();
+        };
+    }
 
     btnConfirmDigital.onclick = () => {
         const ref = digitalRefInput.value.trim();
@@ -893,6 +922,145 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         submitFinalCheckout('DIGITAL', ref);
     };
+
+    async function initiatePayMongoCheckout(method) {
+        if (cart.length === 0 && !loadedOrderId) return;
+        
+        const methodUpper = method.toUpperCase() === 'PAYMAYA' ? 'MAYA' : method.toUpperCase();
+        const displayMethod = methodUpper === 'MAYA' ? 'Maya' : 'GCash';
+
+        // Prepare UI state
+        if (paymongoBadgeMethod) {
+            paymongoBadgeMethod.textContent = displayMethod;
+            paymongoBadgeMethod.style.background = methodUpper === 'MAYA' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(0, 122, 255, 0.2)';
+            paymongoBadgeMethod.style.color = methodUpper === 'MAYA' ? '#6ee7b7' : '#93c5fd';
+        }
+        if (paymongoModalTitle) paymongoModalTitle.textContent = `Scan to Pay via ${displayMethod}`;
+        if (paymongoPollStatusText) paymongoPollStatusText.textContent = `Awaiting customer payment confirmation on ${displayMethod}...`;
+        if (paymongoQrImg) {
+            paymongoQrImg.src = '';
+            paymongoQrImg.style.display = 'none';
+        }
+
+        try {
+            let targetOrderId = loadedOrderId;
+            let orderNumber = loadedOrderId ? loadedOrderNum.textContent : null;
+            let grossAmount = 0;
+
+            if (!targetOrderId) {
+                // 1. Create walk-in order first with UNPAID status
+                const payload = {
+                    table_source: 'Cashier Walk-in',
+                    payment_status: 'UNPAID',
+                    payment_method: methodUpper,
+                    payment_reference: null,
+                    cashier_id: activeCashierId,
+                    pos_session_id: currentSessionId,
+                    is_test: window.POS_CONFIG ? window.POS_CONFIG.is_test : 0,
+                    branch_id: window.POS_CONFIG ? window.POS_CONFIG.branch_id : 1,
+                    cart: cart.map(item => ({
+                        product_id: item.product.id,
+                        quantity: item.quantity,
+                        modifier_ids: item.modifiers.map(m => m.id)
+                    }))
+                };
+
+                const orderRes = await fetch('api/orders.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const orderData = await orderRes.json();
+                if (!orderData.success) {
+                    throw new Error(orderData.error || 'Failed to initialize order');
+                }
+                targetOrderId = orderData.order_id;
+                orderNumber = orderData.order_number;
+                grossAmount = orderData.gross_total || orderData.total_price;
+            } else {
+                grossAmount = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
+            }
+
+            // 2. Call payment_intent_create.php
+            const intentRes = await fetch('api/payment_intent_create.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: targetOrderId,
+                    method: method,
+                    shift_id: currentSessionId
+                })
+            });
+            const intentData = await intentRes.json();
+            if (!intentData.success) {
+                throw new Error(intentData.error || 'Failed to create payment intent');
+            }
+
+            // 3. Update PayMongo Modal
+            if (paymongoModalAmount) paymongoModalAmount.textContent = `₱${parseFloat(intentData.gross_amount || grossAmount).toFixed(2)}`;
+            if (paymongoQrImg) {
+                paymongoQrImg.src = intentData.qr_code_url;
+                paymongoQrImg.style.display = 'block';
+            }
+            if (paymongoCheckoutBtn) {
+                paymongoCheckoutBtn.href = intentData.checkout_url || '#';
+            }
+
+            // Show modal and hide selection modal
+            paymentModal.classList.remove('active');
+            paymongoModal.classList.add('active');
+
+            // 4. Start live polling
+            if (paymongoPollInterval) clearInterval(paymongoPollInterval);
+            paymongoPollInterval = setInterval(async () => {
+                try {
+                    const stRes = await fetch(`api/payment_status.php?order_id=${targetOrderId}`);
+                    const stData = await stRes.json();
+
+                    if (stData.success && stData.is_paid) {
+                        clearInterval(paymongoPollInterval);
+                        paymongoPollInterval = null;
+                        paymongoModal.classList.remove('active');
+
+                        showReceiptModal({
+                            orderNo: orderNumber || stData.order_number || ('ORD-' + targetOrderId),
+                            date: new Date().toLocaleDateString(),
+                            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            cashier: activeCashierName,
+                            shift_id: currentSessionId,
+                            items: cart,
+                            method: methodUpper,
+                            received: null,
+                            gross_total: grossAmount,
+                            net_payable: grossAmount,
+                            is_test: window.POS_CONFIG ? window.POS_CONFIG.is_test : false
+                        });
+
+                        clearLoadedOrder();
+                        fetchPendingOrders();
+                        fetchSalesSummary();
+                    }
+                } catch (pollErr) {
+                    console.error('Polling error:', pollErr);
+                }
+            }, 2000);
+
+        } catch (err) {
+            console.error(err);
+            showCustomAlert('Payment Initialization Error', err.message || 'Could not initiate PayMongo transaction.');
+        }
+    }
+
+    function stopPayMongoPolling() {
+        if (paymongoPollInterval) {
+            clearInterval(paymongoPollInterval);
+            paymongoPollInterval = null;
+        }
+        if (paymongoModal) paymongoModal.classList.remove('active');
+    }
+
+    if (btnClosePaymongo) btnClosePaymongo.onclick = stopPayMongoPolling;
+    if (btnCancelPaymongo) btnCancelPaymongo.onclick = stopPayMongoPolling;
 
     btnCloseRegister.onclick = () => cashRegisterModal.classList.remove('active');
 
