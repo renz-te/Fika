@@ -128,9 +128,7 @@ if (!in_array($action, ['VOID', 'REFUND']) || !$order_id || empty(trim($reason))
 }
 
 try {
-    $pdo->beginTransaction();
-
-    // Fetch Order
+    // 1. Fetch Order and Payment details outside transaction
     $stmtOrder = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
     $stmtOrder->execute([$order_id]);
     $order = $stmtOrder->fetch();
@@ -150,13 +148,111 @@ try {
     $payStmt->execute([$order_id]);
     $digitalPayment = $payStmt->fetch();
 
-    $isDigital = $digitalPayment || in_array(strtoupper($order['payment_method']), ['GCASH', 'PAYMAYA', 'MAYA', 'EWALLET', 'CARD']);
+    $isDigital = $digitalPayment || in_array(strtoupper((string)$order['payment_method']), ['GCASH', 'PAYMAYA', 'MAYA', 'EWALLET', 'CARD']);
 
-    // 1. Audit Log (recorded against original payment and shift)
+    // 2. If Digital Refund, call PayMongo Refunds API BEFORE starting DB transaction
+    if ($action === 'REFUND' && $isDigital) {
+        $paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') ? require __DIR__ . '/../../config/paymongo.php' : [];
+        $secKey = $paymongoConfig['secret_key'] ?? '';
+
+        if (empty($secKey)) {
+            $pdo->prepare("
+                INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+                VALUES (?, ?, 'REFUND_FAILED', ?, ?, NOW())
+            ")->execute([
+                $branch_id,
+                $order_id,
+                $supervisor['id'],
+                "Refund failed: Missing PayMongo secret key"
+            ]);
+
+            http_response_code(503);
+            echo json_encode(['success' => false, 'error' => 'PayMongo refund failed: Secret key not configured.']);
+            exit;
+        }
+
+        // Determine provider_payment_id (the pay_... ID)
+        $payId = $digitalPayment['provider_payment_id'] ?? null;
+        if (empty($payId) && !empty($digitalPayment['intent_id']) && str_starts_with($digitalPayment['intent_id'], 'pay_')) {
+            $payId = $digitalPayment['intent_id'];
+        }
+
+        if (empty($payId)) {
+            $pdo->prepare("
+                INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+                VALUES (?, ?, 'REFUND_FAILED', ?, ?, NOW())
+            ")->execute([
+                $branch_id,
+                $order_id,
+                $supervisor['id'],
+                "Refund failed: Missing provider_payment_id (pay_...)"
+            ]);
+
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'PayMongo refund failed: Missing provider_payment_id (pay_...) for this order.']);
+            exit;
+        }
+
+        $amountCents = (int)round((float)($digitalPayment['gross_amount'] ?? $order['total_price']) * 100);
+
+        // Call PayMongo Refunds API
+        $ch = curl_init('https://api.paymongo.com/v1/refunds');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+            'data' => [
+                'attributes' => [
+                    'amount'     => $amountCents,
+                    'payment_id' => $payId,
+                    'reason'     => 'requested_by_customer',
+                    'notes'      => $reason
+                ]
+            ]
+        ]));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Basic ' . base64_encode($secKey . ':')
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $apiResponse = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+
+        $decodedApi = json_decode((string)$apiResponse, true);
+
+        // Check HTTP status: PayMongo returns 200/201 on success
+        if ($curlErr || $httpCode < 200 || $httpCode >= 300) {
+            $errDetail = $decodedApi['errors'][0]['detail'] ?? ($curlErr ?: 'Gateway rejected refund request');
+            $logReason = "PayMongo API Error (HTTP {$httpCode}): {$errDetail}";
+
+            $pdo->prepare("
+                INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+                VALUES (?, ?, 'REFUND_FAILED', ?, ?, NOW())
+            ")->execute([
+                $branch_id,
+                $order_id,
+                $supervisor['id'],
+                $logReason
+            ]);
+
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'error'   => "PayMongo refund failed (HTTP {$httpCode}): {$errDetail}"
+            ]);
+            exit;
+        }
+    }
+
+    // 3. Database writes in a single atomic transaction ONLY AFTER PayMongo API call succeeds
+    $pdo->beginTransaction();
+
     $origShiftId = $digitalPayment ? $digitalPayment['shift_id'] : ($order['pos_session_id'] ?: 1);
     $auditNotes = $isDigital ? "Digital Refund (Shift #{$origShiftId}, Method: {$order['payment_method']})" : "Cash Drawer Void/Refund";
     
-    $stmtAudit = $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason) VALUES (?, ?, ?, ?, ?)");
+    $stmtAudit = $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
     $stmtAudit->execute([$branch_id, $order_id, $action, $supervisor['id'], $reason . " | " . $auditNotes]);
 
     if ($action === 'VOID') {
@@ -165,42 +261,12 @@ try {
         if ($digitalPayment) {
             $pdo->prepare("UPDATE payments SET status = 'failed' WHERE id = ?")->execute([$digitalPayment['id']]);
         }
-    } 
-    elseif ($action === 'REFUND') {
+    } elseif ($action === 'REFUND') {
         $stmtUpdate = $pdo->prepare("UPDATE orders SET order_status = 'REFUNDED' WHERE id = ?");
         $stmtUpdate->execute([$order_id]);
 
         if ($digitalPayment) {
-            // Update payments record to refunded (attributed to original shift)
             $pdo->prepare("UPDATE payments SET status = 'refunded' WHERE id = ?")->execute([$digitalPayment['id']]);
-
-            // Call PayMongo API refund if keys available
-            $paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') ? require __DIR__ . '/../../config/paymongo.php' : [];
-            $secKey = $paymongoConfig['secret_key'] ?? '';
-            $amountCents = (int)round((float)$order['total_price'] * 100);
-
-            if (!empty($secKey) && !empty($digitalPayment['intent_id'])) {
-                $ch = curl_init('https://api.paymongo.com/v1/refunds');
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-                    'data' => [
-                        'attributes' => [
-                            'amount' => $amountCents,
-                            'payment_id' => $digitalPayment['intent_id'],
-                            'reason' => 'requested_by_customer',
-                            'notes' => $reason
-                        ]
-                    ]
-                ]));
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'Content-Type: application/json',
-                    'Authorization: Basic ' . base64_encode($secKey . ':')
-                ]);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-                @curl_exec($ch);
-                @curl_close($ch);
-            }
         }
 
         // Revert Inventory Transactions
@@ -231,7 +297,7 @@ try {
                     
                     if ($inv) {
                         $updTrans = $pdo->prepare("INSERT INTO pos_inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
-                        $updTrans->execute([$branch_id, $r['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor_id]);
+                        $updTrans->execute([$branch_id, $r['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor['id']]);
                     }
                 }
                 
@@ -257,7 +323,7 @@ try {
                         
                         if ($inv) {
                             $updTrans = $pdo->prepare("INSERT INTO pos_inventory_transactions (branch_id, inventory_id, item_name, type, quantity, cost, unit_cost_snapshot, status, logged_by) VALUES (?, ?, ?, 'Restock', ?, ?, ?, 'Completed', ?)");
-                            $updTrans->execute([$branch_id, $mr['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor_id]);
+                            $updTrans->execute([$branch_id, $mr['inventory_id'], $inv['name'], $refundAmount, 0, $inv['unit_cost'], $supervisor['id']]);
                         }
                     }
                 }
@@ -282,6 +348,7 @@ try {
 } catch (\Exception $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
     // $pdo->rollBack() handles everything
+    http_response_code(400);
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 ?>
