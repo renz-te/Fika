@@ -18,6 +18,7 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <div class="p-6 max-w-7xl mx-auto space-y-6">
+    <input type="hidden" id="csrf-token" value="<?= h(csrf_token()) ?>">
 
     <!-- Tabs -->
     <div class="border-b border-slate-200">
@@ -195,6 +196,35 @@ require_once __DIR__ . '/includes/header.php';
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Selling Price (₱)</label>
                             <input type="number" min="0" step="0.01" onkeydown="return ['e', 'E', '-', '+'].includes(event.key) ? false : true" id="prod-price" required class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+                        </div>
+                    </div>
+
+                    <!-- Image Upload & Alt Section -->
+                    <div class="border-t border-slate-200 pt-4 mt-2">
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Item Image (Max 2MB)</label>
+                        <p class="text-xs text-slate-500 mb-2">Supported formats: JPG, PNG, WebP. Used in self-ordering kiosk.</p>
+                        
+                        <!-- Thumbnail Preview Area -->
+                        <div id="prod-image-preview-container" class="hidden mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <img id="prod-image-preview" src="" alt="Thumbnail preview" class="w-14 h-14 object-cover rounded-lg border border-slate-200 shadow-sm bg-white">
+                                <div>
+                                    <span id="prod-image-status" class="text-xs font-semibold text-slate-800 block">Current Image</span>
+                                    <span class="text-[11px] text-slate-400">1:1 Aspect Ratio</span>
+                                </div>
+                            </div>
+                            <button type="button" onclick="removeProductImage()" class="px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md border border-red-200 transition-colors">
+                                <i class="fa-solid fa-trash mr-1"></i> Remove
+                            </button>
+                        </div>
+                        <input type="hidden" id="prod-delete-image" value="0">
+
+                        <input type="file" id="prod-image" accept="image/jpeg,image/png,image/webp" onchange="previewSelectedImage(event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-300 rounded-lg p-1 bg-white">
+
+                        <div class="mt-3">
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Image Alt Text (Accessibility)</label>
+                            <input type="text" id="prod-image-alt" maxlength="160" placeholder="e.g. Iced Vanilla Latte in tall clear glass" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-1.5 text-xs border">
+                            <span class="text-[10px] text-slate-400">Max 160 characters. Recommended for screen readers & kiosk fallback.</span>
                         </div>
                     </div>
                     <div>
@@ -610,8 +640,16 @@ function renderProducts() {
     
     productsData.forEach(p => {
         const tr = document.createElement('tr');
+        const imgHtml = p.image_path ? `
+            <img src="../${escapeHtml(p.image_path.replace(/^\/+/, ''))}" alt="${escapeHtml(p.image_alt || p.name)}" class="w-10 h-10 object-cover rounded-lg border border-slate-200 flex-shrink-0" onerror="this.style.display='none'">
+        ` : `
+            <div class="w-10 h-10 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-mug-hot text-sm"></i></div>
+        `;
         tr.innerHTML = `
-            <td class="p-4 font-medium text-slate-900">${escapeHtml(p.name)}</td>
+            <td class="p-4 font-medium text-slate-900 flex items-center gap-3">
+                ${imgHtml}
+                <span>${escapeHtml(p.name)}</span>
+            </td>
             <td class="p-4"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-medium">${escapeHtml(p.category)}</span></td>
             <td class="p-4 font-medium text-slate-500">₱${parseFloat(p.calculated_cogs || 0).toFixed(2)}</td>
             <td class="p-4 font-medium text-slate-700">₱${parseFloat(p.price).toFixed(2)}</td>
@@ -700,6 +738,31 @@ async function calculateCOGS(type, id) {
     return 0;
 }
 
+function previewSelectedImage(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 2 * 1024 * 1024) {
+            alert('File size exceeds the 2 MB limit.');
+            e.target.value = '';
+            return;
+        }
+        const previewContainer = document.getElementById('prod-image-preview-container');
+        const previewImg = document.getElementById('prod-image-preview');
+        const statusText = document.getElementById('prod-image-status');
+        previewImg.src = URL.createObjectURL(file);
+        if (statusText) statusText.textContent = 'New Image Selected';
+        previewContainer.classList.remove('hidden');
+        document.getElementById('prod-delete-image').value = '0';
+    }
+}
+
+function removeProductImage() {
+    document.getElementById('prod-image').value = '';
+    document.getElementById('prod-image-preview').src = '';
+    document.getElementById('prod-image-preview-container').classList.add('hidden');
+    document.getElementById('prod-delete-image').value = '1';
+}
+
 function openProductModal() {
     document.getElementById('product-modal-title').textContent = 'Add Product';
     document.getElementById('prod-id').value = '';
@@ -707,6 +770,13 @@ function openProductModal() {
     document.getElementById('prod-category').value = 'Hot Beverage';
     document.getElementById('prod-cogs-display').textContent = '₱0.00';
     document.getElementById('prod-price').value = '';
+    
+    // Reset image fields
+    document.getElementById('prod-image').value = '';
+    document.getElementById('prod-image-alt').value = '';
+    document.getElementById('prod-delete-image').value = '0';
+    document.getElementById('prod-image-preview').src = '';
+    document.getElementById('prod-image-preview-container').classList.add('hidden');
     
     const list = document.getElementById('prod-cogs-breakdown');
     if (list) list.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-slate-500 text-sm italic">New product. No recipe mapped yet.</td></tr>';
@@ -728,6 +798,23 @@ async function editProduct(p) {
     document.getElementById('prod-name').value = p.name;
     document.getElementById('prod-category').value = p.category;
     document.getElementById('prod-price').value = p.price;
+    
+    // Image fields
+    document.getElementById('prod-image').value = '';
+    document.getElementById('prod-image-alt').value = p.image_alt || '';
+    document.getElementById('prod-delete-image').value = '0';
+    
+    const previewContainer = document.getElementById('prod-image-preview-container');
+    const previewImg = document.getElementById('prod-image-preview');
+    const statusText = document.getElementById('prod-image-status');
+    if (p.image_path) {
+        previewImg.src = '../' + p.image_path.replace(/^\/+/, '');
+        if (statusText) statusText.textContent = 'Current Image';
+        previewContainer.classList.remove('hidden');
+    } else {
+        previewImg.src = '';
+        previewContainer.classList.add('hidden');
+    }
     
     document.getElementById('prod-cogs-display').textContent = 'Calculating...';
     const cogs = await calculateCOGS('product', p.id);
@@ -780,22 +867,33 @@ async function saveProduct(e) {
     const checkboxes = document.querySelectorAll('input[name="prod-allowed-mods"]:checked');
     const allowed = Array.from(checkboxes).map(cb => cb.value);
     
-    const data = {
-        type: 'products',
-        action: id ? 'update' : 'create',
-        id: id,
-        name: document.getElementById('prod-name').value,
-        category: document.getElementById('prod-category').value,
-        price: document.getElementById('prod-price').value,
-        allowed_modifier_groups: allowed
-    };
+    const formData = new FormData();
+    formData.append('type', 'products');
+    formData.append('action', id ? 'update' : 'create');
+    if (id) formData.append('id', id);
+    formData.append('name', document.getElementById('prod-name').value);
+    formData.append('category', document.getElementById('prod-category').value);
+    formData.append('price', document.getElementById('prod-price').value);
+    formData.append('image_alt', document.getElementById('prod-image-alt').value);
+    formData.append('delete_image', document.getElementById('prod-delete-image').value);
     
-    const result = await sendCrudRequest(data);
-    closeProductModal();
-    await loadProducts();
+    allowed.forEach(val => {
+        formData.append('allowed_modifier_groups[]', val);
+    });
+
+    const fileInput = document.getElementById('prod-image');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        formData.append('image', fileInput.files[0]);
+    }
     
-    if (!id && result.success && result.id) {
-        openRecipeModal('product', result.id, document.getElementById('prod-name').value);
+    const result = await sendCrudRequest(formData);
+    if (result && result.success) {
+        closeProductModal();
+        await loadProducts();
+        
+        if (!id && result.id) {
+            openRecipeModal('product', result.id, document.getElementById('prod-name').value);
+        }
     }
 }
 
@@ -862,14 +960,24 @@ async function executeDelete() {
 
 async function sendCrudRequest(data) {
     try {
-        const res = await fetch('api/menu_crud.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
+        const csrfToken = document.getElementById('csrf-token')?.value || '';
+        let options = { method: 'POST' };
+
+        if (data instanceof FormData) {
+            if (!data.has('csrf_token')) {
+                data.append('csrf_token', csrfToken);
+            }
+            options.body = data;
+        } else {
+            data.csrf_token = csrfToken;
+            options.headers = { 'Content-Type': 'application/json' };
+            options.body = JSON.stringify(data);
+        }
+
+        const res = await fetch('api/menu_crud.php', options);
         const result = await res.json();
         if (!result.success) {
-            alert('Error: ' + result.error);
+            alert('Error: ' + (result.error || 'Operation failed'));
         }
         return result;
     } catch (e) {

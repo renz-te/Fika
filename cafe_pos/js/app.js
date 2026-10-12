@@ -112,6 +112,47 @@ document.addEventListener('DOMContentLoaded', () => {
         renderProducts();
     }
 
+    function getCategoryIcon(category) {
+        switch ((category || '').toLowerCase()) {
+            case 'hot beverage':
+                return 'coffee';
+            case 'cold beverage':
+                return 'cup-soda';
+            case 'pastries':
+                return 'cake';
+            case 'specials':
+                return 'sparkles';
+            default:
+                return 'mug-hot';
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    window.handleImgError = function(imgEl, category) {
+        const wrap = imgEl.parentElement;
+        if (wrap) {
+            const icon = getCategoryIcon(category);
+            wrap.innerHTML = `
+                <div class="product-card-placeholder">
+                    <i data-lucide="${icon}"></i>
+                    <span>${escapeHtml(category || 'Item')}</span>
+                </div>
+            `;
+            if (window.lucide && typeof lucide.createIcons === 'function') {
+                lucide.createIcons();
+            }
+        }
+    };
+
     function renderProducts() {
         let products = [];
         if (currentCategory === 'All') {
@@ -121,16 +162,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         gridEl.innerHTML = '';
 
-        products.forEach(p => {
+        products.forEach((p, index) => {
             const card = document.createElement('div');
             card.className = 'product-card';
+            
+            // Fixed aspect-ratio image container with lazy loading
+            let mediaHtml = '';
+            const isBelowTheFold = index >= 6;
+            const loadingAttr = isBelowTheFold ? 'loading="lazy"' : 'loading="eager"';
+
+            if (p.image_path) {
+                const cleanPath = p.image_path.replace(/^\/+/, '');
+                const imgSrc = cleanPath.startsWith('uploads/') ? '../' + cleanPath : (cleanPath.startsWith('../') ? cleanPath : '../' + cleanPath);
+                const altText = escapeHtml(p.image_alt || p.name);
+                
+                mediaHtml = `
+                    <div class="product-card-img-wrap">
+                        <img src="${imgSrc}" alt="${altText}" class="product-card-img" ${loadingAttr} onerror="handleImgError(this, '${escapeHtml(p.category)}')">
+                    </div>
+                `;
+            } else {
+                const categoryIcon = getCategoryIcon(p.category);
+                mediaHtml = `
+                    <div class="product-card-img-wrap">
+                        <div class="product-card-placeholder">
+                            <i data-lucide="${categoryIcon}"></i>
+                            <span>${escapeHtml(p.category)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
             card.innerHTML = `
-                <h3>${p.name}</h3>
-                <div class="price">₱${parseFloat(p.price).toFixed(2)}</div>
+                ${mediaHtml}
+                <div class="product-card-info">
+                    <h3>${escapeHtml(p.name)}</h3>
+                    <div class="price">₱${parseFloat(p.price).toFixed(2)}</div>
+                </div>
             `;
             card.onclick = () => openModifierModal(p);
             gridEl.appendChild(card);
         });
+
+        // Initialize icons for placeholders
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+            lucide.createIcons();
+        }
     }
 
     // --- Modal Logic ---

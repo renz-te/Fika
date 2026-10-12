@@ -2,6 +2,7 @@ vendor/
 
 config.php
 *.sql
+!migrations/*.sql
 .env
 cafe_hrms/uploads/
 uploads/menu/*
