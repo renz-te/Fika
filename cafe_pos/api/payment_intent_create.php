@@ -197,6 +197,16 @@ try {
         $grossDecimal
     ]);
 
+    // Audit Log on Intent Creation
+    $pdo->prepare("
+        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+        VALUES (?, ?, 'INTENT_CREATED', NULL, ?, NOW())
+    ")->execute([
+        (int)$order['branch_id'],
+        $orderId,
+        "Payment intent created: {$intentId} for Order #{$order['order_number']} via " . strtoupper($selectedMethod) . " (" . number_format($grossDecimal, 2) . " PHP)"
+    ]);
+
     echo json_encode([
         'success'      => true,
         'order_id'     => $orderId,

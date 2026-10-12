@@ -17,15 +17,52 @@ if (!$input || !isset($input['cart']) || !is_array($input['cart'])) {
     exit;
 }
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $cart = $input['cart'];
 $table_source = $input['table_source'] ?? null;
-$payment_status = isset($input['payment_status']) && $input['payment_status'] === 'PAID' ? 'PAID' : 'UNPAID';
-$payment_method = $input['payment_method'] ?? 'CASH';
-$payment_reference = $input['payment_reference'] ?? null;
 $pos_session_id = $input['pos_session_id'] ?? null;
 $cashier_id = $input['cashier_id'] ?? null;
 $is_test = isset($input['is_test']) ? (int)$input['is_test'] : 0;
 $branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
+
+// Authenticate Cashier Session
+$isCashierSession = false;
+if (!empty($_SESSION['user']) && in_array($_SESSION['user']['role'] ?? '', ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'])) {
+    $isCashierSession = true;
+    if (!$cashier_id && !empty($_SESSION['user']['id'])) {
+        $cashier_id = (int)$_SESSION['user']['id'];
+    }
+} elseif (!empty($cashier_id)) {
+    try {
+        $stmtCashier = $pdo->prepare("
+            SELECT u.id, u.name, r.name as role 
+            FROM hrms.users u 
+            JOIN hrms.roles r ON u.role_id = r.id 
+            WHERE u.id = ? AND r.name IN ('Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
+        ");
+        $stmtCashier->execute([$cashier_id]);
+        if ($stmtCashier->fetch()) {
+            $isCashierSession = true;
+        }
+    } catch (Exception $e) {}
+}
+
+$cleanMethod = strtoupper(trim((string)($input['payment_method'] ?? 'CASH')));
+
+// Trust boundary: Accept payment_status='PAID' only when payment_method is CASH AND caller is an authenticated cashier session.
+// For GCASH/MAYA/CARD/DIGITAL: Always create and keep the order UNPAID. PAID is set only by payment_webhook.php.
+$clientPaymentStatus = strtoupper(trim((string)($input['payment_status'] ?? 'UNPAID')));
+if ($cleanMethod === 'CASH' && $isCashierSession && $clientPaymentStatus === 'PAID') {
+    $payment_status = 'PAID';
+} else {
+    $payment_status = 'UNPAID';
+}
+
+$payment_method = $cleanMethod;
+$payment_reference = null; // Strip manual digital reference entirely
 
 $cashier_name = null;
 if ($cashier_id) {
@@ -158,6 +195,17 @@ try {
             }
         }
     }
+
+    // 4. Audit Log on Order Creation
+    $pdo->prepare("
+        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+        VALUES (?, ?, 'ORDER_CREATED', ?, ?, NOW())
+    ")->execute([
+        $branch_id,
+        $order_id,
+        $cashier_id ?: null,
+        "Order #{$order_number} created with total " . number_format($total_price, 2) . " PHP [Method: {$payment_method}, Status: {$payment_status}]"
+    ]);
 
     $pdo->commit();
 

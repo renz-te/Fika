@@ -361,6 +361,16 @@ try {
     ");
     $updOrder->execute([$formattedMethod, $intentId, $orderId]);
 
+    // Audit Log on Payment Confirm
+    $pdo->prepare("
+        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+        VALUES (?, ?, 'PAYMENT_CONFIRMED', NULL, ?, NOW())
+    ")->execute([
+        (int)$lockedOrder['branch_id'],
+        $orderId,
+        "Payment confirmed via PayMongo webhook ({$eventType}): {$intentId} [Method: " . strtoupper($method) . ", Amount: " . number_format($grossDecimal, 2) . " PHP]"
+    ]);
+
     // Inventory Deduction: Ensure that inventory deduction runs ONLY on the pending -> paid transition
     if ($wasPending && empty($lockedOrder['is_test'])) {
         $branchId = (int)$lockedOrder['branch_id'];

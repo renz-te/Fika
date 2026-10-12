@@ -16,14 +16,51 @@ if (!isset($input['order_id']) || !isset($input['cart'])) {
     exit;
 }
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $order_id = $input['order_id'];
 $cart = $input['cart'];
-$payment_method = $input['payment_method'] ?? 'CASH';
-$payment_reference = $input['payment_reference'] ?? null;
 $pos_session_id = $input['pos_session_id'] ?? null;
 $cashier_id = $input['cashier_id'] ?? null;
 $is_test = isset($input['is_test']) ? (int)$input['is_test'] : 0;
 $branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
+
+// Authenticate Cashier Session
+$isCashierSession = false;
+if (!empty($_SESSION['user']) && in_array($_SESSION['user']['role'] ?? '', ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'])) {
+    $isCashierSession = true;
+    if (!$cashier_id && !empty($_SESSION['user']['id'])) {
+        $cashier_id = (int)$_SESSION['user']['id'];
+    }
+} elseif (!empty($cashier_id)) {
+    try {
+        $stmtCashier = $pdo->prepare("
+            SELECT u.id, u.name, r.name as role 
+            FROM hrms.users u 
+            JOIN hrms.roles r ON u.role_id = r.id 
+            WHERE u.id = ? AND r.name IN ('Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
+        ");
+        $stmtCashier->execute([$cashier_id]);
+        if ($stmtCashier->fetch()) {
+            $isCashierSession = true;
+        }
+    } catch (Exception $e) {}
+}
+
+$cleanMethod = strtoupper(trim((string)($input['payment_method'] ?? 'CASH')));
+
+// Trust boundary: Accept payment_status='PAID' only when payment_method is CASH AND caller is an authenticated cashier session.
+// For GCASH/MAYA/CARD/DIGITAL: Always create and keep the order UNPAID. PAID is set only by payment_webhook.php.
+if ($cleanMethod === 'CASH' && $isCashierSession) {
+    $payment_status = 'PAID';
+} else {
+    $payment_status = 'UNPAID';
+}
+
+$payment_method = $cleanMethod;
+$payment_reference = null; // Strip manual digital reference entirely
 
 $cashier_name = null;
 if ($cashier_id) {
@@ -101,8 +138,8 @@ try {
     $order_number = $stmtNum->fetchColumn() ?: 'UNKNOWN';
 
     // Update order header
-    $stmt = $pdo->prepare("UPDATE orders SET total_price = ?, vat_amount = ?, discount_amount = ?, payment_status = 'PAID', payment_method = ?, payment_reference = ?, pos_session_id = ?, cashier_id = ?, cashier_name = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?");
-    $stmt->execute([$total_price, $vat_amount, $discount_amount, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $order_id]);
+    $stmt = $pdo->prepare("UPDATE orders SET total_price = ?, vat_amount = ?, discount_amount = ?, payment_status = ?, payment_method = ?, payment_reference = ?, pos_session_id = ?, cashier_id = ?, cashier_name = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?");
+    $stmt->execute([$total_price, $vat_amount, $discount_amount, $payment_status, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $order_id]);
 
     // --- Inventory: Restore old stock ---
     if (!$is_test) {
@@ -175,6 +212,17 @@ try {
             }
         }
     }
+
+    // Audit Log on Order Update
+    $pdo->prepare("
+        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+        VALUES (?, ?, 'ORDER_UPDATED', ?, ?, NOW())
+    ")->execute([
+        $branch_id,
+        $order_id,
+        $cashier_id ?: null,
+        "Order #{$order_number} payment processed [Method: {$payment_method}, Status: {$payment_status}]"
+    ]);
 
     $pdo->commit();
     echo json_encode([
