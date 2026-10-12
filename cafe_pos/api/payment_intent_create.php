@@ -2,24 +2,43 @@
 header('Content-Type: application/json');
 require_once __DIR__ . '/../database.php';
 
-// Load PayMongo config
-$paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') 
-    ? require __DIR__ . '/../../config/paymongo.php' 
-    : [
-        'secret_key' => getenv('PAYMONGO_SECRET_KEY') ?: '',
-        'public_key' => getenv('PAYMONGO_PUBLIC_KEY') ?: '',
-        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: '',
-        'is_test' => true
-    ];
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            static $cache = [];
+            $envFile = dirname(__DIR__, 2) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        if (getenv($k) === false && !isset($_ENV[$k]) && !isset($_SERVER[$k])) {
+                            putenv("{$k}={$v}");
+                            $_ENV[$k] = $v;
+                            $_SERVER[$k] = $v;
+                        }
+                    }
+                }
+            }
+            [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+            if (!isset($cache[$file])) {
+                $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+                $cache[$file] = file_exists($path) ? require $path : [];
+            }
+            if ($item === null) return $cache[$file] ?? $default;
+            return $cache[$file][$item] ?? $default;
+        }
+    }
+}
 
-$secretKey = (string)($paymongoConfig['secret_key'] ?? '');
-
+$secretKey = Config::get('paymongo.secret_key');
 if (empty($secretKey)) {
     http_response_code(503);
-    echo json_encode([
-        'success' => false,
-        'error'   => 'Service Unavailable: PayMongo secret key is not configured'
-    ]);
+    echo json_encode(['error' => 'Service unavailable: payment gateway not configured.']);
     exit;
 }
 
@@ -100,82 +119,23 @@ try {
         throw new Exception("Order total must be greater than zero for digital payment.");
     }
 
-    $secretKey = $paymongoConfig['secret_key'];
     $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    $currentUri = $_SERVER['REQUEST_URI'] ?? '';
-    $subPath = '';
-    if (preg_match('#^(.*?)/cafe_pos/#', $currentUri, $m)) {
-        $subPath = $m[1];
-    }
-    $kioskUrl = $baseUrl . $subPath . '/cafe_pos/kiosk.php';
+    $method  = $selectedMethod;
 
-    // 4. Request PayMongo Checkout Session
-    $payload = [
-        'data' => [
-            'attributes' => [
-                'send_email_receipt' => false,
-                'show_description'   => false,
-                'show_line_items'    => true,
-                'line_items' => [
-                    [
-                        'currency' => 'PHP',
-                        'amount'   => $amountInCents,
-                        'name'     => 'Slow Hours Cafe - Order #' . $order['order_number'],
-                        'quantity' => 1
-                    ]
-                ],
-                'payment_method_types' => [$selectedMethod],
-                'reference_number'     => $order['order_number'],
-                'description'          => "Payment for Order #{$order['order_number']} via " . strtoupper($selectedMethod),
-                'metadata' => [
-                    'order_id' => (string)$order['id'],
-                    'shift_id' => (string)$shiftId,
-                    'method'   => $selectedMethod,
-                    'branch_id'=> (string)$order['branch_id']
-                ],
-                'success_url' => $kioskUrl . '?payment=success&order_id=' . $order['id'],
-                'cancel_url'  => $kioskUrl . '?payment=cancel&order_id=' . $order['id']
-            ]
-        ]
-    ];
-
-    $intentId = null;
-    $checkoutUrl = null;
-
-    $ch = curl_init('https://api.paymongo.com/v1/checkout_sessions');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Basic ' . base64_encode($secretKey . ':')
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    $responseData = json_decode($response, true);
-
-    $isTest = !empty($paymongoConfig['is_test']);
-
-    if ($httpCode >= 200 && $httpCode < 300 && isset($responseData['data']['id'])) {
-        $intentId = $responseData['data']['id'];
-        $checkoutUrl = $responseData['data']['attributes']['checkout_url'] ?? null;
-    } elseif ($isTest) {
-        // Explicit test mode only: generate compliant mock test intent and checkout URL
-        $intentId = 'cs_test_' . bin2hex(random_bytes(16));
-        $checkoutUrl = $kioskUrl . '?payment=mock_checkout&intent_id=' . $intentId . '&order_id=' . $order['id'] . '&method=' . $selectedMethod;
+    if (Config::get('paymongo.is_test') === true) {
+        $intentId    = 'cs_test_' . bin2hex(random_bytes(16));
+        $subPath     = '';
+        if (preg_match('#^(.*?)/cafe_pos/#', $_SERVER['REQUEST_URI'] ?? '', $m)) {
+            $subPath = $m[1];
+        }
+        $checkoutUrl = $baseUrl . $subPath
+                     . "/cafe_pos/kiosk.php?payment=mock_checkout"
+                     . "&intent_id={$intentId}&order_id={$orderId}&method={$method}";
     } else {
-        // Production/Live mode: PayMongo API call failed -> Return HTTP 502 Bad Gateway and do NOT insert pending row
-        $errDetail = $responseData['errors'][0]['detail'] ?? ($curlErr ?: 'Failed to create checkout session with PayMongo gateway');
+        // Real PayMongo API call goes here.
+        // If not yet implemented, return 502 so nothing silently falls through.
         http_response_code(502);
-        echo json_encode([
-            'success' => false,
-            'error'   => "Bad Gateway: PayMongo API call failed: {$errDetail}"
-        ]);
+        echo json_encode(['error' => 'Live payment gateway not yet wired.']);
         exit;
     }
 

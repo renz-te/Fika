@@ -2,19 +2,43 @@
 header('Content-Type: application/json');
 require_once __DIR__ . '/../database.php';
 
-// Load PayMongo configuration
-$paymongoConfig = file_exists(__DIR__ . '/../../config/paymongo.php') 
-    ? require __DIR__ . '/../../config/paymongo.php' 
-    : [
-        'webhook_secret' => getenv('PAYMONGO_WEBHOOK_SECRET') ?: '',
-        'is_test' => true
-    ];
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            static $cache = [];
+            $envFile = dirname(__DIR__, 2) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        if (getenv($k) === false && !isset($_ENV[$k]) && !isset($_SERVER[$k])) {
+                            putenv("{$k}={$v}");
+                            $_ENV[$k] = $v;
+                            $_SERVER[$k] = $v;
+                        }
+                    }
+                }
+            }
+            [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+            if (!isset($cache[$file])) {
+                $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+                $cache[$file] = file_exists($path) ? require $path : [];
+            }
+            if ($item === null) return $cache[$file] ?? $default;
+            return $cache[$file][$item] ?? $default;
+        }
+    }
+}
 
-$webhookSecret = (string)($paymongoConfig['webhook_secret'] ?? '');
-
+$webhookSecret = Config::get('paymongo.webhook_secret');
 if (empty($webhookSecret)) {
     http_response_code(503);
-    echo json_encode(['error' => 'Service Unavailable: PayMongo webhook secret is not configured']);
+    echo json_encode(['error' => 'Service unavailable: webhook secret not configured.']);
     exit;
 }
 
