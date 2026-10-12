@@ -18,41 +18,107 @@ $reason = $input['reason'] ?? '';
 
 $pin = $input['pin'] ?? $input['supervisor_pin'] ?? null;
 
-// Authenticate supervisor by PIN or supervisor_id
+// Per-IP Rate Limiting (max 5 failed attempts per 10 minutes)
+$clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$ipHash = md5($clientIp);
+$rateLimitFile = sys_get_temp_dir() . '/pin_auth_limit_' . $ipHash . '.json';
+
+$maxAttempts = 5;
+$decaySeconds = 600; // 10 minutes
+$now = time();
+
+$attempts = [];
+if (file_exists($rateLimitFile)) {
+    $rawAttempts = @file_get_contents($rateLimitFile);
+    $data = json_decode((string)$rawAttempts, true);
+    if (is_array($data)) {
+        $attempts = array_filter($data, function($timestamp) use ($now, $decaySeconds) {
+            return ($now - $timestamp) < $decaySeconds;
+        });
+    }
+}
+
+if (count($attempts) >= $maxAttempts) {
+    http_response_code(429);
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Too many failed authorization attempts. Please try again after 10 minutes.'
+    ]);
+    exit;
+}
+
+// Authenticate supervisor strictly by PIN via password_verify()
 $supervisor = null;
 if (!empty($pin)) {
-    // Check users and roles for matching PIN or password
-    $supQuery = "
-        SELECT u.id, u.username, u.password, u.role_id, u.branch_id, r.name as role 
-        FROM hrms.users u 
-        JOIN hrms.roles r ON u.role_id = r.id 
-        WHERE r.name IN ('Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
-    ";
-    $supUsers = $pdo->query($supQuery)->fetchAll();
-    foreach ($supUsers as $su) {
-        if ($pin === '1234' || password_verify((string)$pin, $su['password'])) {
+    if ($supervisor_id) {
+        $stmtSup = $pdo->prepare("
+            SELECT u.id, u.username, u.password, u.role_id, u.branch_id, r.name as role 
+            FROM hrms.users u 
+            JOIN hrms.roles r ON u.role_id = r.id 
+            WHERE u.id = ? AND r.name IN ('Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
+        ");
+        $stmtSup->execute([$supervisor_id]);
+        $su = $stmtSup->fetch();
+        if ($su && password_verify((string)$pin, $su['password'])) {
             $supervisor = $su;
-            $supervisor_id = $su['id'];
-            break;
+        }
+    } else {
+        $supStmt = $pdo->prepare("
+            SELECT u.id, u.username, u.password, u.role_id, u.branch_id, r.name as role 
+            FROM hrms.users u 
+            JOIN hrms.roles r ON u.role_id = r.id 
+            WHERE r.name IN ('Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
+        ");
+        $supStmt->execute();
+        $supUsers = $supStmt->fetchAll();
+        foreach ($supUsers as $su) {
+            if (password_verify((string)$pin, $su['password'])) {
+                $supervisor = $su;
+                $supervisor_id = $su['id'];
+                break;
+            }
         }
     }
 }
 
-if (!$supervisor && $supervisor_id) {
-    $stmtSup = $pdo->prepare("
-        SELECT u.id, u.username, u.password, u.role_id, u.branch_id, r.name as role 
-        FROM hrms.users u 
-        JOIN hrms.roles r ON u.role_id = r.id 
-        WHERE u.id = ?
-    ");
-    $stmtSup->execute([$supervisor_id]);
-    $supervisor = $stmtSup->fetch();
-}
-
 if (!$supervisor || !in_array($supervisor['role'], ['Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'])) {
+    // 1. Record failed attempt for rate limiting
+    $attempts[] = $now;
+    @file_put_contents($rateLimitFile, json_encode(array_values($attempts)));
+
+    // 2. Audit Log on failed PIN attempt (never log the submitted PIN!)
+    $auditBranchId = 1;
+    if ($order_id) {
+        $bStmt = $pdo->prepare("SELECT branch_id FROM orders WHERE id = ?");
+        $bStmt->execute([$order_id]);
+        $foundBranch = $bStmt->fetchColumn();
+        if ($foundBranch) {
+            $auditBranchId = (int)$foundBranch;
+        }
+    }
+
+    try {
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'AUTH_FAIL', ?, ?, NOW())
+        ")->execute([
+            $auditBranchId,
+            $order_id ?: null,
+            $supervisor_id ?: null,
+            'Failed supervisor authorization attempt'
+        ]);
+    } catch (\Throwable $e) {
+        // Suppress audit log failure to guarantee 403 response
+    }
+
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Supervisor authorization required. Invalid or missing supervisor PIN.']);
     exit;
+}
+
+// On successful authentication, reset rate limit attempts
+if (file_exists($rateLimitFile)) {
+    @unlink($rateLimitFile);
 }
 
 if (!in_array($action, ['VOID', 'REFUND']) || !$order_id || empty(trim($reason))) {
