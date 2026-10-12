@@ -306,7 +306,11 @@ require_once __DIR__ . '/includes/header.php';
                                 $badge = $method === 'CASH' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
                             ?>
                                 <tr class="hover:bg-slate-50">
-                                    <td class="px-4 py-3 font-medium text-indigo-600">#<?= h($rec['order_number']) ?></td>
+                                    <td class="px-4 py-3 font-medium text-indigo-600">
+                                        <a href="../cafe_pos/receipt.php?id=<?= (int)$rec['id'] ?>&reprint=1" target="_blank" class="hover:underline inline-flex items-center gap-1">
+                                            <i class="fa-solid fa-print text-xs text-slate-400"></i> #<?= h($rec['order_number']) ?>
+                                        </a>
+                                    </td>
                                     <td class="px-4 py-3 text-slate-500 text-xs"><?php echo date('M d, Y', strtotime($rec['created_at'])); ?></td>
                                     <td class="px-4 py-3 text-slate-500 text-xs"><?= $time ?></td>
                                     <td class="px-4 py-3">

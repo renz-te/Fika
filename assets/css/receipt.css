@@ -1,0 +1,283 @@
+/* ==========================================================================
+   Thermal Receipt Stylesheet (58mm BIR Compliant)
+   DO NOT USE FLEXBOX for print alignment - thermal print engines & webviews
+   require fixed-width tables and inline-blocks for amount alignment.
+   ========================================================================== */
+
+@page {
+    size: 58mm auto;
+    margin: 2mm;
+}
+
+.receipt-container {
+    width: 100%;
+    max-width: 380px;
+    margin: 0 auto;
+    background: #ffffff;
+    color: #000000;
+    font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace;
+    font-size: 12px;
+    line-height: 1.25;
+    padding: 12px 10px;
+    box-sizing: border-box;
+}
+
+/* Header & Text Utilities */
+.receipt-header {
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.receipt-title {
+    font-size: 15px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin: 0 0 2px 0;
+    line-height: 1.2;
+}
+
+.receipt-subtitle {
+    font-size: 11px;
+    margin: 1px 0;
+    line-height: 1.2;
+}
+
+.receipt-tin {
+    font-size: 11px;
+    font-weight: bold;
+    margin: 2px 0 0 0;
+}
+
+/* Dynamic Markers (Reprint, Void, Training) */
+.receipt-marker-box {
+    text-align: center;
+    margin: 6px 0;
+    padding: 3px 0;
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.receipt-marker-reprint {
+    letter-spacing: 2px;
+}
+
+.receipt-marker-void {
+    letter-spacing: 1px;
+}
+
+.receipt-marker-training {
+    letter-spacing: 1px;
+}
+
+.receipt-void-details {
+    font-size: 10px;
+    margin-top: 2px;
+    font-weight: normal;
+    text-align: left;
+}
+
+/* Dashed Separators */
+.receipt-divider {
+    border: none;
+    border-top: 1px dashed #000000;
+    margin: 6px 0;
+}
+
+.receipt-divider-double {
+    border: none;
+    border-top: 1px double #000000;
+    margin: 6px 0;
+}
+
+/* Fixed-width metadata table */
+.receipt-meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 11px;
+}
+
+.receipt-meta-table td {
+    padding: 1px 0;
+    vertical-align: top;
+}
+
+.receipt-meta-left {
+    text-align: left;
+    width: 50%;
+}
+
+.receipt-meta-right {
+    text-align: right;
+    width: 50%;
+}
+
+/* Line Items Table */
+.receipt-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 11px;
+}
+
+.receipt-items-table th {
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    padding: 4px 0;
+    font-weight: bold;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.receipt-items-table td {
+    padding: 2px 0;
+    vertical-align: top;
+}
+
+.receipt-col-item {
+    text-align: left;
+    width: 55%;
+}
+
+.receipt-col-qty {
+    text-align: center;
+    width: 15%;
+}
+
+.receipt-col-amt {
+    text-align: right;
+    width: 30%;
+    white-space: nowrap;
+}
+
+.receipt-item-formula {
+    font-size: 10px;
+    color: #222;
+    padding-left: 4px;
+}
+
+.receipt-item-mod {
+    font-size: 10px;
+    font-style: italic;
+    padding-left: 6px;
+}
+
+.receipt-item-voided {
+    text-decoration: line-through;
+}
+
+/* Summary / Financials Table */
+.receipt-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 11px;
+}
+
+.receipt-summary-table td {
+    padding: 2px 0;
+}
+
+.receipt-summary-label {
+    text-align: left;
+    width: 60%;
+}
+
+.receipt-summary-val {
+    text-align: right;
+    width: 40%;
+    white-space: nowrap;
+}
+
+.receipt-total-row td {
+    border-top: 1px dashed #000;
+    border-bottom: 1px dashed #000;
+    padding: 4px 0;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+/* Footer & BIR Statutory Notice */
+.receipt-footer {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 11px;
+}
+
+.receipt-notice {
+    font-weight: bold;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    margin: 6px 0 3px 0;
+}
+
+.receipt-thanks {
+    margin: 2px 0;
+    font-size: 10px;
+}
+
+/* ==========================================================================
+   PRINT MEDIA RULES (58mm Thermal Output)
+   ========================================================================== */
+@media print {
+    html, body {
+        width: 58mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+    }
+
+    body * {
+        visibility: hidden !important;
+    }
+
+    #receipt-modal,
+    #receipt-modal * {
+        visibility: visible !important;
+    }
+
+    #receipt-modal {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 58mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        display: block !important;
+    }
+
+    .modal-overlay {
+        background: none !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    .modal-content {
+        box-shadow: none !important;
+        border: none !important;
+        width: 58mm !important;
+        max-width: 58mm !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: #ffffff !important;
+    }
+
+    .receipt-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 1mm !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        font-size: 11px !important;
+    }
+
+    .receipt-btn-container,
+    #btn-close-receipt,
+    .no-print {
+        display: none !important;
+    }
+}

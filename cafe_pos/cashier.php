@@ -18,6 +18,7 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : ($_SESSION['u
     <title>Cafe POS - Cashier Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="assets/css/receipt.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
         window.POS_CONFIG = {
@@ -285,75 +286,10 @@ $branch_id = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : ($_SESSION['u
     </div>
 
     <!-- Receipt Modal -->
-    <div class="modal-overlay" id="receipt-modal" style="z-index: 2005;">
-        <div class="modal-content" style="background: white; color: black; max-width: 400px; padding: 0; font-family: 'Courier New', Courier, monospace; border-radius: 0; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="padding: 32px 24px;">
-                <div style="text-align: center; margin-bottom: 24px;">
-                    <h2 style="font-size: 24px; font-weight: bold; margin-bottom: 8px;"><?= htmlspecialchars(get_setting($pdo, 'company_name', 'Slow Hours')) ?></h2>
-                    <p style="font-size: 14px; color: #555;">Bayan, Dasmarinas City, Cavite</p>
-                    <p style="font-size: 14px; color: #555;">Tel: (555) 123-4567</p>
-                </div>
-                
-                <div style="border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 12px 0; margin-bottom: 16px; font-size: 14px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>Order #: <strong id="receipt-order-no"></strong></span>
-                        <span id="receipt-date"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span>Cashier: <span id="receipt-cashier"></span></span>
-                        <span id="receipt-time"></span>
-                    </div>
-                </div>
-
-                <table style="width: 100%; font-size: 14px; margin-bottom: 16px; border-collapse: collapse;">
-                    <thead>
-                        <tr style="border-bottom: 1px solid #eee;">
-                            <th style="text-align: left; padding-bottom: 8px; width: 60%;">Item</th>
-                            <th style="text-align: center; padding-bottom: 8px; width: 15%;">Qty</th>
-                            <th style="text-align: right; padding-bottom: 8px; width: 25%;">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody id="receipt-items">
-                        <!-- Items injected by JS -->
-                    </tbody>
-                </table>
-
-                <div style="border-top: 1px dashed #ccc; padding-top: 16px; font-size: 14px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span>Subtotal</span>
-                        <span id="receipt-subtotal"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                        <span id="receipt-vat-label">VAT (12%)</span>
-                        <span id="receipt-vat"></span>
-                    </div>
-                    <div id="receipt-discount-container" style="display: none; justify-content: space-between; margin-bottom: 4px; color: #e74c3c;">
-                        <span>Discount Applied</span>
-                        <span id="receipt-discount"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 18px; font-weight: bold;">
-                        <span>TOTAL</span>
-                        <span id="receipt-total"></span>
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #555;">
-                        <span id="receipt-tender-label">Cash Received</span>
-                        <span id="receipt-tender"></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; color: #555;">
-                        <span>Change</span>
-                        <span id="receipt-change"></span>
-                    </div>
-                </div>
-                
-                <div style="text-align: center; margin-top: 32px; font-size: 14px; color: #555;">
-                    <p style="margin-bottom: 8px;">Thank you for your visit!</p>
-                </div>
-            </div>
-            
-            <button class="add-to-cart-btn" id="btn-close-receipt" style="width: 100%; border-radius: 0; padding: 16px; background: #2ecc71; font-weight: bold; text-transform: uppercase;">Print & New Order</button>
-        </div>
-    </div>
+    <?php
+    $receipt_button_text = 'Print & New Order';
+    include __DIR__ . '/partials/receipt.php';
+    ?>
 
     <script src="js/cashier.js?v=<?php echo time(); ?>"></script>
     <script>

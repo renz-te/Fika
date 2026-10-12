@@ -463,6 +463,21 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('receipt-date').textContent = now.toLocaleDateString();
         document.getElementById('receipt-time').textContent = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
+        const cashierElem = document.getElementById('receipt-cashier');
+        if (cashierElem) cashierElem.textContent = 'Kiosk Self-Service';
+
+        const shiftElem = document.getElementById('receipt-shift-id');
+        if (shiftElem) shiftElem.textContent = 'KIOSK-01';
+
+        const stationElem = document.getElementById('receipt-station-type');
+        if (stationElem) stationElem.textContent = 'KIOSK';
+
+        const trainingMarker = document.getElementById('receipt-marker-training');
+        if (trainingMarker) {
+            const isTest = window.POS_CONFIG ? window.POS_CONFIG.is_test : false;
+            trainingMarker.style.display = isTest ? 'block' : 'none';
+        }
+
         const tbody = document.getElementById('receipt-items');
         tbody.innerHTML = '';
         
@@ -475,61 +490,89 @@ document.addEventListener('DOMContentLoaded', () => {
             const product = allProducts.find(p => p.id == item.product_id);
             if (!product) return;
             
-            let itemSubtotal = parseFloat(product.price);
+            let itemUnitPrice = parseFloat(product.price);
             let modNames = [];
             
             if (item.modifier_ids && item.modifier_ids.length > 0) {
                 item.modifier_ids.forEach(mid => {
                     const mod = menuData.modifiers.find(m => m.id == mid);
                     if (mod) {
-                        itemSubtotal += parseFloat(mod.price_adjustment);
+                        itemUnitPrice += parseFloat(mod.price_adjustment);
                         modNames.push(mod.name);
                     }
                 });
             }
             
-            const price = itemSubtotal * item.quantity;
+            const price = itemUnitPrice * item.quantity;
             subtotal += price;
             
             const isVoided = item.quantity < 0;
             
             let html = `
-                <td style="padding-bottom: 8px; ${isVoided ? 'text-decoration: line-through; color: #e74c3c;' : ''}">
+                <td class="receipt-col-item ${isVoided ? 'receipt-item-voided' : ''}">
                     <div>${isVoided ? '[VOID] ' : ''}${product.name}</div>
+                    <div class="receipt-item-formula">${item.quantity} x ₱${itemUnitPrice.toFixed(2)} = ₱${price.toFixed(2)}</div>
             `;
             if (modNames.length > 0) {
-                html += `<div style="font-size: 11px; color: ${isVoided ? '#e74c3c' : '#777'};">+ ${modNames.join(', ')}</div>`;
+                html += `<div class="receipt-item-mod">+ ${modNames.join(', ')}</div>`;
             }
             html += `</td>
-                <td style="text-align: center; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">${item.quantity}</td>
-                <td style="text-align: right; padding-bottom: 8px; ${isVoided ? 'color: #e74c3c;' : ''}">₱${price.toFixed(2)}</td>
+                <td class="receipt-col-qty ${isVoided ? 'receipt-item-voided' : ''}">${item.quantity}</td>
+                <td class="receipt-col-amt ${isVoided ? 'receipt-item-voided' : ''}">₱${price.toFixed(2)}</td>
             `;
             tr.innerHTML = html;
             tbody.appendChild(tr);
         });
 
-        document.getElementById('receipt-subtotal').textContent = '₱' + (serverData ? serverData.gross_total : subtotal).toFixed(2);
+        const gross = serverData && serverData.gross_total !== undefined ? Number(serverData.gross_total) : subtotal;
+        document.getElementById('receipt-subtotal').textContent = '₱' + gross.toFixed(2);
         
-        const vat = serverData && serverData.vat_amount !== undefined ? serverData.vat_amount : (subtotal * 0.12);
-        if (vat > 0) {
-            document.getElementById('receipt-vat-label').textContent = 'VAT (12%)';
-            document.getElementById('receipt-vat').textContent = '₱' + vat.toFixed(2);
-        } else {
-            document.getElementById('receipt-vat-label').textContent = 'VAT (Exempt)';
-            document.getElementById('receipt-vat').textContent = '₱0.00';
+        const discount = (serverData && Number(serverData.discount_amount)) || 0;
+        const discountRow = document.getElementById('receipt-discount-row');
+        const discountElem = document.getElementById('receipt-discount');
+        if (discountRow && discountElem) {
+            if (discount > 0) {
+                discountRow.style.display = 'table-row';
+                discountElem.textContent = '-₱' + discount.toFixed(2);
+            } else {
+                discountRow.style.display = 'none';
+            }
         }
         
-        if (serverData && serverData.discount_amount > 0) {
-            document.getElementById('receipt-discount-container').style.display = 'flex';
-            document.getElementById('receipt-discount').textContent = '-₱' + serverData.discount_amount.toFixed(2);
-        } else {
-            document.getElementById('receipt-discount-container').style.display = 'none';
-        }
-        
-        const total = serverData && serverData.net_payable !== undefined ? serverData.net_payable : subtotal;
+        const total = serverData && serverData.net_payable !== undefined ? Number(serverData.net_payable) : (gross - discount);
         document.getElementById('receipt-total').textContent = '₱' + total.toFixed(2);
-        
-        document.getElementById('receipt-tender').textContent = '₱' + total.toFixed(2);
+
+        // BIR VAT Breakdown
+        let vatable = 0;
+        let vatAmount = 0;
+        let vatExempt = 0;
+        let zeroRated = 0;
+
+        if (serverData && serverData.vat_amount !== undefined && Number(serverData.vat_amount) > 0) {
+            vatAmount = Number(serverData.vat_amount);
+            vatable = total - vatAmount;
+        } else if (serverData && (serverData.discount_type === 'SENIOR' || serverData.discount_type === 'PWD')) {
+            vatExempt = total;
+        } else {
+            vatable = total / 1.12;
+            vatAmount = total - vatable;
+        }
+
+        const vatableElem = document.getElementById('receipt-vatable');
+        if (vatableElem) vatableElem.textContent = '₱' + vatable.toFixed(2);
+        const vatElem = document.getElementById('receipt-vat');
+        if (vatElem) vatElem.textContent = '₱' + vatAmount.toFixed(2);
+        const vatExemptElem = document.getElementById('receipt-vat-exempt');
+        if (vatExemptElem) vatExemptElem.textContent = '₱' + vatExempt.toFixed(2);
+        const zeroRatedElem = document.getElementById('receipt-zero-rated');
+        if (zeroRatedElem) zeroRatedElem.textContent = '₱' + zeroRated.toFixed(2);
+
+        const tenderLabel = document.getElementById('receipt-tender-label');
+        if (tenderLabel) tenderLabel.textContent = 'Paid (Digital Ref)';
+        const tenderElem = document.getElementById('receipt-tender');
+        if (tenderElem) tenderElem.textContent = '₱' + total.toFixed(2);
+        const changeRow = document.getElementById('receipt-change-row');
+        if (changeRow) changeRow.style.display = 'none';
         
         document.getElementById('receipt-modal').classList.add('active');
     }

@@ -615,28 +615,5 @@ body {
     overflow-y: hidden;
 }
 
-@media print {
-    body * {
-        visibility: hidden;
-    }
-    #receipt-modal, #receipt-modal * {
-        visibility: visible;
-    }
-    #receipt-modal {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        background: white;
-    }
-    .modal-content {
-        box-shadow: none !important;
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-    #btn-close-receipt {
-        display: none !important;
-    }
-}
+/* Print styling is handled by assets/css/receipt.css */
+

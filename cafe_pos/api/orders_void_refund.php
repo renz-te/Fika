@@ -140,7 +140,14 @@ try {
     $pdo->commit();
     // $pdo commit handles everything
 
-    echo json_encode(['success' => true, 'message' => "Order {$order['order_number']} successfully {$action}ED."]);
+    echo json_encode([
+        'success' => true,
+        'message' => "Order {$order['order_number']} successfully {$action}ED.",
+        'order_id' => $order['id'],
+        'order_number' => $order['order_number'],
+        'action' => $action,
+        'reason' => $reason
+    ]);
 
 } catch (\Exception $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }

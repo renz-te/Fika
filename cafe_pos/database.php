@@ -14,6 +14,14 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
+    // If running in environment where orders is in cafe_pos database
+    $tableCheck = $pdo->query("SHOW TABLES LIKE 'orders'")->fetch();
+    if (!$tableCheck) {
+        $dbCheck = $pdo->query("SHOW DATABASES LIKE 'cafe_pos'")->fetch();
+        if ($dbCheck) {
+            $pdo = new PDO("mysql:host=$host;dbname=cafe_pos;charset=$charset", $user, $pass, $options);
+        }
+    }
 } catch (\PDOException $e) {
     // If database doesn't exist, try connecting without db name to create it
     if ($e->getCode() == 1049) {
