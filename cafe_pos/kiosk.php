@@ -1,5 +1,50 @@
 <?php
 if (isset($_GET['payment']) && $_GET['payment'] === 'mock_checkout') {
+    if (!class_exists('Config')) {
+        class Config {
+            public static function get(string $key, mixed $default = null): mixed {
+                $envFile = dirname(__DIR__) . '/.env';
+                if (file_exists($envFile)) {
+                    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                    foreach ($lines as $line) {
+                        $line = trim($line);
+                        if ($line === '' || str_starts_with($line, '#')) continue;
+                        if (str_contains($line, '=')) {
+                            [$k, $v] = explode('=', $line, 2);
+                            $k = trim($k);
+                            $v = trim($v, " \t\n\r\0\x0B\"'");
+                            putenv("{$k}={$v}");
+                            $_ENV[$k] = $v;
+                            $_SERVER[$k] = $v;
+                        }
+                    }
+                }
+                [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+                $path = dirname(__DIR__) . '/config/' . $file . '.php';
+                $config = file_exists($path) ? require $path : [];
+                if ($item === null) return $config ?? $default;
+                return $config[$item] ?? $default;
+            }
+        }
+    }
+
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    $isTestMode = Config::get('paymongo.is_test') === true;
+    $isCashierOrManager = !empty($_SESSION['user']) && in_array(
+        $_SESSION['user']['role'] ?? '',
+        ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'],
+        true
+    );
+
+    if (!$isTestMode || !$isCashierOrManager) {
+        http_response_code(404);
+        echo "404 Not Found";
+        exit;
+    }
+
     require_once __DIR__ . '/database.php';
     $paymongoConfig = require __DIR__ . '/../config/paymongo.php';
     $orderId = (int)($_GET['order_id'] ?? 0);

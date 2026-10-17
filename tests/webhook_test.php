@@ -16,16 +16,35 @@ require_once __DIR__ . '/../cafe_pos/database.php';
 $baseUrl = getenv('FIKA_BASE_URL') ?: 'http://localhost/Fika/Fika';
 $webhookUrl = rtrim($baseUrl, '/') . '/cafe_pos/api/payment_webhook.php';
 
-$webhookSecret = getenv('PAYMONGO_WEBHOOK_SECRET');
-if (empty($webhookSecret)) {
-    $configPath = __DIR__ . '/../config/paymongo.php';
-    if (file_exists($configPath)) {
-        $cfg = require $configPath;
-        $webhookSecret = $cfg['webhook_secret'] ?? 'whk_test_xxyz1234';
-    } else {
-        $webhookSecret = 'whk_test_xxyz1234';
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            $envFile = dirname(__DIR__) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
+                    }
+                }
+            }
+            [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+            $path = dirname(__DIR__) . '/config/' . $file . '.php';
+            $config = file_exists($path) ? require $path : [];
+            if ($item === null) return $config ?? $default;
+            return $config[$item] ?? $default;
+        }
     }
 }
+
+$webhookSecret = Config::get('paymongo.webhook_secret') ?: getenv('PAYMONGO_WEBHOOK_SECRET') ?: 'whk_test_xxyz1234';
 
 // 2. Global State & Tracking
 $failures = 0;
@@ -94,6 +113,55 @@ function loadFixture(string $fixturesDir, string $fixtureName, int $orderId, str
 }
 
 /**
+ * Perform generic HTTP request.
+ */
+function sendHttpRequest(string $url, string $method = 'GET', array|string $postFields = [], array $headers = [], ?string $cookie = null): array {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+    }
+    if (!empty($headers)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    }
+    if ($cookie !== null) {
+        curl_setopt($ch, CURLOPT_COOKIE, $cookie);
+    }
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    return [
+        'code' => $httpCode,
+        'body' => (string)$response,
+        'json' => json_decode((string)$response, true),
+        'error' => $curlError
+    ];
+}
+
+$createdSessionFiles = [];
+
+/**
+ * Create a session in PHP session save path with given user payload.
+ */
+function createSessionWithUser(?array $userData): string {
+    global $createdSessionFiles;
+    $sessId = bin2hex(random_bytes(16));
+    $savePath = session_save_path() ?: sys_get_temp_dir();
+    $sessFile = rtrim($savePath, '/\\') . '/sess_' . $sessId;
+    if ($userData !== null) {
+        file_put_contents($sessFile, 'user|' . serialize($userData));
+    } else {
+        file_put_contents($sessFile, '');
+    }
+    $createdSessionFiles[] = $sessFile;
+    return $sessId;
+}
+
+/**
  * Record test result.
  */
 function recordResult(int $caseNum, string $description, bool $passed, bool $expectedFail = false, ?array $debug = null): bool {
@@ -115,6 +183,26 @@ function recordResult(int $caseNum, string $description, bool $passed, bool $exp
     $failures++;
     return false;
 }
+
+$envFilePath = dirname(__DIR__) . '/.env';
+
+$setTestMode = function(?bool $isTest) use ($envFilePath) {
+    $current = file_exists($envFilePath) ? file_get_contents($envFilePath) : '';
+    $lines = explode("\n", $current);
+    $filtered = array_values(array_filter($lines, fn($l) => !str_starts_with(trim($l), 'PAYMONGO_IS_TEST=')));
+    if ($isTest !== null) {
+        $filtered[] = 'PAYMONGO_IS_TEST=' . ($isTest ? 'true' : 'false');
+    }
+    file_put_contents($envFilePath, rtrim(implode("\n", $filtered)) . "\n");
+    if ($isTest !== null) {
+        putenv('PAYMONGO_IS_TEST=' . ($isTest ? 'true' : 'false'));
+        $_ENV['PAYMONGO_IS_TEST'] = ($isTest ? 'true' : 'false');
+        $_SERVER['PAYMONGO_IS_TEST'] = ($isTest ? 'true' : 'false');
+    } else {
+        putenv('PAYMONGO_IS_TEST');
+        unset($_ENV['PAYMONGO_IS_TEST'], $_SERVER['PAYMONGO_IS_TEST']);
+    }
+};
 
 try {
     // 3. Setup: Test Session, Inventory Item, Stock, Product & Recipe
@@ -282,10 +370,185 @@ try {
     $case6Pass = ($resCase6['code'] >= 400) && ($orderStatusCase6 !== 'PAID');
     recordResult(6, "missing amount -> rejected, order not paid", $case6Pass, true);
 
+    // =========================================================================
+    // SUB-PHASE H1: Fake-Payment Hole Security Tests
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // CASE 7: is_test=false -> GET to mock URL returns 404 (with & without cashier session)
+    // -------------------------------------------------------------------------
+    $setTestMode(false);
+    $intentCase7 = 'pi_whk_c7_' . uniqid();
+    $orderCase7 = $createTestOrder($intentCase7, 150.00);
+    $mockUrlCase7 = rtrim($baseUrl, '/') . "/cafe_pos/kiosk.php?payment=mock_checkout&order_id={$orderCase7}&intent_id={$intentCase7}&method=gcash";
+
+    $resCase7Unauth = sendHttpRequest($mockUrlCase7, 'GET');
+
+    $cashierSessionId7 = createSessionWithUser([
+        'id' => 1,
+        'username' => 'cashier_test',
+        'name' => 'Cashier Test User',
+        'role' => 'Cashier',
+        'branch_id' => 1
+    ]);
+    $cashierCookie7 = "PHPSESSID={$cashierSessionId7}";
+    $resCase7Cashier = sendHttpRequest($mockUrlCase7, 'GET', [], [], $cashierCookie7);
+
+    $case7Pass = ($resCase7Unauth['code'] === 404) && ($resCase7Cashier['code'] === 404);
+    recordResult(7, "is_test=false -> GET to mock URL returns 404 (unauthenticated & cashier session)", $case7Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 8: is_test=false -> POST to mock URL returns 404, order remains UNPAID
+    // -------------------------------------------------------------------------
+    $resCase8Unauth = sendHttpRequest($mockUrlCase7, 'POST', ['authorize_mock_payment' => '1']);
+    $resCase8Cashier = sendHttpRequest($mockUrlCase7, 'POST', ['authorize_mock_payment' => '1'], [], $cashierCookie7);
+
+    $stmtCheckOrder8 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder8->execute([$orderCase7]);
+    $orderStatusCase8 = $stmtCheckOrder8->fetchColumn();
+
+    $case8Pass = ($resCase8Unauth['code'] === 404) && ($resCase8Cashier['code'] === 404) && ($orderStatusCase8 === 'UNPAID');
+    recordResult(8, "is_test=false -> POST to mock URL returns 404, order remains UNPAID", $case8Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 9: is_test=false -> Webhook carrying mock ID rejected (400) + audit row
+    // -------------------------------------------------------------------------
+    $intentCase9 = 'cs_test_mock_intent_' . uniqid();
+    $orderCase9 = $createTestOrder($intentCase9, 150.00);
+    $mockEventId = 'evt_mock_' . bin2hex(random_bytes(12));
+    $mockPayId = 'pay_mock_' . bin2hex(random_bytes(12));
+    $mockSrcId = 'src_mock_' . bin2hex(random_bytes(10));
+
+    $payloadCase9 = json_encode([
+        'data' => [
+            'id' => $mockEventId,
+            'type' => 'event',
+            'attributes' => [
+                'type' => 'payment.paid',
+                'livemode' => false,
+                'data' => [
+                    'id' => $mockPayId,
+                    'type' => 'payment',
+                    'attributes' => [
+                        'amount' => 15000,
+                        'fee' => 0,
+                        'net_amount' => 15000,
+                        'currency' => 'PHP',
+                        'status' => 'paid',
+                        'source' => [
+                            'id' => $mockSrcId,
+                            'type' => 'gcash'
+                        ],
+                        'payment_intent_id' => $intentCase9,
+                        'metadata' => [
+                            'order_id' => (string)$orderCase9,
+                            'shift_id' => (string)$testShiftId,
+                            'method' => 'gcash',
+                            'branch_id' => '1'
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]);
+    $sigCase9 = computeSignature($payloadCase9, $webhookSecret);
+    $resCase9 = sendWebhook($webhookUrl, $payloadCase9, $sigCase9);
+
+    $stmtCheckOrder9 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder9->execute([$orderCase9]);
+    $orderStatusCase9 = $stmtCheckOrder9->fetchColumn();
+
+    $stmtCheckAudit9 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'MOCK_PAYMENT_REJECTED'");
+    $stmtCheckAudit9->execute([$orderCase9]);
+    $auditRowCount9 = (int)$stmtCheckAudit9->fetchColumn();
+
+    $case9Pass = ($resCase9['code'] === 400) && ($orderStatusCase9 !== 'PAID') && ($auditRowCount9 > 0);
+    recordResult(9, "is_test=false -> validly signed webhook with mock id rejected (400) + MOCK_PAYMENT_REJECTED audit row", $case9Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 10: is_test=true WITHOUT cashier session or unauthorized role -> 404
+    // -------------------------------------------------------------------------
+    $setTestMode(true);
+    $intentCase10 = 'cs_test_c10_' . uniqid();
+    $orderCase10 = $createTestOrder($intentCase10, 150.00);
+    $mockUrlCase10 = rtrim($baseUrl, '/') . "/cafe_pos/kiosk.php?payment=mock_checkout&order_id={$orderCase10}&intent_id={$intentCase10}&method=gcash";
+
+    $resCase10NoSession = sendHttpRequest($mockUrlCase10, 'GET');
+
+    $baristaSessionId = createSessionWithUser([
+        'id' => 99,
+        'username' => 'barista_test',
+        'name' => 'Barista User',
+        'role' => 'Barista',
+        'branch_id' => 1
+    ]);
+    $baristaCookie = "PHPSESSID={$baristaSessionId}";
+    $resCase10BaristaGet = sendHttpRequest($mockUrlCase10, 'GET', [], [], $baristaCookie);
+    $resCase10BaristaPost = sendHttpRequest($mockUrlCase10, 'POST', ['authorize_mock_payment' => '1'], [], $baristaCookie);
+
+    $stmtCheckOrder10 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder10->execute([$orderCase10]);
+    $orderStatusCase10 = $stmtCheckOrder10->fetchColumn();
+
+    $case10Pass = ($resCase10NoSession['code'] === 404)
+        && ($resCase10BaristaGet['code'] === 404)
+        && ($resCase10BaristaPost['code'] === 404)
+        && ($orderStatusCase10 === 'UNPAID');
+    recordResult(10, "is_test=true without cashier session or unauthorized role -> returns 404, order unpaid", $case10Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 11: is_test=true AND logged-in real Cashier session -> mock flow works, order PAID
+    // -------------------------------------------------------------------------
+    $intentCase11 = 'cs_test_c11_' . uniqid();
+    $orderCase11 = $createTestOrder($intentCase11, 150.00);
+    $mockUrlCase11 = rtrim($baseUrl, '/') . "/cafe_pos/kiosk.php?payment=mock_checkout&order_id={$orderCase11}&intent_id={$intentCase11}&method=gcash";
+
+    $realCashierSessId = createSessionWithUser([
+        'id' => 1,
+        'username' => 'cashier_user',
+        'name' => 'Real Cashier User',
+        'role' => 'Cashier',
+        'branch_id' => 1
+    ]);
+    $realCashierCookie = "PHPSESSID={$realCashierSessId}";
+
+    // GET mock checkout page
+    $resCase11Get = sendHttpRequest($mockUrlCase11, 'GET', [], [], $realCashierCookie);
+    $getPageOk = ($resCase11Get['code'] === 200) && (str_contains($resCase11Get['body'], 'PayMongo Simulation') || str_contains($resCase11Get['body'], 'Test Sandbox'));
+
+    // POST authorize_mock_payment
+    $resCase11Post = sendHttpRequest($mockUrlCase11, 'POST', ['authorize_mock_payment' => '1'], [], $realCashierCookie);
+    $postPageOk = ($resCase11Post['code'] === 200);
+
+    $stmtCheckOrder11 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder11->execute([$orderCase11]);
+    $orderStatusCase11 = $stmtCheckOrder11->fetchColumn();
+
+    $stmtCheckPay11 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ?");
+    $stmtCheckPay11->execute([$orderCase11]);
+    $payStatusCase11 = $stmtCheckPay11->fetchColumn();
+
+    $case11Pass = $getPageOk && $postPageOk && ($orderStatusCase11 === 'PAID') && ($payStatusCase11 === 'paid');
+    recordResult(11, "is_test=true AND real Cashier session -> mock flow works, 200 OK, order marked PAID", $case11Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 12: is_test=false -> payment_intent_create returns 502 error
+    // -------------------------------------------------------------------------
+    $setTestMode(false);
+    $orderCase12 = $createTestOrder('pi_whk_c12_' . uniqid(), 150.00);
+    $intentCreateUrl = rtrim($baseUrl, '/') . '/cafe_pos/api/payment_intent_create.php';
+    $resCase12 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase12, 'method' => 'gcash']), ['Content-Type: application/json']);
+
+    $case12Pass = ($resCase12['code'] === 502)
+        && isset($resCase12['json']['success']) && $resCase12['json']['success'] === false;
+    recordResult(12, "is_test=false -> payment_intent_create returns 502 error", $case12Pass);
+
 } catch (Throwable $t) {
     echo "ERROR during test execution: " . $t->getMessage() . "\n";
     $failures++;
 } finally {
+    // Restore environment
+    $setTestMode(null);
     // 4. Cleanup: Remove all test seeded data
     if (!empty($createdOrderIds)) {
         $inOrders = implode(',', array_map('intval', $createdOrderIds));
@@ -312,6 +575,14 @@ try {
     if (!empty($createdSessionIds)) {
         $inSess = implode(',', array_map('intval', $createdSessionIds));
         $pdo->exec("DELETE FROM pos_sessions WHERE id IN ({$inSess})");
+    }
+
+    if (!empty($createdSessionFiles)) {
+        foreach ($createdSessionFiles as $sf) {
+            if (file_exists($sf)) {
+                @unlink($sf);
+            }
+        }
     }
 }
 

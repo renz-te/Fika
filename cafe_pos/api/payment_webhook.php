@@ -16,21 +16,17 @@ if (!class_exists('Config')) {
                         [$k, $v] = explode('=', $line, 2);
                         $k = trim($k);
                         $v = trim($v, " \t\n\r\0\x0B\"'");
-                        if (getenv($k) === false && !isset($_ENV[$k]) && !isset($_SERVER[$k])) {
-                            putenv("{$k}={$v}");
-                            $_ENV[$k] = $v;
-                            $_SERVER[$k] = $v;
-                        }
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
                     }
                 }
             }
             [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
-            if (!isset($cache[$file])) {
-                $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
-                $cache[$file] = file_exists($path) ? require $path : [];
-            }
-            if ($item === null) return $cache[$file] ?? $default;
-            return $cache[$file][$item] ?? $default;
+            $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+            $config = file_exists($path) ? require $path : [];
+            if ($item === null) return $config ?? $default;
+            return $config[$item] ?? $default;
         }
     }
 }
@@ -108,6 +104,67 @@ if (!empty($innerAttr['payments'][0]['id'])) {
     $providerPaymentId = $innerAttr['payments'][0]['id'];
 } elseif (is_string($innerData['id']) && str_starts_with($innerData['id'], 'pay_')) {
     $providerPaymentId = $innerData['id'];
+}
+
+// 2b. Gate Mock Identifiers in Live Mode
+$isTestMode = Config::get('paymongo.is_test') === true;
+if (!$isTestMode) {
+    $mockPrefixes = ['evt_mock_', 'pay_mock_', 'src_mock_', 'cs_test_'];
+    $idsToCheck = array_filter([
+        $eventData['id'] ?? null,
+        $innerData['id'] ?? null,
+        $providerPaymentId,
+        $intentId,
+        $innerAttr['payment_intent_id'] ?? null,
+        $innerAttr['source']['id'] ?? null,
+        $innerAttr['payments'][0]['id'] ?? null,
+        $innerAttr['payments'][0]['attributes']['payment_intent_id'] ?? null,
+        $innerAttr['payments'][0]['attributes']['source']['id'] ?? null,
+    ], 'is_string');
+
+    $matchedMockId = null;
+    foreach ($idsToCheck as $id) {
+        foreach ($mockPrefixes as $prefix) {
+            if (str_starts_with($id, $prefix)) {
+                $matchedMockId = $id;
+                break 2;
+            }
+        }
+    }
+
+    if ($matchedMockId !== null) {
+        // Ensure audit log is persisted outside of any active transaction
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
+
+        $branchId = 1;
+        if ($orderId > 0) {
+            $bStmt = $pdo->prepare("SELECT branch_id FROM orders WHERE id = ?");
+            $bStmt->execute([$orderId]);
+            $b = $bStmt->fetchColumn();
+            if ($b !== false && $b !== null) {
+                $branchId = (int)$b;
+            }
+        }
+
+        $stmtAudit = $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'MOCK_PAYMENT_REJECTED', NULL, ?, NOW())
+        ");
+        $stmtAudit->execute([
+            $branchId,
+            $orderId,
+            "Mock payment identifier '{$matchedMockId}' rejected: live mode is active."
+        ]);
+
+        http_response_code(400);
+        echo json_encode([
+            'error' => 'Mock payment identifiers are prohibited in live mode.',
+            'rejected_id' => $matchedMockId
+        ]);
+        exit;
+    }
 }
 
 // Extract amount and fees in centavos

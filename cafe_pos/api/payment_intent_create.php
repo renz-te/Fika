@@ -16,21 +16,17 @@ if (!class_exists('Config')) {
                         [$k, $v] = explode('=', $line, 2);
                         $k = trim($k);
                         $v = trim($v, " \t\n\r\0\x0B\"'");
-                        if (getenv($k) === false && !isset($_ENV[$k]) && !isset($_SERVER[$k])) {
-                            putenv("{$k}={$v}");
-                            $_ENV[$k] = $v;
-                            $_SERVER[$k] = $v;
-                        }
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
                     }
                 }
             }
             [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
-            if (!isset($cache[$file])) {
-                $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
-                $cache[$file] = file_exists($path) ? require $path : [];
-            }
-            if ($item === null) return $cache[$file] ?? $default;
-            return $cache[$file][$item] ?? $default;
+            $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+            $config = file_exists($path) ? require $path : [];
+            if ($item === null) return $config ?? $default;
+            return $config[$item] ?? $default;
         }
     }
 }
@@ -135,7 +131,7 @@ try {
         // Real PayMongo API call goes here.
         // If not yet implemented, return 502 so nothing silently falls through.
         http_response_code(502);
-        echo json_encode(['error' => 'Live payment gateway not yet wired.']);
+        echo json_encode(['success' => false, 'error' => 'Live payment gateway not yet wired.']);
         exit;
     }
 
