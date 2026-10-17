@@ -34,7 +34,7 @@ if (!class_exists('Config')) {
 $secretKey = Config::get('paymongo.secret_key');
 if (empty($secretKey)) {
     http_response_code(503);
-    echo json_encode(['error' => 'Service unavailable: payment gateway not configured.']);
+    echo json_encode(['success' => false, 'error' => 'Service unavailable: payment gateway not configured.']);
     exit;
 }
 
@@ -49,6 +49,30 @@ if (!$input) {
     $input = $_POST;
 }
 
+// 1. Authentication Check: Staff session OR Kiosk token
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$isStaffSession = !empty($_SESSION['user']) && in_array(
+    $_SESSION['user']['role'] ?? '',
+    ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'],
+    true
+);
+
+$kioskToken = trim((string)(
+    $_SERVER['HTTP_X_KIOSK_TOKEN'] 
+    ?? $input['kiosk_token'] 
+    ?? $_GET['kiosk_token'] 
+    ?? ''
+));
+
+if (!$isStaffSession && empty($kioskToken)) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized: authentication required.']);
+    exit;
+}
+
 $orderId = isset($input['order_id']) ? (int)$input['order_id'] : 0;
 if ($orderId <= 0) {
     http_response_code(400);
@@ -56,7 +80,7 @@ if ($orderId <= 0) {
     exit;
 }
 
-$rawMethod = strtolower(trim($input['method'] ?? 'gcash'));
+$rawMethod = strtolower(trim((string)($input['method'] ?? 'gcash')));
 $allowedMethods = [
     'gcash'    => 'gcash',
     'paymaya'  => 'paymaya',
@@ -66,55 +90,110 @@ $allowedMethods = [
 $selectedMethod = $allowedMethods[$rawMethod] ?? 'gcash';
 
 try {
-    // 1. Fetch order details
-    $orderStmt = $pdo->prepare("SELECT id, order_number, total_price, branch_id, payment_status, pos_session_id, is_test FROM orders WHERE id = ?");
+    // 2. Fetch order details
+    $orderStmt = $pdo->prepare("SELECT id, order_number, total_price, branch_id, payment_status, order_status, pos_session_id, is_test FROM orders WHERE id = ?");
     $orderStmt->execute([$orderId]);
     $order = $orderStmt->fetch();
 
     if (!$order) {
-        throw new Exception("Order #{$orderId} not found.");
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Order not found.']);
+        exit;
     }
 
-    if ($order['payment_status'] === 'PAID') {
-        throw new Exception("Order #{$orderId} has already been marked as PAID.");
-    }
+    // 3. Authorization Check: Branch scoping for staff, or token hash match for kiosk
+    if ($isStaffSession) {
+        $staffBranchId = (int)($_SESSION['user']['branch_id'] ?? 0);
+        if ($staffBranchId > 0 && (int)$order['branch_id'] !== $staffBranchId) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Forbidden: order belongs to another branch.']);
+            exit;
+        }
+    } else {
+        // Kiosk token must match THIS order
+        $stmtToken = $pdo->prepare("SELECT token_hash FROM order_kiosk_tokens WHERE order_id = ? ORDER BY id DESC LIMIT 1");
+        $stmtToken->execute([$orderId]);
+        $storedHash = $stmtToken->fetchColumn();
 
-    // 2. Shift Attribution: lock shift_id at intent creation time
-    $shiftId = isset($input['shift_id']) ? (int)$input['shift_id'] : 0;
-    if ($shiftId <= 0) {
-        // Find active open session
-        $shiftQuery = $pdo->query("SELECT id FROM pos_sessions WHERE status = 'OPEN' ORDER BY opened_at DESC LIMIT 1");
-        $activeShift = $shiftQuery->fetch();
-        if ($activeShift) {
-            $shiftId = (int)$activeShift['id'];
-        } else {
-            // Fallback to cash_sessions or order's pos_session_id or default 1
-            $cashQuery = $pdo->query("SELECT id FROM cash_sessions WHERE status = 'OPEN' ORDER BY opened_at DESC LIMIT 1");
-            $activeCash = $cashQuery->fetch();
-            $shiftId = $activeCash ? (int)$activeCash['id'] : ((int)($order['pos_session_id'] ?: 1));
+        $providedHash = hash('sha256', $kioskToken);
+        if (!$storedHash || !hash_equals($storedHash, $providedHash)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Forbidden: invalid kiosk token for this order.']);
+            exit;
         }
     }
 
-    // Ensure session exists in pos_sessions for foreign key integrity
-    $checkPosSess = $pdo->prepare("SELECT id FROM pos_sessions WHERE id = ?");
-    $checkPosSess->execute([$shiftId]);
-    if (!$checkPosSess->fetch()) {
-        $pdo->prepare("INSERT IGNORE INTO pos_sessions (id, branch_id, cashier_id, status) VALUES (?, ?, 1, 'OPEN')")
-            ->execute([$shiftId, $order['branch_id']]);
+    // 4. Order Status Validation: must be UNPAID and not VOIDED
+    if (strtoupper((string)$order['payment_status']) === 'PAID') {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'error' => 'Order has already been marked as PAID.']);
+        exit;
     }
 
-    // Associate shift with order
+    if (in_array(strtoupper((string)($order['order_status'] ?? '')), ['VOID', 'VOIDED', 'REFUNDED'], true)) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'error' => 'Order has been voided.']);
+        exit;
+    }
+
+    // 5. Rate Limiting: max 10 intent creations per order per 10 minutes
+    $stmtRate = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM order_audit_logs 
+        WHERE order_id = ? 
+          AND action = 'INTENT_CREATED' 
+          AND created_at >= (NOW() - INTERVAL 10 MINUTE)
+    ");
+    $stmtRate->execute([$orderId]);
+    if ((int)$stmtRate->fetchColumn() >= 10) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'error' => 'Too many payment requests for this order. Please try again later.']);
+        exit;
+    }
+
+    // 6. Server-side Shift Derivation: Ignore client-supplied shift_id; must be OPEN session of same branch
+    $stmtShift = $pdo->prepare("
+        SELECT id 
+        FROM pos_sessions 
+        WHERE branch_id = ? AND status = 'OPEN' 
+        ORDER BY opened_at DESC 
+        LIMIT 1
+    ");
+    $stmtShift->execute([(int)$order['branch_id']]);
+    $openShift = $stmtShift->fetch();
+
+    if (!$openShift) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'error' => 'No active shift is open for this branch.']);
+        exit;
+    }
+    $shiftId = (int)$openShift['id'];
+
+    // Associate shift and method with order
     $updOrderShift = $pdo->prepare("UPDATE orders SET pos_session_id = ?, payment_method = ? WHERE id = ?");
     $updOrderShift->execute([$shiftId, strtoupper($selectedMethod), $orderId]);
 
-    // 3. Amount calculation in integer centavos
+    // 7. Amount calculation in integer centavos
     $grossDecimal = (float)$order['total_price'];
     $amountInCents = (int)round($grossDecimal * 100);
 
     if ($amountInCents <= 0) {
-        throw new Exception("Order total must be greater than zero for digital payment.");
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Order total must be greater than zero for digital payment.']);
+        exit;
     }
 
+    // 8. Rate Limit Audit Persistence (Trap 3): Record INTENT_CREATED BEFORE external API / simulation attempt
+    $pdo->prepare("
+        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+        VALUES (?, ?, 'INTENT_CREATED', NULL, ?, NOW())
+    ")->execute([
+        (int)$order['branch_id'],
+        $orderId,
+        "Payment intent creation attempt for Order #{$order['order_number']} via " . strtoupper($selectedMethod) . " (" . number_format($grossDecimal, 2) . " PHP)"
+    ]);
+
+    // 9. Payment Gateway Dispatch
     $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     $method  = $selectedMethod;
 
@@ -128,15 +207,12 @@ try {
                      . "/cafe_pos/kiosk.php?payment=mock_checkout"
                      . "&intent_id={$intentId}&order_id={$orderId}&method={$method}";
     } else {
-        // Real PayMongo API call goes here.
-        // If not yet implemented, return 502 so nothing silently falls through.
         http_response_code(502);
         echo json_encode(['success' => false, 'error' => 'Live payment gateway not yet wired.']);
         exit;
     }
 
-    // 5. Store pending payment in payments table
-    // Delete any prior pending intent for this specific order to avoid duplicates
+    // 10. Store pending payment record in payments table
     $pdo->prepare("DELETE FROM payments WHERE order_id = ? AND status = 'pending'")->execute([$orderId]);
 
     $insPayment = $pdo->prepare("
@@ -157,16 +233,6 @@ try {
         $grossDecimal
     ]);
 
-    // Audit Log on Intent Creation
-    $pdo->prepare("
-        INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
-        VALUES (?, ?, 'INTENT_CREATED', NULL, ?, NOW())
-    ")->execute([
-        (int)$order['branch_id'],
-        $orderId,
-        "Payment intent created: {$intentId} for Order #{$order['order_number']} via " . strtoupper($selectedMethod) . " (" . number_format($grossDecimal, 2) . " PHP)"
-    ]);
-
     echo json_encode([
         'success'      => true,
         'order_id'     => $orderId,
@@ -179,7 +245,8 @@ try {
         'qr_code_url'  => 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($checkoutUrl)
     ]);
 
-} catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (Throwable $e) {
+    error_log("Payment intent create error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Failed to process payment request.']);
 }

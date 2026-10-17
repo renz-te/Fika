@@ -523,14 +523,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const targetOrderId = data.order_id;
             const orderNumber = data.order_number;
+            const kioskToken = data.kiosk_token || '';
 
             // 2. Request PayMongo checkout intent
             const intentRes = await fetch('api/payment_intent_create.php', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Kiosk-Token': kioskToken
+                },
                 body: JSON.stringify({
                     order_id: targetOrderId,
-                    method: method
+                    method: method,
+                    kiosk_token: kioskToken
                 })
             });
             const intentData = await intentRes.json();
@@ -554,7 +559,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (kioskPollInterval) clearInterval(kioskPollInterval);
             kioskPollInterval = setInterval(async () => {
                 try {
-                    const stRes = await fetch(`api/payment_status.php?order_id=${targetOrderId}`);
+                    const stRes = await fetch(`api/payment_status.php?order_id=${targetOrderId}&kiosk_token=${encodeURIComponent(kioskToken)}`, {
+                        headers: { 'X-Kiosk-Token': kioskToken }
+                    });
                     const stData = await stRes.json();
 
                     if (stData.success && stData.is_paid) {

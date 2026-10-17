@@ -537,11 +537,241 @@ try {
     $setTestMode(false);
     $orderCase12 = $createTestOrder('pi_whk_c12_' . uniqid(), 150.00);
     $intentCreateUrl = rtrim($baseUrl, '/') . '/cafe_pos/api/payment_intent_create.php';
-    $resCase12 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase12, 'method' => 'gcash']), ['Content-Type: application/json']);
+    $resCase12 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase12, 'method' => 'gcash']), ['Content-Type: application/json'], $realCashierCookie);
 
     $case12Pass = ($resCase12['code'] === 502)
         && isset($resCase12['json']['success']) && $resCase12['json']['success'] === false;
     recordResult(12, "is_test=false -> payment_intent_create returns 502 error", $case12Pass);
+
+    // =========================================================================
+    // SUB-PHASE H4: Authenticated Payment Endpoints Test Suite (Cases 13-22)
+    // =========================================================================
+    $setTestMode(true);
+    $paymentStatusUrl = rtrim($baseUrl, '/') . '/cafe_pos/api/payment_status.php';
+
+    // Helper to generate a kiosk token for an order
+    $issueKioskToken = function(int $orderId) use ($pdo): string {
+        $raw = bin2hex(random_bytes(32));
+        $hash = hash('sha256', $raw);
+        $stmt = $pdo->prepare("INSERT INTO order_kiosk_tokens (order_id, token_hash) VALUES (?, ?)");
+        $stmt->execute([$orderId, $hash]);
+        return $raw;
+    };
+
+    // Helper to create test order with custom branch, payment_status, order_status
+    $createCustomOrder = function(int $branchId, string $paymentStatus = 'UNPAID', string $orderStatus = 'PENDING') use ($pdo, &$createdOrderIds): int {
+        $orderNum = 'ORD_H4_' . uniqid();
+        $stmt = $pdo->prepare("
+            INSERT INTO orders (order_number, total_price, payment_status, order_status, branch_id, is_test, created_at)
+            VALUES (?, 120.00, ?, ?, ?, 1, NOW())
+        ");
+        $stmt->execute([$orderNum, $paymentStatus, $orderStatus, $branchId]);
+        $id = (int)$pdo->lastInsertId();
+        $createdOrderIds[] = $id;
+        return $id;
+    };
+
+    // Ensure Branch 1 has an active OPEN pos_session
+    $stmtB1Session = $pdo->query("SELECT id FROM pos_sessions WHERE branch_id = 1 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 1");
+    $b1Shift = $stmtB1Session->fetch();
+    if ($b1Shift) {
+        $openShiftBranch1 = (int)$b1Shift['id'];
+    } else {
+        $pdo->exec("INSERT INTO pos_sessions (branch_id, cashier_id, status, opened_at) VALUES (1, 1, 'OPEN', NOW())");
+        $openShiftBranch1 = (int)$pdo->lastInsertId();
+        $createdSessionIds[] = $openShiftBranch1;
+    }
+
+    // Create Cashier session for Branch 1
+    $cashierB1SessId = createSessionWithUser([
+        'id' => 101,
+        'username' => 'cashier_b1',
+        'name' => 'Cashier Branch 1',
+        'role' => 'Cashier',
+        'branch_id' => 1
+    ]);
+    $cashierB1Cookie = "PHPSESSID={$cashierB1SessId}";
+
+    // Create Cashier session for Branch 2
+    $cashierB2SessId = createSessionWithUser([
+        'id' => 102,
+        'username' => 'cashier_b2',
+        'name' => 'Cashier Branch 2',
+        'role' => 'Cashier',
+        'branch_id' => 2
+    ]);
+    $cashierB2Cookie = "PHPSESSID={$cashierB2SessId}";
+
+    // Ensure Branch 2 has an open shift for branch-2 specific tests
+    $stmtB2Session = $pdo->query("SELECT id FROM pos_sessions WHERE branch_id = 2 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 1");
+    $b2Shift = $stmtB2Session->fetch();
+    if ($b2Shift) {
+        $openShiftBranch2 = (int)$b2Shift['id'];
+    } else {
+        $pdo->exec("INSERT INTO pos_sessions (branch_id, cashier_id, status, opened_at) VALUES (2, 102, 'OPEN', NOW())");
+        $openShiftBranch2 = (int)$pdo->lastInsertId();
+        $createdSessionIds[] = $openShiftBranch2;
+    }
+
+    // Error response text collector for checking information leakage (Case 22)
+    $errorResponses = [];
+
+    // -------------------------------------------------------------------------
+    // CASE 13: No auth -> 401 on payment_intent_create & payment_status
+    // -------------------------------------------------------------------------
+    $orderCase13 = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    $res13Intent = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase13, 'method' => 'gcash']), ['Content-Type: application/json']);
+    $res13Status = sendHttpRequest("{$paymentStatusUrl}?order_id={$orderCase13}", 'GET');
+    $errorResponses[] = $res13Intent['body'];
+    $errorResponses[] = $res13Status['body'];
+
+    $case13Pass = ($res13Intent['code'] === 401) && ($res13Status['code'] === 401);
+    recordResult(13, "no auth -> 401", $case13Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 14: Wrong branch -> 403 on payment_intent_create & payment_status
+    // -------------------------------------------------------------------------
+    $orderCase14 = $createCustomOrder(2, 'UNPAID', 'PENDING');
+    $res14Intent = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase14, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB1Cookie);
+    $res14Status = sendHttpRequest("{$paymentStatusUrl}?order_id={$orderCase14}", 'GET', [], [], $cashierB1Cookie);
+    $errorResponses[] = $res14Intent['body'];
+    $errorResponses[] = $res14Status['body'];
+
+    $case14Pass = ($res14Intent['code'] === 403) && ($res14Status['code'] === 403);
+    recordResult(14, "wrong branch -> 403", $case14Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 15: Already PAID -> 409 on payment_intent_create
+    // -------------------------------------------------------------------------
+    $orderCase15 = $createCustomOrder(1, 'PAID', 'COMPLETED');
+    $res15 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase15, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB1Cookie);
+    $errorResponses[] = $res15['body'];
+
+    $case15Pass = ($res15['code'] === 409);
+    recordResult(15, "PAID -> 409", $case15Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 16: VOIDED -> 409 on payment_intent_create
+    // -------------------------------------------------------------------------
+    $orderCase16 = $createCustomOrder(1, 'UNPAID', 'VOID');
+    $res16 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase16, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB1Cookie);
+    $errorResponses[] = $res16['body'];
+
+    $case16Pass = ($res16['code'] === 409);
+    recordResult(16, "VOIDED -> 409", $case16Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 17: No open shift in branch -> 409
+    // -------------------------------------------------------------------------
+    $orderCase17 = $createCustomOrder(999, 'UNPAID', 'PENDING');
+    $cashierB999SessId = createSessionWithUser([
+        'id' => 199,
+        'username' => 'cashier_b999',
+        'name' => 'Cashier Branch 999',
+        'role' => 'Cashier',
+        'branch_id' => 999
+    ]);
+    $cashierB999Cookie = "PHPSESSID={$cashierB999SessId}";
+    $res17 = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase17, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB999Cookie);
+    $errorResponses[] = $res17['body'];
+
+    $case17Pass = ($res17['code'] === 409);
+    recordResult(17, "no open shift -> 409", $case17Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 18: Rate limiting -> 11th call in 10 minutes returns 429
+    // -------------------------------------------------------------------------
+    $orderCase18 = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    for ($i = 1; $i <= 10; $i++) {
+        sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase18, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB1Cookie);
+    }
+    $res18Eleventh = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => $orderCase18, 'method' => 'gcash']), ['Content-Type: application/json'], $cashierB1Cookie);
+    $errorResponses[] = $res18Eleventh['body'];
+
+    $case18Pass = ($res18Eleventh['code'] === 429);
+    recordResult(18, "11th call in 10 minutes -> 429", $case18Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 19: Client-supplied shift_id is ignored
+    // -------------------------------------------------------------------------
+    $orderCase19 = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    $fakeClientShiftId = 77777;
+    $res19 = sendHttpRequest($intentCreateUrl, 'POST', json_encode([
+        'order_id' => $orderCase19,
+        'method'   => 'gcash',
+        'shift_id' => $fakeClientShiftId
+    ]), ['Content-Type: application/json'], $cashierB1Cookie);
+
+    $stmtCheckShift19 = $pdo->prepare("SELECT shift_id FROM payments WHERE order_id = ?");
+    $stmtCheckShift19->execute([$orderCase19]);
+    $persistedShiftId19 = (int)$stmtCheckShift19->fetchColumn();
+
+    $case19Pass = ($res19['code'] === 200)
+        && ($persistedShiftId19 === $openShiftBranch1)
+        && ($res19['json']['shift_id'] === $openShiftBranch1)
+        && ($persistedShiftId19 !== $fakeClientShiftId);
+    recordResult(19, "a client-supplied shift_id is ignored", $case19Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 20: Valid kiosk token works for its own order
+    // -------------------------------------------------------------------------
+    $orderCase20 = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    $kioskToken20 = $issueKioskToken($orderCase20);
+
+    $res20Intent = sendHttpRequest($intentCreateUrl, 'POST', json_encode([
+        'order_id'    => $orderCase20,
+        'method'      => 'gcash',
+        'kiosk_token' => $kioskToken20
+    ]), ['Content-Type: application/json', "X-Kiosk-Token: {$kioskToken20}"]);
+
+    $res20Status = sendHttpRequest("{$paymentStatusUrl}?order_id={$orderCase20}&kiosk_token={$kioskToken20}", 'GET', [], ["X-Kiosk-Token: {$kioskToken20}"]);
+
+    $case20Pass = ($res20Intent['code'] === 200)
+        && ($res20Status['code'] === 200)
+        && ($res20Status['json']['order_id'] === $orderCase20);
+    recordResult(20, "valid kiosk token works for its own order", $case20Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 21: Valid kiosk token for Order A fails (401/403) for Order B
+    // -------------------------------------------------------------------------
+    $orderCase21A = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    $kioskToken21A = $issueKioskToken($orderCase21A);
+
+    $orderCase21B = $createCustomOrder(1, 'UNPAID', 'PENDING');
+    $kioskToken21B = $issueKioskToken($orderCase21B);
+
+    $res21CrossIntent = sendHttpRequest($intentCreateUrl, 'POST', json_encode([
+        'order_id'    => $orderCase21B,
+        'method'      => 'gcash',
+        'kiosk_token' => $kioskToken21A
+    ]), ['Content-Type: application/json', "X-Kiosk-Token: {$kioskToken21A}"]);
+
+    $res21CrossStatus = sendHttpRequest("{$paymentStatusUrl}?order_id={$orderCase21B}&kiosk_token={$kioskToken21A}", 'GET', [], ["X-Kiosk-Token: {$kioskToken21A}"]);
+    $errorResponses[] = $res21CrossIntent['body'];
+    $errorResponses[] = $res21CrossStatus['body'];
+
+    $case21Pass = in_array($res21CrossIntent['code'], [401, 403], true)
+        && in_array($res21CrossStatus['code'], [401, 403], true);
+    recordResult(21, "valid kiosk token fails (401/403) for another order", $case21Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 22: No exception text or SQL in any error response
+    // -------------------------------------------------------------------------
+    $res22BadOrder = sendHttpRequest($intentCreateUrl, 'POST', json_encode(['order_id' => -9999]), ['Content-Type: application/json'], $cashierB1Cookie);
+    $errorResponses[] = $res22BadOrder['body'];
+
+    $hasExceptionLeak = false;
+    $leakPatterns = ['SQLSTATE', 'PDOException', 'Exception in', 'Fatal error', 'syntax error', 'Stack trace:', 'SELECT '];
+    foreach ($errorResponses as $body) {
+        foreach ($leakPatterns as $pattern) {
+            if (stripos($body, $pattern) !== false) {
+                $hasExceptionLeak = true;
+                break 2;
+            }
+        }
+    }
+    $case22Pass = !$hasExceptionLeak;
+    recordResult(22, "no exception text in any error response", $case22Pass);
 
 } catch (Throwable $t) {
     echo "ERROR during test execution: " . $t->getMessage() . "\n";
@@ -553,6 +783,7 @@ try {
     if (!empty($createdOrderIds)) {
         $inOrders = implode(',', array_map('intval', $createdOrderIds));
         $pdo->exec("DELETE FROM order_audit_logs WHERE order_id IN ({$inOrders})");
+        $pdo->exec("DELETE FROM order_kiosk_tokens WHERE order_id IN ({$inOrders})");
         $pdo->exec("DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id IN ({$inOrders}))");
         $pdo->exec("DELETE FROM order_items WHERE order_id IN ({$inOrders})");
         $pdo->exec("DELETE FROM payments WHERE order_id IN ({$inOrders})");

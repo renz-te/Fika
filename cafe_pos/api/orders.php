@@ -155,6 +155,12 @@ try {
     $stmt->execute([$order_number, $table_source, $total_price, $vat_amount, $discount_amount, $payment_status, $payment_method, $payment_reference, $pos_session_id, $cashier_id, $cashier_name, $branch_id, $is_test]);
     $order_id = $pdo->lastInsertId();
 
+    // Generate Kiosk Token for client authentication
+    $rawKioskToken = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $rawKioskToken);
+    $stmtToken = $pdo->prepare("INSERT INTO order_kiosk_tokens (order_id, token_hash) VALUES (?, ?)");
+    $stmtToken->execute([$order_id, $tokenHash]);
+
     // Insert Order Items and Modifiers
     foreach ($order_items_data as $itemData) {
         $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, subtotal) VALUES (?, ?, ?, ?)");
@@ -218,7 +224,8 @@ try {
         'vat_amount' => $vat_amount,
         'discount_amount' => $discount_amount,
         'discount_type' => $discount_type,
-        'payment_status' => $payment_status
+        'payment_status' => $payment_status,
+        'kiosk_token' => $rawKioskToken
     ]);
 
 } catch (\Exception $e) {
