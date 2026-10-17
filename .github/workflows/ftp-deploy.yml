@@ -17,3 +17,29 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /htdocs/
+          exclude: |
+            **/*
+            !cafe_hrms/**
+            !cafe_pos/**
+            !config/**
+            !assets/**
+            !index.php
+            !login.php
+            !.htaccess
+            !uploads/
+            !uploads/menu/
+            !uploads/menu/.htaccess
+            config/config.php
+            config/config.example.php
+            cafe_hrms/config.php
+            cafe_pos/tests/**
+            **/*.md
+            *.md
+            **/*.sql
+            *.sql
+            **/*.txt
+            *.txt
+            **/.env*
+            .env*
+            **/fixtures/**
+
