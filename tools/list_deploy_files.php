@@ -44,6 +44,21 @@ $excludePatterns = [
     '.env*',
     '**/.env*',
     '**/fixtures/**',
+    '**/temp_*',
+    'cafe_pos/update_db.php',
+    'cafe_hrms/alter_schema.php',
+    'cafe_hrms/cli_encrypt_employees.php',
+    'cafe_hrms/create_db.php',
+    'cafe_hrms/data_update*.php',
+    'cafe_hrms/db_corrections*.php',
+    'cafe_hrms/dump_interviews.php',
+    'cafe_hrms/find_schema.php',
+    'cafe_hrms/fix_*.php',
+    'cafe_hrms/query',
+    'cafe_hrms/replace_salary_rate.php',
+    'cafe_hrms/show_tables.php',
+    'cafe_hrms/test_*.php',
+    'cafe_hrms/update_kiosk_role.php',
 ];
 
 function matchesPattern(string $pattern, string $path): bool {
