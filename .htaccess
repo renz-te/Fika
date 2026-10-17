@@ -1,0 +1,17 @@
+# Disable directory browsing
+Options -Indexes
+
+# Deny access to environment files, database dumps, markdown, logs, and composer manifests
+<FilesMatch "^\.env|\.(sql|md|log)$|^composer\.(json|lock)$">
+    Require all denied
+</FilesMatch>
+
+# Deny access to text files
+<FilesMatch "\.txt$">
+    Require all denied
+</FilesMatch>
+
+# Allow public robots.txt
+<Files "robots.txt">
+    Require all granted
+</Files>

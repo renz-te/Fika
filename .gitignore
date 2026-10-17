@@ -4,6 +4,8 @@ config.php
 *.sql
 !migrations/*.sql
 .env
+.env.*
+!.env.example
 cafe_hrms/uploads/
 uploads/menu/*
 !uploads/menu/.htaccess

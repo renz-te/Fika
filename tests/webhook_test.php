@@ -44,7 +44,7 @@ if (!class_exists('Config')) {
     }
 }
 
-$webhookSecret = Config::get('paymongo.webhook_secret') ?: getenv('PAYMONGO_WEBHOOK_SECRET') ?: 'whk_test_xxyz1234';
+$webhookSecret = Config::get('paymongo.webhook_secret') ?: getenv('PAYMONGO_WEBHOOK_SECRET') ?: 'whk_test_dummy';
 
 // 2. Global State & Tracking
 $failures = 0;
