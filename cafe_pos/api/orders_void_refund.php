@@ -111,7 +111,7 @@ if (!$supervisor || !in_array($supervisor['role'], ['Super Admin', 'Branch Manag
         // Suppress audit log failure to guarantee 403 response
     }
 
-    http_response_code(403);
+    http_response_code(401);
     echo json_encode(['success' => false, 'error' => 'Supervisor authorization required. Invalid or missing supervisor PIN.']);
     exit;
 }
@@ -127,21 +127,46 @@ if (!in_array($action, ['VOID', 'REFUND']) || !$order_id || empty(trim($reason))
     exit;
 }
 
+// 1. Fetch Order and Payment details outside transaction
+$stmtOrder = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+$stmtOrder->execute([$order_id]);
+$order = $stmtOrder->fetch();
+
+if (!$order) {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'error' => 'Order not found.']);
+    exit;
+}
+
+// 2. Branch Ownership Check
+$supBranch = (int)($supervisor['branch_id'] ?? 0);
+if ($supervisor['role'] !== 'Super Admin' && $supBranch > 0 && $supBranch !== (int)$order['branch_id']) {
+    try {
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'AUTH_FAIL', ?, ?, NOW())
+        ")->execute([
+            (int)$order['branch_id'],
+            $order_id,
+            $supervisor['id'],
+            "Cross-branch access denied: Supervisor branch {$supBranch} against order branch {$order['branch_id']}"
+        ]);
+    } catch (\Throwable $t) {}
+
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Forbidden: wrong branch']);
+    exit;
+}
+
+if ($order['order_status'] === 'VOID' || $order['order_status'] === 'REFUNDED') {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'error' => 'Order is already voided or refunded.']);
+    exit;
+}
+
+$branch_id = (int)$order['branch_id'];
+
 try {
-    // 1. Fetch Order and Payment details outside transaction
-    $stmtOrder = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
-    $stmtOrder->execute([$order_id]);
-    $order = $stmtOrder->fetch();
-
-    if (!$order) {
-        throw new Exception("Order not found.");
-    }
-    
-    if ($order['order_status'] === 'VOID' || $order['order_status'] === 'REFUNDED') {
-        throw new Exception("Order is already voided or refunded.");
-    }
-
-    $branch_id = $order['branch_id'];
 
     // Check if this was a digital payment (PayMongo / GCash / Maya)
     $payStmt = $pdo->prepare("SELECT * FROM payments WHERE order_id = ? AND status = 'paid' ORDER BY id DESC LIMIT 1");
@@ -345,10 +370,24 @@ try {
         'refund_note' => $isDigital ? 'Digital refund recorded against PayMongo payment and original shift; zero drawer cash deducted.' : 'Cash drawer refund'
     ]);
 
-} catch (\Exception $e) {
-    if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    // $pdo->rollBack() handles everything
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (\Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    try {
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'OPERATION_FAILED', ?, ?, NOW())
+        ")->execute([
+            $branch_id ?? 1,
+            $order_id ?? null,
+            $supervisor['id'] ?? null,
+            "Void/refund failed: " . $e->getMessage()
+        ]);
+    } catch (\Throwable $t) {}
+
+    error_log("Void/Refund error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'An error occurred while processing the request.']);
 }
 ?>

@@ -21,41 +21,66 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            static $cache = [];
+            $envFile = dirname(__DIR__, 2) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
+                    }
+                }
+            }
+            [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+            $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+            $config = file_exists($path) ? require $path : [];
+            if ($item === null) return $config ?? $default;
+            return $config[$item] ?? $default;
+        }
+    }
+}
+
 $cart = $input['cart'];
 $table_source = $input['table_source'] ?? null;
 $pos_session_id = $input['pos_session_id'] ?? null;
-$cashier_id = $input['cashier_id'] ?? null;
-$is_test = isset($input['is_test']) ? (int)$input['is_test'] : 0;
-$branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
 
-// Authenticate Cashier Session
-$isCashierSession = false;
-if (!empty($_SESSION['user']) && in_array($_SESSION['user']['role'] ?? '', ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'])) {
-    $isCashierSession = true;
-    if (!$cashier_id && !empty($_SESSION['user']['id'])) {
-        $cashier_id = (int)$_SESSION['user']['id'];
-    }
-} elseif (!empty($cashier_id)) {
-    try {
-        $stmtCashier = $pdo->prepare("
-            SELECT u.id, u.name, r.name as role 
-            FROM hrms.users u 
-            JOIN hrms.roles r ON u.role_id = r.id 
-            WHERE u.id = ? AND r.name IN ('Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
-        ");
-        $stmtCashier->execute([$cashier_id]);
-        if ($stmtCashier->fetch()) {
-            $isCashierSession = true;
-        }
-    } catch (Exception $e) {}
+// Server-derived is_test flag, never trusted from client
+$is_test = (Config::get('paymongo.is_test') === true) ? 1 : 0;
+
+// Authenticate Staff Session strictly via session
+$isCashierSession = !empty($_SESSION['user']) && in_array(
+    $_SESSION['user']['role'] ?? '',
+    ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'],
+    true
+);
+
+if ($isCashierSession) {
+    $cashier_id = (int)$_SESSION['user']['id'];
+    $cashier_name = $_SESSION['user']['name'] ?? 'Staff';
+    $branch_id = (int)($_SESSION['user']['branch_id'] ?? 1);
+} else {
+    // Unauthenticated Kiosk
+    $cashier_id = null;
+    $cashier_name = 'Self-Service Kiosk';
+    $branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
 }
 
 $cleanMethod = strtoupper(trim((string)($input['payment_method'] ?? 'CASH')));
 
-// Trust boundary: Accept payment_status='PAID' only when payment_method is CASH AND caller is an authenticated cashier session.
-// For GCASH/MAYA/CARD/DIGITAL: Always create and keep the order UNPAID. PAID is set only by payment_webhook.php.
+// Trust boundary: Accept payment_status='PAID' ONLY when caller is an authenticated staff session AND payment_method is CASH.
+// Unauthenticated callers (kiosk) can NEVER create PAID orders.
 $clientPaymentStatus = strtoupper(trim((string)($input['payment_status'] ?? 'UNPAID')));
-if ($cleanMethod === 'CASH' && $isCashierSession && $clientPaymentStatus === 'PAID') {
+if ($isCashierSession && $cleanMethod === 'CASH' && $clientPaymentStatus === 'PAID') {
     $payment_status = 'PAID';
 } else {
     $payment_status = 'UNPAID';
@@ -63,15 +88,6 @@ if ($cleanMethod === 'CASH' && $isCashierSession && $clientPaymentStatus === 'PA
 
 $payment_method = $cleanMethod;
 $payment_reference = null; // Strip manual digital reference entirely
-
-$cashier_name = null;
-if ($cashier_id) {
-    try {
-        $stmtUser = $pdo->prepare("SELECT e.full_name FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.id = ?");
-        $stmtUser->execute([$cashier_id]);
-        $cashier_name = $stmtUser->fetchColumn() ?: 'Unknown';
-    } catch (Exception $e) {}
-}
 
 try {
     $pdo->beginTransaction();
@@ -124,22 +140,32 @@ try {
         ];
     }
 
-    $discount_type = $input['discount_type'] ?? 'NONE';
     $vat_amount = 0;
     $discount_amount = 0;
     $net_payable = 0;
 
-    if ($discount_type === 'SENIOR' || $discount_type === 'PWD') {
-        // Senior/PWD: VAT Exempt, then 20% discount on the VAT-exempt amount
-        $vat_exempt_total = $gross_total / 1.12;
-        $discount_amount = $vat_exempt_total * 0.20;
-        $net_payable = $vat_exempt_total - $discount_amount;
-        $vat_amount = 0;
+    if ($isCashierSession) {
+        $rawDiscountType = strtoupper(trim((string)($input['discount_type'] ?? 'NONE')));
+        if ($rawDiscountType === 'SENIOR' || $rawDiscountType === 'PWD') {
+            // Senior/PWD: VAT Exempt, then 20% discount on the VAT-exempt amount
+            $vat_exempt_total = $gross_total / 1.12;
+            $discount_amount = $vat_exempt_total * 0.20;
+            $net_payable = $vat_exempt_total - $discount_amount;
+            $vat_amount = 0;
+            $discount_type = $rawDiscountType;
+        } else {
+            // Standard transaction
+            $net_payable = $gross_total;
+            $vat_amount = $gross_total - ($gross_total / 1.12);
+            $discount_amount = 0;
+            $discount_type = ($rawDiscountType === 'NONE' || $rawDiscountType === '') ? null : $rawDiscountType;
+        }
     } else {
-        // Standard transaction
+        // Unauthenticated Kiosk: force zero discount and null discount_type
+        $discount_type = null;
+        $discount_amount = 0;
         $net_payable = $gross_total;
         $vat_amount = $gross_total - ($gross_total / 1.12);
-        $discount_amount = 0;
     }
 
     $total_price = $net_payable;
@@ -228,9 +254,12 @@ try {
         'kiosk_token' => $rawKioskToken
     ]);
 
-} catch (\Exception $e) {
-    $pdo->rollBack();
+} catch (\Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log("Order creation error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => 'An error occurred while creating the order.']);
 }
 ?>

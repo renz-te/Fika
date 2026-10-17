@@ -20,56 +20,102 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$order_id = $input['order_id'];
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            static $cache = [];
+            $envFile = dirname(__DIR__, 2) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
+                    }
+                }
+            }
+            [$file, $item] = array_pad(explode('.', $key, 2), 2, null);
+            $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+            $config = file_exists($path) ? require $path : [];
+            if ($item === null) return $config ?? $default;
+            return $config[$item] ?? $default;
+        }
+    }
+}
+
+// 1. Mandatory Staff Session Authentication
+$isCashierSession = !empty($_SESSION['user']) && in_array(
+    $_SESSION['user']['role'] ?? '',
+    ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'],
+    true
+);
+
+if (!$isCashierSession) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized: authentication required']);
+    exit;
+}
+
+$order_id = (int)$input['order_id'];
 $cart = $input['cart'];
 $pos_session_id = $input['pos_session_id'] ?? null;
-$cashier_id = $input['cashier_id'] ?? null;
-$is_test = isset($input['is_test']) ? (int)$input['is_test'] : 0;
-$branch_id = isset($input['branch_id']) ? (int)$input['branch_id'] : 1;
 
-// Authenticate Cashier Session
-$isCashierSession = false;
-if (!empty($_SESSION['user']) && in_array($_SESSION['user']['role'] ?? '', ['Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin'])) {
-    $isCashierSession = true;
-    if (!$cashier_id && !empty($_SESSION['user']['id'])) {
-        $cashier_id = (int)$_SESSION['user']['id'];
-    }
-} elseif (!empty($cashier_id)) {
-    try {
-        $stmtCashier = $pdo->prepare("
-            SELECT u.id, u.name, r.name as role 
-            FROM hrms.users u 
-            JOIN hrms.roles r ON u.role_id = r.id 
-            WHERE u.id = ? AND r.name IN ('Cashier', 'Admin', 'Super Admin', 'Branch Manager', 'Head Barista', 'Branch Admin')
-        ");
-        $stmtCashier->execute([$cashier_id]);
-        if ($stmtCashier->fetch()) {
-            $isCashierSession = true;
-        }
-    } catch (Exception $e) {}
+// 2. Fetch Order outside transaction to verify existence, branch, and status
+$stmtOrder = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+$stmtOrder->execute([$order_id]);
+$order = $stmtOrder->fetch();
+
+if (!$order) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Order not found']);
+    exit;
 }
+
+// 3. Branch Ownership Enforcement
+$staffBranch = (int)($_SESSION['user']['branch_id'] ?? 0);
+if ($staffBranch > 0 && (int)$order['branch_id'] !== $staffBranch) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden: wrong branch']);
+    exit;
+}
+
+// 4. Reject already-PAID or VOID/VOIDED orders (409) with Trap 3 audit outside transaction
+$existingStatus = strtoupper(trim((string)$order['order_status']));
+$existingPayStatus = strtoupper(trim((string)$order['payment_status']));
+if ($existingPayStatus === 'PAID' || in_array($existingStatus, ['VOID', 'VOIDED', 'REFUNDED', 'CANCELLED'])) {
+    try {
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'PAYMENT_REJECTED', ?, ?, NOW())
+        ")->execute([
+            (int)$order['branch_id'],
+            $order_id,
+            (int)$_SESSION['user']['id'],
+            "Rejected payment attempt on order with status {$existingStatus}/{$existingPayStatus}"
+        ]);
+    } catch (\Throwable $t) {}
+
+    http_response_code(409);
+    echo json_encode(['error' => "Cannot pay order with status {$existingStatus}/{$existingPayStatus}."]);
+    exit;
+}
+
+// 5. Server-derived context (ignore client-supplied values)
+$branch_id = (int)$order['branch_id'];
+$cashier_id = (int)$_SESSION['user']['id'];
+$cashier_name = $_SESSION['user']['name'] ?? 'Staff';
+$is_test = (Config::get('paymongo.is_test') === true) ? 1 : 0;
 
 $cleanMethod = strtoupper(trim((string)($input['payment_method'] ?? 'CASH')));
-
-// Trust boundary: Accept payment_status='PAID' only when payment_method is CASH AND caller is an authenticated cashier session.
-// For GCASH/MAYA/CARD/DIGITAL: Always create and keep the order UNPAID. PAID is set only by payment_webhook.php.
-if ($cleanMethod === 'CASH' && $isCashierSession) {
-    $payment_status = 'PAID';
-} else {
-    $payment_status = 'UNPAID';
-}
-
+$payment_status = ($cleanMethod === 'CASH') ? 'PAID' : 'UNPAID';
 $payment_method = $cleanMethod;
-$payment_reference = null; // Strip manual digital reference entirely
-
-$cashier_name = null;
-if ($cashier_id) {
-    try {
-        $stmtUser = $pdo->prepare("SELECT e.full_name FROM users u LEFT JOIN employees e ON u.employee_id = e.id WHERE u.id = ?");
-        $stmtUser->execute([$cashier_id]);
-        $cashier_name = $stmtUser->fetchColumn() ?: 'Unknown';
-    } catch (Exception $e) {}
-}
+$payment_reference = null;
 
 try {
     $pdo->beginTransaction();
@@ -235,8 +281,23 @@ try {
         'discount_type' => $discount_type
     ]);
 
-} catch (Exception $e) {
-    $pdo->rollBack();
+} catch (\Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    try {
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'PAYMENT_FAILED', ?, ?, NOW())
+        ")->execute([
+            $branch_id ?? ((int)($order['branch_id'] ?? 1)),
+            $order_id,
+            (int)($_SESSION['user']['id'] ?? 0) ?: null,
+            "Payment failed: " . $e->getMessage()
+        ]);
+    } catch (\Throwable $t) {}
+
+    error_log("Payment processing error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    echo json_encode(['error' => 'An error occurred while processing payment.']);
 }
