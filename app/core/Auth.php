@@ -62,6 +62,16 @@ class Auth {
     public static function requireLogin(): void {
         if (!self::check()) {
             http_response_code(401);
+            $isApi = (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+                || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'))
+                || (isset($_SERVER['REQUEST_URI']) && str_contains($_SERVER['REQUEST_URI'], '/api/'))
+                || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+
+            if ($isApi) {
+                header('Content-Type: application/json');
+                exit(json_encode(['error' => 'Unauthorized: authentication required.']));
+            }
+
             $loginUrl = config('app.base_url') . '/fika_hrms_login.php';
             header("Location: {$loginUrl}");
             exit();

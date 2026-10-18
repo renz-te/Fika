@@ -128,7 +128,11 @@ try {
         'order_id' => $orderId,
         'order_number' => $orderNumber,
         'branch_id' => $branchId,
+        'payment_status' => 'UNPAID',
+        'discount_type' => null,
+        'discount_amount' => 0.0,
         'total_amount' => $finalDecimal,
+        'total_price' => (float)$finalDecimal,
         'total_cents' => $totalAmountCentavos,
         'kiosk_token' => $rawToken,
         'expires_at' => $expiresAt

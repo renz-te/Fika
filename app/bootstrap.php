@@ -92,3 +92,9 @@ spl_autoload_register(function ($class) {
         require_once $coreFile;
     }
 });
+
+// 7. Ensure Session is Active
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+

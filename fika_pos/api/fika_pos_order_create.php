@@ -60,6 +60,31 @@ try {
         WHERE p.id = ? AND p.deleted_at IS NULL
     ");
     $modLookup = $pdo->prepare("SELECT price, is_active FROM modifiers WHERE id = ?");
+
+    $recipeLookup = $pdo->prepare("
+        SELECT r.inventory_id, r.quantity_required, ii.item_name 
+        FROM recipes r 
+        JOIN inventory_items ii ON ii.id = r.inventory_id 
+        WHERE r.product_id = ?
+    ");
+
+    $stockLookup = $pdo->prepare("
+        SELECT current_stock 
+        FROM inventory_stock 
+        WHERE branch_id = ? AND inventory_id = ? 
+        FOR UPDATE
+    ");
+
+    $stockUpdate = $pdo->prepare("
+        UPDATE inventory_stock 
+        SET current_stock = current_stock - ? 
+        WHERE branch_id = ? AND inventory_id = ?
+    ");
+
+    $ledgerInsert = $pdo->prepare("
+        INSERT INTO inventory_ledger (branch_id, inventory_id, type, quantity, unit_cost_snapshot, user_id, remarks, created_at)
+        VALUES (?, ?, 'Sold', ?, 0.00, ?, ?, NOW())
+    ");
     
     foreach ($input['items'] as $item) {
         $prodId = (int) $item['id'];
@@ -71,6 +96,34 @@ try {
         $isAvailable = $product && (int)$product['is_active'] === 1 && ($product['branch_active'] === null || (int)$product['branch_active'] === 1);
         if (!$isAvailable) {
             throw new Exception("Product ID {$prodId} is invalid or inactive.");
+        }
+
+        // Recipe-based inventory deduction with FOR UPDATE lock (Constraint 2)
+        $recipeLookup->execute([$prodId]);
+        $recipes = $recipeLookup->fetchAll();
+
+        if (!empty($recipes)) {
+            foreach ($recipes as $rec) {
+                $invId = (int)$rec['inventory_id'];
+                $requiredPerItem = (float)$rec['quantity_required'];
+                $totalRequired = $requiredPerItem * $qty;
+
+                $stockLookup->execute([$branchId, $invId]);
+                $stockRow = $stockLookup->fetch();
+
+                if (!$stockRow || (float)$stockRow['current_stock'] < $totalRequired) {
+                    throw new Exception("Insufficient stock");
+                }
+
+                $stockUpdate->execute([$totalRequired, $branchId, $invId]);
+                $ledgerInsert->execute([
+                    $branchId,
+                    $invId,
+                    $totalRequired,
+                    $user['id'],
+                    "Order #{$orderNumber} product {$prodId}"
+                ]);
+            }
         }
         
         $basePriceCentavos = isset($product['price_cents']) && (int)$product['price_cents'] > 0

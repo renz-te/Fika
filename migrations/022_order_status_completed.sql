@@ -1,0 +1,3 @@
+-- Migration 022: Add COMPLETED to order_status ENUM
+ALTER TABLE `orders` 
+MODIFY COLUMN `order_status` ENUM('PENDING', 'PAID', 'COMPLETED', 'CANCELLED', 'VOID', 'REFUNDED') NOT NULL DEFAULT 'PENDING';

@@ -6,14 +6,21 @@ Auth::requireLogin();
 Csrf::requireValid();
 Rbac::require_permission('pos.access');
 
-$startingCashRaw = $_POST['starting_cash'] ?? 0;
-$notes = $_POST['notes'] ?? '';
+$rawInput = json_decode(file_get_contents('php://input'), true) ?? [];
+$startingCashRaw = $rawInput['starting_cash'] ?? $_POST['starting_cash'] ?? 0;
+$notes = $rawInput['notes'] ?? $_POST['notes'] ?? '';
+$targetBranch = $rawInput['branch_id'] ?? $_POST['branch_id'] ?? null;
 $user = Auth::user();
 $branchId = $user['branch_id'];
 
 if (!$branchId) {
     http_response_code(400);
     exit(json_encode(["error" => "User is not assigned to a branch."]));
+}
+
+if ($targetBranch !== null && (int)$targetBranch !== (int)$branchId) {
+    http_response_code(403);
+    exit(json_encode(["error" => "Forbidden: wrong branch."]));
 }
 
 $startingCashCentavos = Money::toCentavos($startingCashRaw);

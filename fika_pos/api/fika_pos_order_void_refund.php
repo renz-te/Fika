@@ -60,6 +60,12 @@ try {
     if (!$order) {
         throw new Exception("Order not found.");
     }
+
+    if (!empty($user['branch_id']) && (int)$order['branch_id'] !== (int)$user['branch_id']) {
+        $pdo->rollBack();
+        http_response_code(403);
+        exit(json_encode(["error" => "Forbidden: wrong branch."]));
+    }
     
     if ($action === 'VOID' && $order['order_status'] !== 'PENDING') {
         throw new Exception("Only PENDING orders can be VOIDED.");

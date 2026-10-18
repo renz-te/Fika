@@ -39,8 +39,27 @@ try {
     if (!$order) {
         throw new Exception("Order not found.");
     }
-    if ($order['payment_status'] !== 'UNPAID') {
-        throw new Exception("Order is already paid or cancelled.");
+
+    // Branch ownership check
+    if (!empty($user['branch_id']) && (int)$order['branch_id'] !== (int)$user['branch_id']) {
+        $pdo->rollBack();
+        http_response_code(403);
+        exit(json_encode(["error" => "Forbidden: wrong branch."]));
+    }
+
+    if ($order['payment_status'] === 'PAID') {
+        $pdo->rollBack();
+        Audit::log('PAYMENT_REJECTED', "Payment rejected: Order {$orderId} is already PAID", $user['id']);
+        http_response_code(409);
+        exit(json_encode(["error" => "Order is already paid."]));
+    }
+
+    // Constraint 4: Verify order_status === 'PENDING' inside FOR UPDATE lock
+    if ($order['order_status'] !== 'PENDING' || $order['payment_status'] !== 'UNPAID') {
+        $pdo->rollBack();
+        Audit::log('PAYMENT_REJECTED', "Payment rejected: Order {$orderId} status is {$order['order_status']}", $user['id']);
+        http_response_code(409);
+        exit(json_encode(["error" => "Order is not pending payment."]));
     }
 
     // 3. Financials

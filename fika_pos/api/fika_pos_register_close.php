@@ -6,12 +6,12 @@ Auth::requireLogin();
 Csrf::requireValid();
 Rbac::require_permission('pos.access');
 
-$input = json_decode(file_get_contents('php://input'), true);
-$actualCashRaw = $input['actual_cash'] ?? 0;
-$notes = $input['notes'] ?? '';
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+$actualCashRaw = $input['actual_cash'] ?? $_POST['actual_cash'] ?? 0;
+$notes = $input['notes'] ?? $_POST['notes'] ?? '';
+$sessionId = $input['session_id'] ?? $_POST['session_id'] ?? ($_SESSION['pos_session_id'] ?? null);
 
 $user = Auth::user();
-$sessionId = $_SESSION['pos_session_id'] ?? null;
 
 if (!$sessionId) {
     http_response_code(400);
@@ -31,6 +31,13 @@ try {
     if (!$posSession || $posSession['status'] !== 'OPEN') {
         throw new Exception("Session is invalid or already closed.");
     }
+
+    if (!empty($user['branch_id']) && (int)$posSession['branch_id'] !== (int)$user['branch_id']) {
+        $pdo->rollBack();
+        http_response_code(403);
+        exit(json_encode(["error" => "Forbidden: wrong branch."]));
+    }
+
     if ((int)$posSession['cashier_id'] !== (int)$user['id']) {
         throw new Exception("You cannot close a session opened by another cashier.");
     }
