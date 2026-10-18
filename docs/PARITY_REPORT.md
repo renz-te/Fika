@@ -15,11 +15,12 @@ This report certifies the successful execution, verification, and audit of the l
 
 Key migration milestones achieved:
 1. **Pre-flight Disaster Recovery:** Mandatory full database backup (`backup_before_real_import.sql`, 235,358 bytes) was taken and verified non-empty prior to executing any write operations.
-2. **Complete Cross-Domain Migration:** 20 target tables successfully migrated with complete data fidelity, converting monetary values to integer centavos, standardizing timestamps, encrypting sensitive employee PII, and resolving cross-database foreign keys.
+2. **Complete Cross-Domain Migration:** 21 target tables successfully migrated with complete data fidelity, converting monetary values to integer centavos, standardizing timestamps, encrypting sensitive employee PII, and resolving cross-database foreign keys.
 3. **Double-Entry Inventory Parity:** Synthetic opening balance ledger entries (`type = 'ADJUSTMENT'`, `remarks = 'Opening balance from legacy migration'`, `legacy_id = NULL`) were injected to reconcile `current_stock` with `SUM(inventory_ledger.quantity)`, achieving **0.00 difference** across 100% of inventory items.
-4. **Real Password Verification:** All migrated user password hashes strictly conform to `$2y$10$` bcrypt format and functional verification with `password_verify()` succeeded against known plaintext credentials for real migrated users.
-5. **Cross-Database Foreign Key Resolution:** Orders originating in `cafe_pos.orders` resolved `cashier_id` across databases to `hrms.users.id` with 100% resolution of non-null cashiers (20 orders linked).
-6. **Strict Idempotency:** A second execution of `php tools/import_legacy.php --apply` resulted in **0 written** across all tables, proving full re-run safety.
+4. **Full Recipe BOM Migration:** All 16 legacy recipes migrated with 100% fidelity: 7 base product recipes and 9 modifier recipes referencing `modifiers.id` (supported via `InventoryDeduction`).
+5. **Real Password Verification:** All migrated user password hashes strictly conform to `$2y$10$` bcrypt format and functional verification with `password_verify()` succeeded against known plaintext credentials for real migrated users.
+6. **Cross-Database Foreign Key Resolution:** Orders originating in `cafe_pos.orders` resolved `cashier_id` across databases to `hrms.users.id` with 100% resolution of non-null cashiers (20 orders linked).
+7. **Strict Idempotency:** Subsequent executions of `php tools/import_legacy.php --apply` resulted in **0 written** across all tables, proving full re-run safety.
 
 ---
 
@@ -42,7 +43,8 @@ The table below contrasts the row counts between legacy source tables and migrat
 | `cafe_pos.inventory_stock` | 6 | `inventory_stock` | 6 | **YES** | Physical stock levels mapped per branch. |
 | `cafe_pos.inventory_transactions` | 2 | `inventory_ledger` | 8 | **YES\*** | 2 historical transactions + 6 synthetic opening balances. |
 | `cafe_pos.products` | 7 | `products` | 7 | **YES** | Catalog items mapped. `price_cents = ROUND(price * 100)`. |
-| `cafe_pos.recipes` | 16 | `recipes` | 7 | **YES\*** | 7 base product recipes mapped. 9 modifier recipes skipped. |
+| `cafe_pos.modifiers` | 28 | `modifiers` | 28 | **YES** | Add-on options, milks, and sizes mapped with prices. |
+| `cafe_pos.recipes` | 16 | `recipes` | 16 | **YES** | All 16 recipes mapped (7 base products + 9 modifier recipes). |
 | `cafe_pos.cash_sessions` | 11 | `cash_sessions` | 11 | **YES** | Shift cash register floats and closure totals preserved. |
 | `cafe_pos.orders` | 61 | `orders` | 61 | **YES** | POS tickets mapped. Cross-DB cashier FK resolved. |
 | `cafe_pos.order_items` | 87 | `order_items` | 87 | **YES** | Line items mapped. `price_snapshot_cents` populated. |
@@ -50,7 +52,7 @@ The table below contrasts the row counts between legacy source tables and migrat
 | `hrms.branch_budgets` | 2 | `branch_budgets` | 2 | **YES** | Labor budget allocations mapped. |
 | `hrms.activity_logs` | 255 | `audit_logs` | 255 | **YES** | Historical audit trail mapped into centralized security table. |
 
-*\*Differences in `shifts`, `inventory_ledger`, and `recipes` are expected and mathematically accounted for in Sections 3 and 4.*
+*\*Differences in `shifts` and `inventory_ledger` are expected and mathematically accounted for in Sections 3 and 4.*
 
 ---
 
@@ -103,8 +105,9 @@ Fika Café — Automated Data Parity Verification (Phase 17C)
   [PASS] shifts           : Source= 939 | Migrated= 933 (6 unassigned open shifts with employee_id = NULL in legacy)
   [PASS] payroll_items    : Source=  27 | Migrated=  27
   [PASS] cash_sessions    : Source=  11 | Migrated=  11
+  [PASS] modifiers        : Source=  28 | Migrated=  28
   [PASS] payments         : Source=   6 | Migrated=   6
-  [PASS] recipes          : Source=  16 | Migrated=   7 (9 modifier-only recipes with product_id = NULL in legacy)
+  [PASS] recipes          : Source=  16 | Migrated=  16
   [PASS] branch_budgets   : Source=   2 | Migrated=   2
   [PASS] audit_logs       : Source= 255 | Migrated= 255
 
@@ -161,7 +164,6 @@ Every skipped table and individual record in the legacy databases has been audit
 | Table | Skipped Count | Legacy IDs | Exact Rationale |
 | :--- | :---: | :--- | :--- |
 | `schedules` &rarr; `shifts` | 6 | 138, 139, 513, 890, 891, 892 | In legacy `schedules`, these 6 rows had `employee_id = ''` (empty string / NULL), representing unassigned placeholder shifts. The `shifts` table enforces strict relational integrity (`employee_id INT NOT NULL`). In `rebuild/core`, unassigned shifts are managed through the separate `open_shifts` state machine. |
-| `recipes` &rarr; `recipes` | 9 | 5, 14, 18, 19, 20, 21, 22, 23, 24 | In legacy `recipes`, these 9 rows had `product_id = ''` / NULL, as they represented recipe modifiers (e.g. extra pumps of syrup, oat milk subs). In `rebuild/core`, `recipes` strictly requires `product_id INT NOT NULL`. The 7 base product recipes migrated with 100% fidelity. |
 
 ### 4.3 Empty & Redundant Tables
 
@@ -184,7 +186,7 @@ Every skipped table and individual record in the legacy databases has been audit
 ## 5. Idempotency Verification
 
 Idempotency was verified by executing `php tools/import_legacy.php --apply` twice consecutively:
-- **First Run:** 20 tables populated; all records inserted.
+- **First Run:** All remaining records (including 28 modifiers and 9 modifier recipes) inserted.
 - **Second Run:** Output verified:
   ```
   branches            :     1 read,     0 written,     1 skipped
@@ -200,6 +202,7 @@ Idempotency was verified by executing `php tools/import_legacy.php --apply` twic
   inventory_stock     :     6 read,     0 written,     6 skipped
   inventory_ledger    :     2 read,     0 written,     2 skipped
   products            :     7 read,     0 written,     7 skipped
+  modifiers           :    28 read,     0 written,    28 skipped
   recipes             :    16 read,     0 written,    16 skipped
   cash_sessions       :    11 read,     0 written,    11 skipped
   orders              :    61 read,     0 written,    61 skipped
@@ -208,7 +211,7 @@ Idempotency was verified by executing `php tools/import_legacy.php --apply` twic
   branch_budgets      :     2 read,     0 written,     2 skipped
   audit_logs          :   255 read,     0 written,   255 skipped
   ```
-**Result:** **0 written** across ALL 20 tables. The pipeline is safely re-entrant without creating duplicates or altering existing records.
+**Result:** **0 written** across ALL 21 tables. The pipeline is safely re-entrant without creating duplicates or altering existing records.
 
 ---
 
@@ -216,4 +219,4 @@ Idempotency was verified by executing `php tools/import_legacy.php --apply` twic
 
 > **All critical tables passed parity verification.**
 > 
-> **Zero unexpected discrepancies were detected.** All record counts, cryptographic structures, centavo-precision currencies, double-entry inventory ledger sums, and cross-database foreign key references have been verified and certified.
+> **Zero unexpected discrepancies were detected.** All record counts, cryptographic structures, centavo-precision currencies, double-entry inventory ledger sums, Bill-of-Materials modifier recipes, and cross-database foreign key references have been verified and certified.

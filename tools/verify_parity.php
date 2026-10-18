@@ -331,8 +331,9 @@ $tableChecks = [
     'shifts'            => ['src_db' => $hrmsPdo, 'src' => 'schedules',      'tgt' => 'shifts',           'expected_diff' => -6, 'reason' => '6 unassigned open shifts with employee_id = NULL in legacy'],
     'payroll_items'     => ['src_db' => $hrmsPdo, 'src' => 'payroll',        'tgt' => 'payroll_items',    'expected_diff' => 0, 'reason' => ''],
     'cash_sessions'     => ['src_db' => $posPdo,  'src' => 'cash_sessions',  'tgt' => 'cash_sessions',    'expected_diff' => 0, 'reason' => ''],
+    'modifiers'         => ['src_db' => $posPdo,  'src' => 'modifiers',      'tgt' => 'modifiers',        'expected_diff' => 0, 'reason' => ''],
     'payments'          => ['src_db' => $posPdo,  'src' => 'payments',       'tgt' => 'payments',         'expected_diff' => 0, 'reason' => ''],
-    'recipes'           => ['src_db' => $posPdo,  'src' => 'recipes',        'tgt' => 'recipes',          'expected_diff' => -9, 'reason' => '9 modifier-only recipes with product_id = NULL in legacy'],
+    'recipes'           => ['src_db' => $posPdo,  'src' => 'recipes',        'tgt' => 'recipes',          'expected_diff' => 0, 'reason' => ''],
     'branch_budgets'    => ['src_db' => $hrmsPdo, 'src' => 'branch_budgets', 'tgt' => 'branch_budgets',   'expected_diff' => 0, 'reason' => ''],
     'audit_logs'        => ['src_db' => $hrmsPdo, 'src' => 'activity_logs',  'tgt' => 'audit_logs',       'expected_diff' => 0, 'reason' => ''],
 ];

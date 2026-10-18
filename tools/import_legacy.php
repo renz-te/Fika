@@ -780,14 +780,29 @@ runTableImport($posPdo, $targetPdo, 'products', 'products', 'id', function($row)
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 14. Recipes (POS)
+// 14. Modifiers (POS)
+// ====================================================================
+runTableImport($posPdo, $targetPdo, 'modifiers', 'modifiers', 'id', function($row) {
+    $price = (float)($row['price_adjustment'] ?? ($row['price'] ?? 0.00));
+    return [
+        'name'       => trim($row['name'] ?? 'Unnamed Modifier'),
+        'price'      => $price,
+        'is_active'  => !empty($row['is_active']) ? 1 : 0,
+        'created_at' => $row['created_at'] ?? date('Y-m-d H:i:s'),
+        'legacy_id'  => (int)$row['id'],
+    ];
+}, $isDryRun, $summary);
+
+// ====================================================================
+// 15. Recipes (POS)
 // ====================================================================
 runTableImport($posPdo, $targetPdo, 'recipes', 'recipes', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
-    $prodId = LegacyResolver::resolve($targetPdo, 'products', (int)$row['product_id'], $isDryRun);
-    $invId = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$row['inventory_id'], $isDryRun);
+    $prodId = !empty($row['product_id']) ? LegacyResolver::resolve($targetPdo, 'products', (int)$row['product_id'], $isDryRun) : null;
+    $modId  = !empty($row['modifier_id']) ? LegacyResolver::resolve($targetPdo, 'modifiers', (int)$row['modifier_id'], $isDryRun) : null;
+    $invId  = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$row['inventory_id'], $isDryRun);
 
-    if ($prodId === null || $invId === null) {
-        echo "  [WARNING] Orphan skipped: recipes legacy_id {$row['id']} (product_id or inventory_id not found)\n";
+    if (($prodId === null && $modId === null) || $invId === null) {
+        echo "  [WARNING] Orphan skipped: recipes legacy_id {$row['id']} (neither product_id nor modifier_id found, or inventory_id not found)\n";
         return null;
     }
 
@@ -795,7 +810,7 @@ runTableImport($posPdo, $targetPdo, 'recipes', 'recipes', 'id', function($row, $
 
     return [
         'product_id'        => $prodId,
-        'modifier_id'       => null,
+        'modifier_id'       => $modId,
         'inventory_id'      => $invId,
         'quantity_required' => $qty,
         'created_at'        => $row['created_at'] ?? date('Y-m-d H:i:s'),
