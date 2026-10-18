@@ -126,7 +126,8 @@ $filesData = [
 ];
 $serverData = [
     'REQUEST_METHOD' => 'POST',
-    'HTTP_ACCEPT' => 'application/json'
+    'HTTP_ACCEPT' => 'application/json',
+    'REMOTE_ADDR' => '198.51.100.' . rand(1, 254)
 ];
 
 $resApp = executeScript('applicant_form.php', $serverData, $postData, $filesData, null);
