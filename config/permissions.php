@@ -22,6 +22,12 @@ return [
     'inventory.adjust',
     'inventory.approve',
 
+    // Procurement
+    'procurement.view',
+    'procurement.create',
+    'procurement.approve',
+    'procurement.receive',
+
     // HRMS & Payroll
     'hr.employee.view',
     'hr.employee.create',

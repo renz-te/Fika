@@ -62,7 +62,7 @@ This document maps every legacy PHP page and API in `cafe_hrms/` and `cafe_pos/`
 | `cafe_hrms/performance.php` | Employee performance review summary | None | `MISSING` | Performance evaluation records and department rating summary missing from rebuild. |
 | `cafe_hrms/performance_form.php` | Performance appraisal evaluation form | None | `MISSING` | Multi-criteria performance evaluation grading form missing from rebuild. |
 | `cafe_hrms/pos_dashboard.php` | HRMS overview of POS register sessions and sales | `fika_pos/fika_pos_dashboard.php` | `PORTED` | Rebuilt with branch scoping and `pos.view` permission checks. |
-| `cafe_hrms/procurement.php` | Store purchase orders & procurement requests | None | `MISSING` | Supply requisition forms, purchase orders, and vendor approval workflow not included in Day 1–2. |
+| `cafe_hrms/procurement.php` | Store purchase orders & procurement requests | `fika_inventory/fika_inventory_procurement.php`, `fika_inventory/api/fika_inventory_procurement.php` | `PORTED` | Rebuilt with multi-item POs, supplier directory, Maker-Checker approvals, idempotent receiving, and inventory ledger integration. |
 | `cafe_hrms/raise_form.php` | Compensation adjustment & promotion form | `fika_hrms/fika_hrms_employee_form.php` | `PARTIAL` | Hourly wage editable on employee form; dedicated compensation change approval workflow missing. |
 | `cafe_hrms/read_notif.php` | Dismiss user notification endpoint | None | `MISSING` | Notification center backend endpoint missing from rebuild. |
 | `cafe_hrms/rehire_form.php` | Terminated employee reactivation wizard | `fika_hrms/api/fika_hrms_employee_status.php` | `PARTIAL` | Status activation exists in `fika_hrms_employee_status.php`; formal rehire audit wizard is missing. |
