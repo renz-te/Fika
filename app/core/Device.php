@@ -3,6 +3,31 @@
 class Device {
     
     /**
+     * Look up active registered device by verifying its secure device_token via hash_equals.
+     * (Do NOT authenticate devices using mac_address).
+     */
+    public static function getDevice(?string $token): ?array {
+        if (empty($token) || !is_string($token)) {
+            return null;
+        }
+
+        global $pdo;
+        $stmt = $pdo->prepare("
+            SELECT id, branch_id, device_name, device_token, status 
+            FROM devices 
+            WHERE device_token = ? AND status = 'Active' AND deleted_at IS NULL
+        ");
+        $stmt->execute([$token]);
+        $device = $stmt->fetch();
+
+        if ($device && !empty($device['device_token']) && hash_equals($device['device_token'], $token)) {
+            return $device;
+        }
+
+        return null;
+    }
+
+    /**
      * Verify if the device MAC address or a stored device cookie/token is registered and active
      */
     public static function authenticateDevice(string $identifier, ?int $branchId = null): bool {

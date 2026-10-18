@@ -65,8 +65,22 @@ try {
         $idempotencyKey
     ]);
 
-    // 5. Update Order Status
-    $pdo->prepare("UPDATE orders SET order_status = 'PAID', payment_status = 'PAID' WHERE id = ?")->execute([$orderId]);
+    // 5. Update Order Status and bind to active cashier shift (Order-Shift Separation)
+    $sessionId = $_SESSION['pos_session_id'] ?? null;
+    if (!$sessionId && !empty($user['branch_id'])) {
+        $sessStmt = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id = ? AND status = 'OPEN' ORDER BY id DESC LIMIT 1");
+        $sessStmt->execute([$user['branch_id']]);
+        $sessionId = $sessStmt->fetchColumn() ?: null;
+    }
+
+    $pdo->prepare("
+        UPDATE orders 
+        SET order_status = 'PAID', 
+            payment_status = 'PAID', 
+            cashier_id = COALESCE(cashier_id, ?), 
+            pos_session_id = COALESCE(pos_session_id, ?) 
+        WHERE id = ?
+    ")->execute([$user['id'], $sessionId, $orderId]);
 
     // 6. Write to Inventory Ledger (Recipes deduction)
     $ledgerStmt = $pdo->prepare("

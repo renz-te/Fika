@@ -99,7 +99,7 @@ This document maps every legacy PHP page and API in `cafe_hrms/` and `cafe_pos/`
 | :--- | :--- | :--- | :--- | :--- |
 | `cafe_pos/cashier.php` | POS Cashier register frontend interface | None | `MISSING` | Interactive cashier register UI (cart, product catalog, modifier selection, checkout). Backend APIs are ported. |
 | `cafe_pos/database.php` | Legacy POS database connection script | `app/bootstrap.php` | `PORTED` | Unified into single application bootstrap PDO instance. |
-| `cafe_pos/kiosk.php` | Customer self-service ordering kiosk frontend | None | `MISSING` | Touchscreen self-ordering kiosk view. Hardened with token auth on `feature/addons`, not yet in `rebuild/core`. |
+| `cafe_pos/kiosk.php` | Customer self-service ordering kiosk frontend | `fika_pos/fika_pos_kiosk.php`, `fika_pos/fika_pos_dashboard.php`, `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_kiosk_status.php` | `PORTED` | Rebuilt touch self-service kiosk UI with device token auth, order-shift separation, age limit filter, and status polling. |
 | `cafe_pos/temp_mig.php` | POS inventory transaction patch script | `migrations/002_pos_inventory.sql` | `DROP-PROPOSED` | One-off migration scratch file; superseded by numbered migrations. |
 | `cafe_pos/temp_mig2.php` | POS database migration patch script | `migrations/002_pos_inventory.sql` | `DROP-PROPOSED` | One-off migration scratch file; superseded by numbered migrations. |
 | `cafe_pos/update_db.php` | POS database schema updater | `migrations/002_pos_inventory.sql` | `DROP-PROPOSED` | One-off migration scratch file; superseded by numbered migrations. |
@@ -131,7 +131,7 @@ This document maps every legacy PHP page and API in `cafe_hrms/` and `cafe_pos/`
 | `cafe_pos/api/payment_status.php` | PayMongo transaction polling API | None | `MISSING` | Polling endpoint for kiosk and cashier UI to monitor digital transaction status. |
 | `cafe_pos/api/payment_webhook.php` | Hardened PayMongo webhook endpoint | None | `MISSING` | Signature verification, pessimistic row locking (`FOR UPDATE`), and replay protection. |
 | `migrations/017_add_menu_item_images.sql` & uploads | Menu item image catalog & uploads | None | `MISSING` | Image storage in `uploads/menu/` with `.htaccess` execution denial and POS visual cards. |
-| `migrations/020_order_kiosk_tokens.sql` | Kiosk terminal session tokens | `app/core/Device.php` (for clock) | `PARTIAL` | Clock device registration ported; customer-ordering kiosk session token schema on `feature/addons`. |
+| `migrations/020_order_kiosk_tokens.sql` | Kiosk terminal session tokens | `migrations/019_order_kiosk_tokens.sql` | `PORTED` | Rebuilt with hashed order-bound tokens, 30-min expiration, device token auth, and age limit setting. |
 
 ---
 
