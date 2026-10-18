@@ -50,10 +50,15 @@ try {
     $orderStmt->execute([$orderNumber, $branchId, $sessionId, $user['id']]);
     $orderId = $pdo->lastInsertId();
     
-    $itemStmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_snapshot, subtotal) VALUES (?, ?, ?, ?, ?)");
+    $itemStmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_snapshot, price_snapshot_cents, subtotal) VALUES (?, ?, ?, ?, ?, ?)");
     $modStmt = $pdo->prepare("INSERT INTO order_item_modifiers (order_item_id, modifier_id, price_snapshot) VALUES (?, ?, ?)");
     
-    $prodLookup = $pdo->prepare("SELECT price, is_active FROM products WHERE id = ?");
+    $prodLookup = $pdo->prepare("
+        SELECT p.*, bp.is_active AS branch_active 
+        FROM products p
+        LEFT JOIN branch_products bp ON bp.product_id = p.id AND bp.branch_id = ?
+        WHERE p.id = ? AND p.deleted_at IS NULL
+    ");
     $modLookup = $pdo->prepare("SELECT price, is_active FROM modifiers WHERE id = ?");
     
     foreach ($input['items'] as $item) {
@@ -61,16 +66,26 @@ try {
         $qty = (int) ($item['qty'] ?? 1);
         if ($qty <= 0) continue;
         
-        $prodLookup->execute([$prodId]);
+        $prodLookup->execute([$branchId, $prodId]);
         $product = $prodLookup->fetch();
-        if (!$product || !$product['is_active']) {
+        $isAvailable = $product && (int)$product['is_active'] === 1 && ($product['branch_active'] === null || (int)$product['branch_active'] === 1);
+        if (!$isAvailable) {
             throw new Exception("Product ID {$prodId} is invalid or inactive.");
         }
         
-        $basePriceCentavos = Money::toCentavos($product['price']);
+        $basePriceCentavos = isset($product['price_cents']) && (int)$product['price_cents'] > 0
+            ? (int)$product['price_cents']
+            : Money::toCentavos($product['price']);
         $itemTotalCentavos = $basePriceCentavos;
         
-        $itemStmt->execute([$orderId, $prodId, $qty, Money::toDecimal($basePriceCentavos), 0]); // Subtotal updated later
+        $itemStmt->execute([
+            $orderId, 
+            $prodId, 
+            $qty, 
+            Money::toDecimal($basePriceCentavos), 
+            $basePriceCentavos, 
+            0
+        ]); // Subtotal updated later
         $orderItemId = $pdo->lastInsertId();
         
         // Process modifiers

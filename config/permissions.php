@@ -13,6 +13,8 @@ return [
 
     // POS & Inventory
     'pos.access',
+    'pos.menu.view',
+    'pos.menu.manage',
     'pos.void_order',
     'pos.refund_order',
     'inventory.view',
