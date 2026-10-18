@@ -1,22 +1,82 @@
 <?php
 // POS Authentication API connecting to HRMS
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 header('Content-Type: application/json');
 
-$hrmsHost = '127.0.0.1';
-$hrmsDb = 'hrms';
-$hrmsUser = 'root';
-$hrmsPass = '';
+if (!class_exists('Config')) {
+    class Config {
+        public static function get(string $key, mixed $default = null): mixed {
+            $envFile = dirname(__DIR__, 2) . '/.env';
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || str_starts_with($line, '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $k = trim($k);
+                        $v = trim($v, " \t\n\r\0\x0B\"'");
+                        putenv("{$k}={$v}");
+                        $_ENV[$k] = $v;
+                        $_SERVER[$k] = $v;
+                    }
+                }
+            }
+
+            $envKey = strtoupper(str_replace('.', '_', $key));
+            $envVal = getenv($envKey);
+            if ($envVal !== false && $envVal !== '') {
+                return $envVal;
+            }
+
+            $parts = explode('.', $key);
+            $file = $parts[0];
+            $path = dirname(__DIR__, 2) . '/config/' . $file . '.php';
+            if (!file_exists($path)) {
+                $configPath = dirname(__DIR__, 2) . '/config/config.php';
+                if (file_exists($configPath)) {
+                    $config = require $configPath;
+                    $curr = $config;
+                    foreach ($parts as $p) {
+                        if (is_array($curr) && array_key_exists($p, $curr)) {
+                            $curr = $curr[$p];
+                        } else {
+                            return $default;
+                        }
+                    }
+                    return $curr;
+                }
+                return $default;
+            }
+
+            $config = require $path;
+            array_shift($parts);
+            $curr = $config;
+            foreach ($parts as $p) {
+                if (is_array($curr) && array_key_exists($p, $curr)) {
+                    $curr = $curr[$p];
+                } else {
+                    return $default;
+                }
+            }
+            return $curr;
+        }
+    }
+}
+
+$hrmsHost = Config::get('db.host', '127.0.0.1');
+$hrmsDb   = Config::get('db.hrms_name', 'hrms');
+$hrmsUser = Config::get('db.user', 'root');
+$hrmsPass = Config::get('db.pass', '');
 
 $posDb = 'cafe_pos';
 
 try {
-    $pdo = new PDO("mysql:host=$hrmsHost;dbname=$hrmsDb;charset=utf8mb4", $hrmsUser, $hrmsPass, [
+    $pdo = new PDO("mysql:host={$hrmsHost};dbname={$hrmsDb};charset=utf8mb4", $hrmsUser, $hrmsPass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
 } catch (PDOException $e) {
+    error_log("Database connection failed: " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Database connection failed']);
     exit;
 }
@@ -133,7 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['success' => false, 'error' => 'Invalid username or password']);
             }
         } catch (PDOException $e) {
-            echo json_encode(['success' => false, 'error' => 'DB Error: ' . $e->getMessage()]);
+            error_log("DB Error in pos_auth: " . $e->getMessage());
+            echo json_encode(['success' => false, 'error' => 'Database error occurred']);
         }
         exit;
     }

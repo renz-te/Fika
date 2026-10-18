@@ -620,6 +620,56 @@ try {
     $c28Pass = !$leakedPattern;
     recordResult(28, "Trap 12: no raw exception, SQLSTATE, or stack trace leaked in error responses", $c28Pass);
 
+    // =========================================================================
+    // SUB-PHASE H7: HRMS API Authentication Tests
+    // =========================================================================
+
+    $hrmsInventoryCrudUrl = rtrim($baseUrl, '/') . '/cafe_hrms/api/inventory_crud.php';
+
+    // -------------------------------------------------------------------------
+    // CASE 29: Unauthenticated POST to cafe_hrms/api/inventory_crud.php returns 401
+    // -------------------------------------------------------------------------
+    $c29Payload = json_encode([
+        'type' => 'inventory',
+        'action' => 'create',
+        'item_name' => 'Unauth Test Item',
+        'unit' => 'pcs',
+        'unit_cost' => 10.00,
+        'stock' => 50,
+        'low_stock_level' => 5
+    ]);
+    $resC29 = sendHttpRequest($hrmsInventoryCrudUrl, 'POST', $c29Payload, ['Content-Type: application/json']);
+    $errorResponses[] = $resC29['body'];
+
+    $c29Pass = ($resC29['code'] === 401);
+    recordResult(29, "unauthenticated POST to cafe_hrms/api/inventory_crud.php returns 401", $c29Pass, ['code' => $resC29['code']]);
+
+    // -------------------------------------------------------------------------
+    // CASE 30: Unauthenticated GET to cafe_hrms/api/inventory_crud.php returns 401
+    // -------------------------------------------------------------------------
+    $resC30 = sendHttpRequest($hrmsInventoryCrudUrl . '?type=inventory', 'GET');
+    $errorResponses[] = $resC30['body'];
+
+    $c30Pass = ($resC30['code'] === 401);
+    recordResult(30, "unauthenticated GET to cafe_hrms/api/inventory_crud.php returns 401", $c30Pass, ['code' => $resC30['code']]);
+
+    // -------------------------------------------------------------------------
+    // CASE 31: Authenticated session can access cafe_hrms/api/inventory_crud.php (returns 200)
+    // -------------------------------------------------------------------------
+    $adminSessId = createSessionWithUser([
+        'id' => 99991,
+        'username' => 'hrms_admin_test',
+        'name' => 'HRMS Admin Test',
+        'role' => 'Super Admin',
+        'branch_id' => 1
+    ]);
+    $adminCookie = "PHPSESSID={$adminSessId}";
+
+    $resC31 = sendHttpRequest($hrmsInventoryCrudUrl . '?type=inventory&branch_id=1', 'GET', [], [], $adminCookie);
+
+    $c31Pass = ($resC31['code'] === 200) && isset($resC31['json']['success']) && $resC31['json']['success'] === true;
+    recordResult(31, "authenticated session can access cafe_hrms/api/inventory_crud.php (200 OK)", $c31Pass, ['code' => $resC31['code']]);
+
 } finally {
     // Teardown Test Data
     if (!empty($createdOrderIds)) {
@@ -654,7 +704,7 @@ try {
 
 echo "\n--------------------------------------------------------------------\n";
 if ($failures === 0) {
-    echo "All 28 POS Trust Boundary test cases PASSED successfully!\n";
+    echo "All 31 POS Trust Boundary test cases PASSED successfully!\n";
     exit(0);
 } else {
     echo "Completed with {$failures} failure(s).\n";

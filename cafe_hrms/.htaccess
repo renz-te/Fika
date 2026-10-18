@@ -2,7 +2,7 @@ RewriteEngine On
 
 # Force remove .php from the visible URL (External Redirect)
 RewriteCond %{REQUEST_METHOD} GET
-RewriteCond %{REQUEST_URI} !^/Fika/cafe_hrms/api/
+RewriteCond %{REQUEST_URI} !/api/
 RewriteCond %{ENV:REDIRECT_STATUS} ^$
 RewriteRule ^(.+)\.php$ $1 [R=301,L]
 

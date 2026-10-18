@@ -2,22 +2,21 @@
 require_once __DIR__ . '/../init.php';
 
 // Only Admin and Head Barista can manage the menu
-if (empty($_SESSION['user']) || !in_array($_SESSION['user']['role'], ['Super Admin', 'Admin', 'Head Barista'])) {
-    http_response_code(403);
+if (empty($_SESSION['user'])) {
+    http_response_code(401);
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
 
-// Connect to POS database
-try {
-    $posPdo = new PDO("mysql:host=127.0.0.1;dbname=cafe_pos;charset=utf8mb4", "root", "");
-    $posPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $posPdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Could not connect to POS database: ' . $e->getMessage()]);
+if (!in_array($_SESSION['user']['role'], ['Super Admin', 'Admin', 'Head Barista'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden']);
     exit;
 }
+
+// Connect to POS database
+require_once __DIR__ . '/../../cafe_pos/database.php';
+$posPdo = $pdo;
 
 header('Content-Type: application/json');
 

@@ -5,6 +5,12 @@ header('Content-Type: application/json');
 
 session_start();
 
+if (empty($_SESSION['user'])) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Unauthorized access. Session required.']);
+    exit;
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input && !empty($_POST)) {
