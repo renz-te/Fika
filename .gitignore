@@ -7,3 +7,5 @@ uploads/
 config/config.php
 !migrations/*.sql
 !app/core/Config.php
+storage/
+app/storage/

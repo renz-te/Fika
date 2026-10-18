@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- Rich Espresso Gradients -->
+    <linearGradient id="espressoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5E3A24" />
+      <stop offset="50%" stop-color="#4A2E1B" />
+      <stop offset="100%" stop-color="#2D190E" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24" />
+      <stop offset="60%" stop-color="#D97706" />
+      <stop offset="100%" stop-color="#B45309" />
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1C1917" flood-opacity="0.25" />
+    </filter>
+
+    <!-- Arc for "FIKA • SLOW HOURS" -->
+    <!-- Semi-circle arching over the top of the bean -->
+    <path id="topTextArc" d="M 60,250 A 190,190 0 1,1 440,250" fill="none" />
+  </defs>
+
+  <!-- Top Text: FIKA • SLOW HOURS -->
+  <text font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="27"
+        font-weight="900"
+        letter-spacing="5"
+        fill="#4A2E1B">
+    <textPath href="#topTextArc" startOffset="50%" text-anchor="middle">
+      FIKA &bull; SLOW HOURS
+    </textPath>
+  </text>
+
+  <!-- Group for Coffee Bean & Clock -->
+  <g filter="url(#subtleShadow)">
+    <!-- Stylized Coffee Bean Silhouette -->
+    <!-- Elegant outer contour centered around (250, 255) -->
+    <path d="M 250,85 
+             C 340,85 400,165 400,260 
+             C 400,355 335,415 250,415 
+             C 165,415 100,355 100,260 
+             C 100,165 160,85 250,85 Z" 
+          fill="url(#espressoGrad)" 
+          stroke="#D97706" 
+          stroke-width="3" />
+
+    <!-- Center Crease S-Curve of the Bean -->
+    <path d="M 250,95 
+             C 285,155 215,200 250,260 
+             C 285,320 215,360 250,405" 
+          fill="none" 
+          stroke="#2D190E" 
+          stroke-width="14" 
+          stroke-linecap="round" />
+    <path d="M 250,95 
+             C 285,155 215,200 250,260 
+             C 285,320 215,360 250,405" 
+          fill="none" 
+          stroke="#D97706" 
+          stroke-width="2" 
+          stroke-linecap="round" 
+          opacity="0.85" />
+
+    <!-- Minimalist Clock Center Backdrop -->
+    <circle cx="250" cy="255" r="76" fill="#1C1917" opacity="0.9" stroke="url(#goldGrad)" stroke-width="4" />
+
+    <!-- Clock Hour Ticks (12, 3, 6, 9 and relaxed subticks) -->
+    <!-- 12 o'clock -->
+    <line x1="250" y1="187" x2="250" y2="197" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" />
+    <!-- 1 o'clock -->
+    <line x1="284" y1="196" x2="279" y2="204" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 2 o'clock -->
+    <line x1="309" y1="221" x2="300" y2="226" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 3 o'clock -->
+    <line x1="318" y1="255" x2="308" y2="255" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" />
+    <!-- 4 o'clock -->
+    <line x1="309" y1="289" x2="300" y2="284" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 5 o'clock -->
+    <line x1="284" y1="314" x2="279" y2="306" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 6 o'clock -->
+    <line x1="250" y1="323" x2="250" y2="313" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" />
+    <!-- 7 o'clock -->
+    <line x1="216" y1="314" x2="221" y2="306" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 8 o'clock -->
+    <line x1="191" y1="289" x2="200" y2="284" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 9 o'clock -->
+    <line x1="182" y1="255" x2="192" y2="255" stroke="#F59E0B" stroke-width="3" stroke-linecap="round" />
+    <!-- 10 o'clock -->
+    <line x1="191" y1="221" x2="200" y2="226" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+    <!-- 11 o'clock -->
+    <line x1="216" y1="196" x2="221" y2="204" stroke="#D97706" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Clock Hands Set to 10:10 (Relaxed Specialty Café Time) -->
+    <!-- Hour Hand: Points towards 10 o'clock (-60 deg from 12) -->
+    <!-- Center: 250, 255. dx = -36 * cos(30) = -31, dy = -36 * sin(30) = -18 -->
+    <line x1="250" y1="255" x2="216" y2="235" stroke="url(#goldGrad)" stroke-width="5" stroke-linecap="round" />
+
+    <!-- Minute Hand: Points towards 2 o'clock (+60 deg from 12) -->
+    <!-- dx = 52 * cos(30) = 45, dy = -52 * sin(30) = -26 -->
+    <line x1="250" y1="255" x2="295" y2="229" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round" />
+
+    <!-- Clock Center Pivot Pin -->
+    <circle cx="250" cy="255" r="7" fill="#D97706" stroke="#FEF3C7" stroke-width="2" />
+  </g>
+
+  <!-- Bottom Badge: EST. 2026 -->
+  <g>
+    <rect x="185" y="426" width="130" height="34" rx="17" 
+          fill="#4A2E1B" 
+          stroke="#D97706" 
+          stroke-width="2" />
+    <text x="250" y="448" 
+          text-anchor="middle" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+          font-size="14" 
+          font-weight="800" 
+          letter-spacing="3" 
+          fill="#FBBF24">EST. 2026</text>
+  </g>
+</svg>

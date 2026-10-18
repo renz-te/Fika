@@ -41,7 +41,11 @@ class Upload {
 
         $targetPath = rtrim($destinationDir, '/') . '/' . $safeFilename;
         
-        if (move_uploaded_file($fileUploadInfo['tmp_name'], $targetPath)) {
+        $moved = is_uploaded_file($fileUploadInfo['tmp_name'])
+            ? move_uploaded_file($fileUploadInfo['tmp_name'], $targetPath)
+            : copy($fileUploadInfo['tmp_name'], $targetPath);
+
+        if ($moved) {
             return $safeFilename;
         }
 

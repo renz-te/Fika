@@ -72,8 +72,8 @@ class Auth {
                 exit(json_encode(['error' => 'Unauthorized: authentication required.']));
             }
 
-            $loginUrl = config('app.base_url') . '/fika_hrms_login.php';
-            header("Location: {$loginUrl}");
+            $loginUrl = config('app.base_url') . '/login.php';
+            header("Location: {$loginUrl}", true, 401);
             exit();
         }
     }
