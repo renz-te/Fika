@@ -53,15 +53,29 @@ echo "POS Trust Boundaries Test Suite (H5)\n";
 echo "Target Base URL : {$baseUrl}\n";
 echo "====================================================================\n\n";
 
-function sendHttpRequest(string $url, string $method = 'GET', $data = [], array $headers = [], ?string $cookie = null): array {
+function sendHttpRequest(string $url, string $method = 'GET', $data = [], array $headers = [], ?string $cookie = null, bool $followRedirects = false): array {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    if ($followRedirects) {
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    }
     if ($method === 'POST') {
         curl_setopt($ch, CURLOPT_POST, true);
         if (is_string($data)) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-        } else {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        } elseif (is_array($data)) {
+            $hasFile = false;
+            foreach ($data as $v) {
+                if ($v instanceof CURLFile) {
+                    $hasFile = true;
+                    break;
+                }
+            }
+            if ($hasFile) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+            } else {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+            }
         }
     }
     if (!empty($headers)) {
@@ -670,8 +684,110 @@ try {
     $c31Pass = ($resC31['code'] === 200) && isset($resC31['json']['success']) && $resC31['json']['success'] === true;
     recordResult(31, "authenticated session can access cafe_hrms/api/inventory_crud.php (200 OK)", $c31Pass, ['code' => $resC31['code']]);
 
+    // =========================================================================
+    // SUB-PHASE H8: HRMS Legacy Pages Audit & Security Tests
+    // =========================================================================
+
+    $fileProxyUrl = rtrim($baseUrl, '/') . '/cafe_hrms/file_proxy.php';
+    $getApplicantDrawerUrl = rtrim($baseUrl, '/') . '/cafe_hrms/api/get_applicant_drawer.php';
+    $forgotPasswordUrl = rtrim($baseUrl, '/') . '/cafe_hrms/forgot_password.php';
+    $resetPasswordUrl = rtrim($baseUrl, '/') . '/cafe_hrms/reset_password';
+    $careersUrl = rtrim($baseUrl, '/') . '/cafe_hrms/careers.php';
+
+    // -------------------------------------------------------------------------
+    // CASE 32: Path traversal attempts to cafe_hrms/file_proxy.php are rejected
+    // Constraint 1: Payload tries '....//....//.env' AND '../../.env'
+    // -------------------------------------------------------------------------
+    $resC32_1 = sendHttpRequest($fileProxyUrl . '?file=' . urlencode('....//....//.env'), 'GET', [], [], $adminCookie);
+    $resC32_2 = sendHttpRequest($fileProxyUrl . '?file=' . urlencode('../../.env'), 'GET', [], [], $adminCookie);
+
+    $noLeak1 = !str_contains($resC32_1['body'], 'DB_PASS') && !str_contains($resC32_1['body'], 'PAYMONGO_SECRET');
+    $noLeak2 = !str_contains($resC32_2['body'], 'DB_PASS') && !str_contains($resC32_2['body'], 'PAYMONGO_SECRET');
+    $statusRejected1 = in_array($resC32_1['code'], [400, 403, 404], true);
+    $statusRejected2 = in_array($resC32_2['code'], [400, 403, 404], true);
+
+    $c32Pass = $statusRejected1 && $statusRejected2 && $noLeak1 && $noLeak2;
+    recordResult(32, "path traversal attacks (....// and ../) on file_proxy.php rejected without data leak", $c32Pass, [
+        'code1' => $resC32_1['code'],
+        'code2' => $resC32_2['code']
+    ]);
+
+    // -------------------------------------------------------------------------
+    // CASE 33: Unauthenticated access to cafe_hrms/file_proxy.php returns 401
+    // -------------------------------------------------------------------------
+    $resC33 = sendHttpRequest($fileProxyUrl . '?file=applicants/sample.pdf', 'GET');
+    $c33Pass = ($resC33['code'] === 401);
+    recordResult(33, "unauthenticated access to cafe_hrms/file_proxy.php returns 401", $c33Pass, ['code' => $resC33['code']]);
+
+    // -------------------------------------------------------------------------
+    // CASE 34: Unauthenticated access to cafe_hrms/api/get_applicant_drawer.php returns 401
+    // -------------------------------------------------------------------------
+    $resC34 = sendHttpRequest($getApplicantDrawerUrl . '?id=1', 'GET');
+    $c34Pass = ($resC34['code'] === 401);
+    recordResult(34, "unauthenticated access to cafe_hrms/api/get_applicant_drawer.php returns 401", $c34Pass, ['code' => $resC34['code']]);
+
+    // -------------------------------------------------------------------------
+    // CASE 35: forgot_password.php does NOT reveal token or reset link in response body
+    // Constraint 2: Verify body does NOT contain 'token=' or reset link
+    // -------------------------------------------------------------------------
+    $resC35 = sendHttpRequest($forgotPasswordUrl, 'POST', ['email' => 'admin@fika.local']);
+    $c35Pass = ($resC35['code'] === 200) 
+        && !str_contains($resC35['body'], 'token=') 
+        && !str_contains($resC35['body'], 'reset_password.php?token=');
+    recordResult(35, "forgot_password.php does NOT leak token or reset link in response body", $c35Pass, [
+        'hasToken' => str_contains($resC35['body'], 'token=')
+    ]);
+
+    // -------------------------------------------------------------------------
+    // CASE 36: Expired reset token (> 1 hour) is rejected by reset_password.php
+    // -------------------------------------------------------------------------
+    $expiredTokenRaw = bin2hex(random_bytes(20));
+    $expiredTokenHash = hash('sha256', $expiredTokenRaw);
+    $pdo->query("INSERT INTO hrms.password_resets (user_id, token, created_at) VALUES (1, '{$expiredTokenHash}', DATE_SUB(NOW(), INTERVAL 2 HOUR))");
+
+    $resC36 = sendHttpRequest($resetPasswordUrl . '?token=' . $expiredTokenRaw, 'GET', [], [], null, true);
+    $c36Pass = str_contains($resC36['body'], 'Invalid or expired reset token') 
+        && !str_contains($resC36['body'], 'action="reset_password?token=');
+    recordResult(36, "expired password reset token (> 1 hour) is rejected by reset_password.php", $c36Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 37: Upload hardening: text file renamed to .jpg is rejected
+    // Constraint 3: Verify uploading a text file with a .jpg extension is rejected
+    // -------------------------------------------------------------------------
+    $fakeJpgPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fake_photo_' . uniqid() . '.jpg';
+    file_put_contents($fakeJpgPath, "<?php phpinfo(); ?> -- plain text fake photo content");
+
+    $uploadPayload = [
+        'first_name' => 'SecTest',
+        'last_name' => 'Candidate',
+        'email' => 'sectest_' . uniqid() . '@example.com',
+        'phone_raw' => '9123456789',
+        'position_applied' => 'Barista',
+        'employment_category' => 'Part-Time',
+        'experience_level' => 'No Experience',
+        'birthdate' => '2000-01-01',
+        'branch_id' => 1,
+        'reference_name' => 'Ref Person',
+        'reference_phone' => '09123456789',
+        'valid_id_photo' => new CURLFile($fakeJpgPath, 'image/jpeg', 'fake_photo.jpg')
+    ];
+
+    $resC37 = sendHttpRequest($careersUrl, 'POST', $uploadPayload);
+    if (file_exists($fakeJpgPath)) {
+        @unlink($fakeJpgPath);
+    }
+
+    $c37Pass = str_contains($resC37['body'], 'Valid ID photo must be a valid JPEG, PNG, or WebP image.');
+    recordResult(37, "upload hardening: text file disguised as .jpg is rejected by MIME validation", $c37Pass, [
+        'bodyHasError' => $c37Pass
+    ]);
+
 } finally {
     // Teardown Test Data
+    if (!empty($expiredTokenHash)) {
+        $pdo->query("DELETE FROM hrms.password_resets WHERE token = '{$expiredTokenHash}'");
+    }
+
     if (!empty($createdOrderIds)) {
         $inOrders = implode(',', array_map('intval', $createdOrderIds));
         $pdo->query("DELETE FROM order_items WHERE order_id IN ({$inOrders})");
@@ -704,7 +820,7 @@ try {
 
 echo "\n--------------------------------------------------------------------\n";
 if ($failures === 0) {
-    echo "All 31 POS Trust Boundary test cases PASSED successfully!\n";
+    echo "All 37 POS Trust Boundary test cases PASSED successfully!\n";
     exit(0);
 } else {
     echo "Completed with {$failures} failure(s).\n";

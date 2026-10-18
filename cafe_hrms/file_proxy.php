@@ -3,12 +3,11 @@ require_once __DIR__ . '/init.php';
 
 // Check access
 if (empty($_SESSION['user'])) {
-    http_response_code(403);
-    die('Forbidden: Please log in.');
+    http_response_code(401);
+    die('Unauthorized: Please log in.');
 }
 
-// Only HR and Admins should access applicant/employee files, wait maybe Employee themselves?
-// Assuming 'Super Admin', 'Admin', 'HR Manager'
+// Only HR and Admins should access applicant/employee files
 $allowed = [ROLE_SUPER_ADMIN, ROLE_HR_MANAGER, ROLE_CENTRAL_HR, ROLE_BRANCH_MANAGER];
 if (!in_array($_SESSION['user']['role'], $allowed)) {
     http_response_code(403);
@@ -22,14 +21,32 @@ if (empty($fileParam)) {
 }
 
 // Security: Prevent directory traversal
-$fileParam = str_replace(['..', '\\', "\0"], '', $fileParam);
-// Ensure path starts with uploads/ (we strip leading slashes if any)
-$fileParam = ltrim($fileParam, '/');
-$filePath = __DIR__ . '/uploads/' . $fileParam;
+if (str_contains($fileParam, '..') || str_contains($fileParam, '\\') || str_contains($fileParam, "\0")) {
+    http_response_code(400);
+    die('Bad Request: Invalid file path.');
+}
 
-if (!file_exists($filePath) || !is_file($filePath)) {
+$fileParam = ltrim($fileParam, '/');
+$baseUploadDir = realpath(__DIR__ . '/uploads');
+$filePath = __DIR__ . '/uploads/' . $fileParam;
+$realTarget = realpath($filePath);
+
+if ($baseUploadDir === false || $realTarget === false || !str_starts_with($realTarget, $baseUploadDir . DIRECTORY_SEPARATOR)) {
     http_response_code(404);
     die('Not Found.');
+}
+
+if (!is_file($realTarget)) {
+    http_response_code(404);
+    die('Not Found.');
+}
+
+// Allowed extensions whitelist
+$allowedExts = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
+$ext = strtolower(pathinfo($realTarget, PATHINFO_EXTENSION));
+if (!in_array($ext, $allowedExts, true)) {
+    http_response_code(403);
+    die('Forbidden: File type not permitted.');
 }
 
 // Get MIME type

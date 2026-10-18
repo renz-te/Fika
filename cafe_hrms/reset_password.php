@@ -6,8 +6,14 @@ $error = null;
 $valid = false;
 
 if ($token) {
-    $stmt = $pdo->prepare('SELECT pr.user_id, u.email, u.name FROM password_resets pr JOIN users u ON u.id = pr.user_id WHERE pr.token = ? ORDER BY pr.created_at DESC LIMIT 1');
-    $stmt->execute([$token]);
+    $tokenHash = hash('sha256', $token);
+    $stmt = $pdo->prepare('SELECT pr.user_id, u.email, u.name 
+                           FROM password_resets pr 
+                           JOIN users u ON u.id = pr.user_id 
+                           WHERE (pr.token = ? OR pr.token = ?) 
+                             AND pr.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) 
+                           ORDER BY pr.created_at DESC LIMIT 1');
+    $stmt->execute([$tokenHash, $token]);
     $reset = $stmt->fetch();
     
     if ($reset) {

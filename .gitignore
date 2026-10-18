@@ -6,7 +6,9 @@ config.php
 .env
 .env.*
 !.env.example
-cafe_hrms/uploads/
+cafe_hrms/uploads/*
+!cafe_hrms/uploads/.htaccess
+!cafe_hrms/uploads/.gitkeep
 uploads/menu/*
 !uploads/menu/.htaccess
 !uploads/menu/.gitkeep

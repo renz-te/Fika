@@ -147,37 +147,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             mkdir($uploadDir, 0777, true);
         }
 
+        $allowed_image_mimes = ['image/jpeg', 'image/png', 'image/webp'];
+        $allowed_image_exts = ['jpg', 'jpeg', 'png', 'webp'];
+        $allowed_resume_mimes = ['application/pdf'];
+        $allowed_resume_exts = ['pdf'];
+        $max_file_size = 5 * 1024 * 1024; // 5MB
+
         if (isset($_FILES['valid_id_photo']) && $_FILES['valid_id_photo']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['valid_id_photo']['name'], PATHINFO_EXTENSION);
-            $filename = 'id_' . time() . '_' . rand(100, 999) . '.' . $ext;
-            move_uploaded_file($_FILES['valid_id_photo']['tmp_name'], $uploadDir . $filename);
-            $valid_id_photo = $filename;
-        }
+            $f = $_FILES['valid_id_photo'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
 
-        if (isset($_FILES['valid_id_back_photo']) && $_FILES['valid_id_back_photo']['error'] === UPLOAD_ERR_OK) {
-            $ext = pathinfo($_FILES['valid_id_back_photo']['name'], PATHINFO_EXTENSION);
-            $filename = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $ext;
-            move_uploaded_file($_FILES['valid_id_back_photo']['tmp_name'], $uploadDir . $filename);
-            $valid_id_back_photo = $filename;
-        }
-
-        if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
-            $ext = strtolower(pathinfo($_FILES['resume']['name'], PATHINFO_EXTENSION));
-            if ($ext !== 'pdf') {
-                $errors[] = 'Resume must be a PDF document.';
+            if ($f['size'] > $max_file_size) {
+                $errors[] = 'Valid ID photo exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_image_exts, true) || !in_array($mime, $allowed_image_mimes, true)) {
+                $errors[] = 'Valid ID photo must be a valid JPEG, PNG, or WebP image.';
             } else {
-                $filename = 'resume_' . time() . '_' . rand(100, 999) . '.' . $ext;
-                move_uploaded_file($_FILES['resume']['tmp_name'], $uploadDir . $filename);
+                $safeExt = ($ext === 'jpeg') ? 'jpg' : $ext;
+                $filename = 'id_' . time() . '_' . rand(100, 999) . '.' . $safeExt;
+                move_uploaded_file($f['tmp_name'], $uploadDir . $filename);
+                $valid_id_photo = $filename;
+            }
+        }
+
+        if (empty($errors) && isset($_FILES['valid_id_back_photo']) && $_FILES['valid_id_back_photo']['error'] === UPLOAD_ERR_OK) {
+            $f = $_FILES['valid_id_back_photo'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
+
+            if ($f['size'] > $max_file_size) {
+                $errors[] = 'Valid ID back photo exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_image_exts, true) || !in_array($mime, $allowed_image_mimes, true)) {
+                $errors[] = 'Valid ID back photo must be a valid JPEG, PNG, or WebP image.';
+            } else {
+                $safeExt = ($ext === 'jpeg') ? 'jpg' : $ext;
+                $filename = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $safeExt;
+                move_uploaded_file($f['tmp_name'], $uploadDir . $filename);
+                $valid_id_back_photo = $filename;
+            }
+        }
+
+        if (empty($errors) && isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
+            $f = $_FILES['resume'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
+
+            if ($f['size'] > $max_file_size) {
+                $errors[] = 'Resume exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_resume_exts, true) || !in_array($mime, $allowed_resume_mimes, true)) {
+                $errors[] = 'Resume must be a valid PDF document.';
+            } else {
+                $filename = 'resume_' . time() . '_' . rand(100, 999) . '.pdf';
+                move_uploaded_file($f['tmp_name'], $uploadDir . $filename);
                 $resume = $filename;
             }
         }
 
-        $user_name = $_SESSION['user']['name'] ?? 'System';
+        if (empty($errors)) {
+            $user_name = $_SESSION['user']['name'] ?? 'System';
 
-        if ($id) {
-            // Check if stage changed
-            $stageChanged = ($applicant['stage'] ?? '') !== $stage;
-            $actionText = $stageChanged ? "Moved to $stage" : "Updated profile";
+            if ($id) {
+                // Check if stage changed
+                $stageChanged = ($applicant['stage'] ?? '') !== $stage;
+                $actionText = $stageChanged ? "Moved to $stage" : "Updated profile";
             
             $stmt = $pdo->prepare('UPDATE applicants SET first_name=?, last_name=?, email=?, phone=?, position_applied=?, notes=?, stage=?, valid_id_photo=?, valid_id_back_photo=?, resume=?, reference_name=?, reference_phone=?, employment_category=?, education_level=?, school_name=?, school_address=?, year_graduated=?, education_status=?, course_diploma=?, experience_level=?, birthdate=?, address=?, sex=?, nationality=?, preferred_schedule=?, branch_id=? WHERE id=?');
             $stmt->execute([$first_name, $last_name, $email, $phone, $position_applied, $notes, $stage, $valid_id_photo, $valid_id_back_photo, $resume, $reference_name, $reference_phone, $employment_category, $education_level, $school_name, $school_address, $year_graduated, $education_status, $course_diploma, $experience_level, $birthdate, $address, $sex, $nationality, $preferred_schedule, $branch_id, $id]);
@@ -206,6 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('applications');
         }
     }
+}
 }
 
 $pageTitle = $id ? 'Edit Applicant' : 'New Applicant';

@@ -14,6 +14,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
 $public_pages = ['login.php', 'forgot_password.php', 'reset_password.php', 'verify.php', 'careers.php'];
 
 if (!isset($_SESSION['user']) && !in_array($current_page, $public_pages)) {
+    if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/') || $current_page === 'file_proxy.php') {
+        http_response_code(401);
+        if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
+            echo json_encode(['error' => 'Unauthorized']);
+        } else {
+            die('Unauthorized: Please log in.');
+        }
+        exit();
+    }
     header('Location: login');
     exit();
 }

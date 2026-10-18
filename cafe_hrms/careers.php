@@ -77,39 +77,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $valid_id_photo = null;
         $valid_id_back_photo = null;
         $resume = null;
-        $allowed_image_mimes = ['image/jpeg', 'image/png'];
+        $allowed_image_mimes = ['image/jpeg', 'image/png', 'image/webp'];
+        $allowed_image_exts = ['jpg', 'jpeg', 'png', 'webp'];
         $allowed_resume_mimes = ['application/pdf'];
+        $allowed_resume_exts = ['pdf'];
+        $max_file_size = 5 * 1024 * 1024; // 5MB
 
         if (isset($_FILES['valid_id_photo']) && $_FILES['valid_id_photo']['error'] === UPLOAD_ERR_OK) {
-            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['valid_id_photo']['tmp_name']);
-            if (!in_array($mime, $allowed_image_mimes)) {
-                $error = 'Valid ID photo must be a JPEG or PNG image.';
+            $f = $_FILES['valid_id_photo'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
+
+            if ($f['size'] > $max_file_size) {
+                $error = 'Valid ID photo exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_image_exts, true) || !in_array($mime, $allowed_image_mimes, true)) {
+                $error = 'Valid ID photo must be a valid JPEG, PNG, or WebP image.';
             } else {
-                $ext = pathinfo($_FILES['valid_id_photo']['name'], PATHINFO_EXTENSION);
-                $valid_id_photo = 'id_' . time() . '_' . rand(100, 999) . '.' . $ext;
-                move_uploaded_file($_FILES['valid_id_photo']['tmp_name'], $uploadDir . $valid_id_photo);
+                $safeExt = ($ext === 'jpeg') ? 'jpg' : $ext;
+                $valid_id_photo = 'id_' . time() . '_' . rand(100, 999) . '.' . $safeExt;
+                move_uploaded_file($f['tmp_name'], $uploadDir . $valid_id_photo);
             }
         }
 
         if (empty($error) && isset($_FILES['valid_id_back_photo']) && $_FILES['valid_id_back_photo']['error'] === UPLOAD_ERR_OK) {
-            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['valid_id_back_photo']['tmp_name']);
-            if (!in_array($mime, $allowed_image_mimes)) {
-                $error = 'Valid ID back photo must be a JPEG or PNG image.';
+            $f = $_FILES['valid_id_back_photo'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
+
+            if ($f['size'] > $max_file_size) {
+                $error = 'Valid ID back photo exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_image_exts, true) || !in_array($mime, $allowed_image_mimes, true)) {
+                $error = 'Valid ID back photo must be a valid JPEG, PNG, or WebP image.';
             } else {
-                $ext = pathinfo($_FILES['valid_id_back_photo']['name'], PATHINFO_EXTENSION);
-                $valid_id_back_photo = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $ext;
-                move_uploaded_file($_FILES['valid_id_back_photo']['tmp_name'], $uploadDir . $valid_id_back_photo);
+                $safeExt = ($ext === 'jpeg') ? 'jpg' : $ext;
+                $valid_id_back_photo = 'id_back_' . time() . '_' . rand(100, 999) . '.' . $safeExt;
+                move_uploaded_file($f['tmp_name'], $uploadDir . $valid_id_back_photo);
             }
         }
 
         if (empty($error) && isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
-            $mime = finfo_file(finfo_open(FILEINFO_MIME_TYPE), $_FILES['resume']['tmp_name']);
-            if (!in_array($mime, $allowed_resume_mimes)) {
+            $f = $_FILES['resume'];
+            $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $f['tmp_name']);
+            finfo_close($finfo);
+
+            if ($f['size'] > $max_file_size) {
+                $error = 'Resume exceeds maximum size of 5MB.';
+            } elseif (!in_array($ext, $allowed_resume_exts, true) || !in_array($mime, $allowed_resume_mimes, true)) {
                 $error = 'Resume must be a valid PDF document.';
             } else {
-                $ext = strtolower(pathinfo($_FILES['resume']['name'], PATHINFO_EXTENSION));
-                $resume = 'resume_' . time() . '_' . rand(100, 999) . '.' . $ext;
-                move_uploaded_file($_FILES['resume']['tmp_name'], $uploadDir . $resume);
+                $resume = 'resume_' . time() . '_' . rand(100, 999) . '.pdf';
+                move_uploaded_file($f['tmp_name'], $uploadDir . $resume);
             }
         }
         

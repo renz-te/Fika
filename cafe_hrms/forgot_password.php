@@ -8,15 +8,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
-    } else {
         $token = bin2hex(random_bytes(20));
+        $tokenHash = hash('sha256', $token);
         $stmt = $pdo->prepare('SELECT id, name FROM users WHERE email = ? LIMIT 1');
         $stmt->execute([$email]);
         $user = $stmt->fetch();
         
         if ($user) {
             $stmt = $pdo->prepare('INSERT INTO password_resets (user_id, token, created_at) VALUES (?, ?, NOW())');
-            $stmt->execute([$user['id'], $token]);
+            $stmt->execute([$user['id'], $tokenHash]);
             $resetLink = sprintf('%s/reset_password.php?token=%s', rtrim(get_setting($pdo, 'app_url', 'http://localhost/again'), '/'), $token);
             $body = "
                 <div style='font-family: sans-serif; color: #333;'>
@@ -32,15 +32,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ";
             
             if (!send_email($email, 'Password Reset Request', $body)) {
-                // For local dev, display the link if email fails
-                $message = 'Password reset link generated. <br><a href="' . h($resetLink) . '" class="text-blue-600 underline">Click here to reset your password</a>.';
-            } else {
-                $message = 'A password reset email was sent to your address.';
+                // Log for debugging if email delivery fails, never expose token or link in HTTP response
+                error_log("Password reset email delivery failed for {$email}.");
             }
-        } else {
-            // To prevent email enumeration, still say we sent it
-            $message = 'If that email exists in our system, a password reset link has been sent.';
         }
+        // Uniform message regardless of user existence or mail result (prevents enumeration and link leak)
+        $message = 'If that email exists in our system, a password reset link has been sent.';
     }
 }
 

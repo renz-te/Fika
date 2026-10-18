@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 // Access control check (only logged in users can view this)
 if (!isset($_SESSION['user']['id'])) {
-    http_response_code(403);
+    http_response_code(401);
     echo '<div class="text-red-500 p-4">Unauthorized access.</div>';
     exit;
 }
