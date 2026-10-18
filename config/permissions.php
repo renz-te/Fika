@@ -19,6 +19,8 @@ return [
     'pos.refund_order',
     'inventory.view',
     'inventory.manage',
+    'inventory.adjust',
+    'inventory.approve',
 
     // HRMS & Payroll
     'hr.employee.view',
