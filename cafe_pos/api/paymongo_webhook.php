@@ -1,3 +1,3 @@
 <?php
-// Unified webhook entry point forwarding to payment_webhook.php
-require_once __DIR__ . '/payment_webhook.php';
+// Strict forwarder to hardened payment_webhook.php
+require __DIR__ . '/payment_webhook.php';
