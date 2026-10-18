@@ -21,22 +21,32 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
 $isDryRun = !in_array('--apply', $argv, true);
 
-$legacyHost = getenv('LEGACY_DB_HOST') ?: '127.0.0.1';
-$legacyUser = getenv('LEGACY_DB_USER') ?: 'root';
-$legacyPass = getenv('LEGACY_DB_PASS') !== false ? getenv('LEGACY_DB_PASS') : '';
-$legacyDb   = getenv('LEGACY_DB_NAME') ?: 'fika_legacy_test';
+$legacyHost   = getenv('LEGACY_DB_HOST') ?: '127.0.0.1';
+$legacyUser   = getenv('LEGACY_DB_USER') ?: 'root';
+$legacyPass   = getenv('LEGACY_DB_PASS') !== false ? getenv('LEGACY_DB_PASS') : '';
+$legacyHrmsDb = getenv('LEGACY_HRMS_DB') ?: (getenv('LEGACY_DB_NAME') ?: 'hrms');
+$legacyPosDb  = getenv('LEGACY_POS_DB')  ?: (getenv('LEGACY_DB_NAME') ?: 'cafe_pos');
 
 echo "====================================================================\n";
-echo "Fika Café — Legacy Data Import Pipeline (Phase 17B)\n";
+echo "Fika Café — Legacy Data Import Pipeline (Phase 17C)\n";
 echo "====================================================================\n";
-echo "Mode:      " . ($isDryRun ? "DRY RUN (read-only, no database modifications)" : "APPLY (writing to database)") . "\n";
-echo "Source DB: mysql:host={$legacyHost};dbname={$legacyDb}\n";
-echo "Target DB: " . config('db.name', 'fika_scratch') . " on " . config('db.host', '127.0.0.1') . "\n";
+echo "Mode:         " . ($isDryRun ? "DRY RUN (read-only, no database modifications)" : "APPLY (writing to database)") . "\n";
+echo "Host:         {$legacyHost}\n";
+echo "HRMS DB:      {$legacyHrmsDb}\n";
+echo "POS DB:       {$legacyPosDb}\n";
+echo "Target DB:    " . config('db.name', 'fika_scratch') . " on " . config('db.host', '127.0.0.1') . "\n";
 echo "====================================================================\n\n";
 
 try {
-    $dsnLegacy = "mysql:host={$legacyHost};dbname={$legacyDb};charset=utf8mb4";
-    $legacyPdo = new PDO($dsnLegacy, $legacyUser, $legacyPass, [
+    $dsnHrms = "mysql:host={$legacyHost};dbname={$legacyHrmsDb};charset=utf8mb4";
+    $hrmsPdo = new PDO($dsnHrms, $legacyUser, $legacyPass, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ]);
+
+    $dsnPos = "mysql:host={$legacyHost};dbname={$legacyPosDb};charset=utf8mb4";
+    $posPdo = new PDO($dsnPos, $legacyUser, $legacyPass, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
@@ -208,7 +218,6 @@ function runTableImport(
                 // Transform row
                 $transformed = $rowTransformer($row, $legacyPdo, $targetPdo, $isDryRun);
                 if ($transformed === null) {
-                    // Row skipped due to non-recoverable orphan
                     $totalSkipped++;
                     continue;
                 }
@@ -251,12 +260,21 @@ function runTableImport(
     $summary[$targetTable] = ['read' => $totalRead, 'written' => $actualWritten, 'skipped' => $totalSkipped];
 }
 
+// Pre-load map of employee_id -> branch_id for tables missing branch_id
+$empBranchMap = [];
+try {
+    $empRows = $hrmsPdo->query("SELECT id, branch_id FROM `employees`")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($empRows as $er) {
+        $empBranchMap[(int)$er['id']] = !empty($er['branch_id']) ? (int)$er['branch_id'] : 1;
+    }
+} catch (\Throwable $e) {}
+
 // ====================================================================
-// 1. Branches
+// 1. Branches (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'branches', 'branches', 'id', function($row) {
+runTableImport($hrmsPdo, $targetPdo, 'branches', 'branches', 'id', function($row) {
     return [
-        'name'           => trim($row['name'] ?? 'Unnamed Branch'),
+        'name'           => trim($row['name'] ?? 'Main Branch'),
         'address'        => $row['address'] ?? null,
         'contact_number' => $row['contact_number'] ?? null,
         'status'         => (strcasecmp($row['status'] ?? '', 'Inactive') === 0) ? 'Inactive' : 'Active',
@@ -266,11 +284,11 @@ runTableImport($legacyPdo, $targetPdo, 'branches', 'branches', 'id', function($r
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 2. Roles (Update legacy_id mappings if present)
+// 2. Roles (HRMS)
 // ====================================================================
-if (legacyTableExists($legacyPdo, 'roles')) {
+if (legacyTableExists($hrmsPdo, 'roles')) {
     echo "--- Checking Roles mapping ---\n";
-    $rolesStmt = $legacyPdo->query("SELECT * FROM `roles` ORDER BY `id` ASC");
+    $rolesStmt = $hrmsPdo->query("SELECT * FROM `roles` ORDER BY `id` ASC");
     $rolesRead = 0;
     $rolesWritten = 0;
     while ($r = $rolesStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -287,9 +305,9 @@ if (legacyTableExists($legacyPdo, 'roles')) {
 }
 
 // ====================================================================
-// 3. Employees
+// 3. Employees (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'employees', 'employees', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($hrmsPdo, $targetPdo, 'employees', 'employees', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $legacyBranchId = !empty($row['branch_id']) ? (int)$row['branch_id'] : null;
     $newBranchId = LegacyResolver::resolve($targetPdo, 'branches', $legacyBranchId, $isDryRun);
 
@@ -307,15 +325,18 @@ runTableImport($legacyPdo, $targetPdo, 'employees', 'employees', 'id', function(
     $empType = 'REGULAR';
     $rawType = strtoupper(trim($row['employment_type'] ?? ''));
     if (str_contains($rawType, 'PART')) $empType = 'PART_TIME';
-    elseif (str_contains($rawType, 'PROB')) $empType = 'PROBATIONARY';
+    elseif (str_contains($rawType, 'PROB') || str_contains($rawType, 'TRAIN')) $empType = 'PROBATIONARY';
 
     $status = 'ACTIVE';
     $rawStatus = strtoupper(trim($row['status'] ?? ''));
-    if (str_contains($rawStatus, 'INACT')) $status = 'INACTIVE';
+    if (str_contains($rawStatus, 'INACT') || str_contains($rawStatus, 'ARCHIV')) $status = 'INACTIVE';
     elseif (str_contains($rawStatus, 'TERM') || str_contains($rawStatus, 'SEP')) $status = 'SEPARATED';
 
     $empCode = $row['employee_id'] ?? ('EMP-LEGACY-' . $row['id']);
     $email = !empty($row['email']) ? trim($row['email']) : (strtolower($empCode) . '@fika.test');
+
+    $hourlyRate = (float)($row['hourly_rate'] ?? 0.00);
+    $basicSalary = (float)($row['basic_salary'] ?? ($hourlyRate * 8 * 22));
 
     return [
         'employee_code'     => $empCode,
@@ -330,8 +351,8 @@ runTableImport($legacyPdo, $targetPdo, 'employees', 'employees', 'id', function(
         'department'        => $row['department'] ?? 'Operations',
         'employment_type'   => $empType,
         'status'            => $status,
-        'basic_salary'      => (float)($row['basic_salary'] ?? 0.00),
-        'hourly_rate'       => (float)($row['hourly_rate'] ?? 0.00),
+        'basic_salary'      => $basicSalary,
+        'hourly_rate'       => $hourlyRate,
         'date_hired'        => !empty($row['date_hired']) ? $row['date_hired'] : null,
         'bank_no_enc'       => $bankNo,
         'tin_enc'           => $tin,
@@ -344,9 +365,9 @@ runTableImport($legacyPdo, $targetPdo, 'employees', 'employees', 'id', function(
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 4. Users
+// 4. Users (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'users', 'users', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($hrmsPdo, $targetPdo, 'users', 'users', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $legacyEmpId = !empty($row['employee_id']) ? (int)$row['employee_id'] : null;
     $newEmpId = LegacyResolver::resolve($targetPdo, 'employees', $legacyEmpId, $isDryRun);
     if ($legacyEmpId !== null && $newEmpId === null) {
@@ -374,16 +395,16 @@ runTableImport($legacyPdo, $targetPdo, 'users', 'users', 'id', function($row, $l
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 5. Applicants (Consolidating Interview & Scorecard Notes)
+// 5. Applicants (HRMS, with Interview & Scorecard consolidation)
 // ====================================================================
-$hasLegacyInterviews = legacyTableExists($legacyPdo, 'interviews');
-runTableImport($legacyPdo, $targetPdo, 'applicants', 'applicants', 'id', function($row, $legacyPdo, $targetPdo) use ($hasLegacyInterviews) {
+$hasLegacyInterviews = legacyTableExists($hrmsPdo, 'interviews');
+runTableImport($hrmsPdo, $targetPdo, 'applicants', 'applicants', 'id', function($row, $legacyPdo, $targetPdo) use ($hasLegacyInterviews, $hrmsPdo) {
     $notes = trim($row['notes'] ?? '');
 
     if ($hasLegacyInterviews) {
         try {
-            $iStmt = $legacyPdo->prepare("
-                SELECT i.*, sc.technical_score, sc.communication_score, sc.culture_fit_score, sc.recommendation, sc.notes AS sc_notes
+            $iStmt = $hrmsPdo->prepare("
+                SELECT i.*, sc.technical_score, sc.communication_score, sc.culture_score, sc.recommendation, sc.strengths, sc.concerns
                 FROM interviews i
                 LEFT JOIN interview_scorecards sc ON sc.interview_id = i.id
                 WHERE i.applicant_id = ?
@@ -398,25 +419,23 @@ runTableImport($legacyPdo, $targetPdo, 'applicants', 'applicants', 'id', functio
                     $scores = [];
                     if (!empty($iv['technical_score'])) $scores[] = "Tech: {$iv['technical_score']}/5";
                     if (!empty($iv['communication_score'])) $scores[] = "Comm: {$iv['communication_score']}/5";
-                    if (!empty($iv['culture_fit_score'])) $scores[] = "Culture: {$iv['culture_fit_score']}/5";
+                    if (!empty($iv['culture_score'])) $scores[] = "Culture: {$iv['culture_score']}/5";
                     $scoreStr = !empty($scores) ? implode(', ', $scores) : "No rating";
                     $rec = !empty($iv['recommendation']) ? " Rec: {$iv['recommendation']}." : "";
-                    $scNotes = !empty($iv['sc_notes']) ? " Scorecard: {$iv['sc_notes']}." : "";
-                    $ivNotes = !empty($iv['notes']) ? " Notes: {$iv['notes']}." : "";
-                    $interviewSnippets[] = "[Legacy Interview #{$iv['id']}] {$scoreStr}.{$rec}{$scNotes}{$ivNotes}";
+                    $scNotes = !empty($iv['strengths']) ? " Strengths: {$iv['strengths']}." : "";
+                    if (!empty($iv['concerns'])) $scNotes .= " Concerns: {$iv['concerns']}.";
+                    $interviewSnippets[] = "[Legacy Interview #{$iv['id']}] {$scoreStr}.{$rec}{$scNotes}";
                 }
                 $consolidated = implode("\n", $interviewSnippets);
                 $notes = $notes !== '' ? ($notes . "\n\n" . $consolidated) : $consolidated;
             }
-        } catch (\Throwable $e) {
-            // Ignore interview fetch errors
-        }
+        } catch (\Throwable $e) {}
     }
 
-    $rawStatus = strtoupper(trim($row['status'] ?? 'NEW'));
+    $rawStatus = strtoupper(trim($row['stage'] ?? ($row['status'] ?? 'NEW')));
     $status = match($rawStatus) {
         'SHORTLISTED' => 'SHORTLISTED',
-        'REVIEWING'   => 'REVIEWING',
+        'REVIEWING', 'INTERVIEW', 'OFFER' => 'REVIEWING',
         'REJECTED'    => 'REJECTED',
         'HIRED'       => 'HIRED',
         default       => 'NEW'
@@ -428,7 +447,7 @@ runTableImport($legacyPdo, $targetPdo, 'applicants', 'applicants', 'id', functio
         'last_name'        => trim($row['last_name'] ?? 'Candidate'),
         'email'            => trim($row['email'] ?? ('applicant_' . $row['id'] . '@candidate.test')),
         'phone'            => !empty($row['phone']) ? trim($row['phone']) : '09000000000',
-        'position'         => $row['position'] ?? ($row['position_applied'] ?? 'General Staff'),
+        'position'         => $row['position_applied'] ?? ($row['position'] ?? 'General Staff'),
         'position_applied' => $row['position_applied'] ?? ($row['position'] ?? 'General Staff'),
         'resume'           => $row['resume'] ?? null,
         'resume_path'      => $row['resume_path'] ?? null,
@@ -440,15 +459,24 @@ runTableImport($legacyPdo, $targetPdo, 'applicants', 'applicants', 'id', functio
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 6. Attendance Logs
+// 6. Attendance Logs (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'attendance_logs', 'attendance', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($hrmsPdo, $targetPdo, 'attendance_logs', 'attendance', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($empBranchMap) {
     $empId = LegacyResolver::resolve($targetPdo, 'employees', (int)$row['employee_id'], $isDryRun);
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
+    
+    // Resolve branch: from row branch_id, or mapped employee branch, or default to branch 1
+    $legacyBranchId = !empty($row['branch_id']) ? (int)$row['branch_id'] : ($empBranchMap[(int)$row['employee_id']] ?? 1);
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', $legacyBranchId, $isDryRun);
 
     if ($empId === null || $branchId === null) {
-        echo "  [WARNING] Orphan skipped: attendance_logs legacy_id {$row['id']} (required employee_id {$row['employee_id']} or branch_id {$row['branch_id']} not found)\n";
+        echo "  [WARNING] Orphan skipped: attendance_logs legacy_id {$row['id']} (required employee_id {$row['employee_id']} not found)\n";
         return null;
+    }
+
+    $clockIn = $row['time_in'] ?? ($row['clock_in'] ?? null);
+    $clockOut = $row['time_out'] ?? ($row['clock_out'] ?? null);
+    if (!$clockIn) {
+        $clockIn = date('Y-m-d 08:00:00');
     }
 
     $status = match(strtoupper(trim($row['status'] ?? ''))) {
@@ -461,9 +489,9 @@ runTableImport($legacyPdo, $targetPdo, 'attendance_logs', 'attendance', 'id', fu
     return [
         'employee_id' => $empId,
         'branch_id'   => $branchId,
-        'clock_in'    => $row['clock_in'] ?? date('Y-m-d 08:00:00'),
-        'clock_out'   => $row['clock_out'] ?? null,
-        'work_date'   => $row['work_date'] ?? date('Y-m-d', strtotime($row['clock_in'] ?? 'now')),
+        'clock_in'    => $clockIn,
+        'clock_out'   => $clockOut,
+        'work_date'   => !empty($row['work_date']) ? $row['work_date'] : date('Y-m-d', strtotime($clockIn)),
         'source'      => (strtoupper($row['source'] ?? '') === 'MANUAL') ? 'MANUAL' : 'DEVICE',
         'status'      => $status,
         'created_at'  => $row['created_at'] ?? date('Y-m-d H:i:s'),
@@ -472,9 +500,9 @@ runTableImport($legacyPdo, $targetPdo, 'attendance_logs', 'attendance', 'id', fu
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 7. Leave Requests
+// 7. Leave Requests (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'leave_requests', 'leaves', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($hrmsPdo, $targetPdo, 'leave_requests', 'leaves', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $empId = LegacyResolver::resolve($targetPdo, 'employees', (int)$row['employee_id'], $isDryRun);
     if ($empId === null) {
         echo "  [WARNING] Orphan skipped: leave_requests legacy_id {$row['id']} (required employee_id {$row['employee_id']} not found)\n";
@@ -488,7 +516,7 @@ runTableImport($legacyPdo, $targetPdo, 'leave_requests', 'leaves', 'id', functio
         default    => 'PENDING'
     };
 
-    $rawType = strtoupper(trim($row['type'] ?? 'VACATION'));
+    $rawType = strtoupper(trim($row['leave_type'] ?? ($row['type'] ?? 'VACATION')));
     $type = match($rawType) {
         'SICK', 'SIL' => 'SIL',
         'MATERNITY'   => 'MATERNITY',
@@ -498,12 +526,16 @@ runTableImport($legacyPdo, $targetPdo, 'leave_requests', 'leaves', 'id', functio
         default       => 'VACATION'
     };
 
+    $dateFrom = $row['start_date'] ?? ($row['date_from'] ?? date('Y-m-d'));
+    $dateTo   = $row['end_date'] ?? ($row['date_to'] ?? $dateFrom);
+    $days     = isset($row['days']) ? (float)$row['days'] : (max(1, (strtotime($dateTo) - strtotime($dateFrom)) / 86400 + 1));
+
     return [
         'employee_id' => $empId,
         'type'        => $type,
-        'date_from'   => $row['date_from'] ?? date('Y-m-d'),
-        'date_to'     => $row['date_to'] ?? date('Y-m-d'),
-        'days'        => (float)($row['days'] ?? 1.00),
+        'date_from'   => $dateFrom,
+        'date_to'     => $dateTo,
+        'days'        => $days,
         'reason'      => !empty($row['reason']) ? $row['reason'] : 'Legacy leave request',
         'status'      => $status,
         'created_at'  => $row['created_at'] ?? date('Y-m-d H:i:s'),
@@ -512,14 +544,15 @@ runTableImport($legacyPdo, $targetPdo, 'leave_requests', 'leaves', 'id', functio
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 8. Shifts
+// 8. Shifts (HRMS schedules)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'shifts', 'schedules', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
+runTableImport($hrmsPdo, $targetPdo, 'shifts', 'schedules', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId, $empBranchMap) {
+    $legacyBranchId = !empty($row['branch_id']) ? (int)$row['branch_id'] : ($empBranchMap[(int)$row['employee_id']] ?? 1);
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', $legacyBranchId, $isDryRun);
     $empId = LegacyResolver::resolve($targetPdo, 'employees', (int)$row['employee_id'], $isDryRun);
 
     if ($branchId === null || $empId === null) {
-        echo "  [WARNING] Orphan skipped: shifts legacy_id {$row['id']} (required branch_id {$row['branch_id']} or employee_id {$row['employee_id']} not found)\n";
+        echo "  [WARNING] Orphan skipped: shifts legacy_id {$row['id']} (required branch_id or employee_id {$row['employee_id']} not found)\n";
         return null;
     }
 
@@ -540,11 +573,11 @@ runTableImport($legacyPdo, $targetPdo, 'shifts', 'schedules', 'id', function($ro
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 9. Payroll Runs & Payroll Items
+// 9. Payroll Runs & Items (HRMS payroll)
 // ====================================================================
-if (legacyTableExists($legacyPdo, 'payroll')) {
+if (legacyTableExists($hrmsPdo, 'payroll')) {
     echo "--- Migrating Table: payroll_items (Source: payroll) ---\n";
-    $pCount = (int)$legacyPdo->query("SELECT COUNT(*) FROM `payroll`")->fetchColumn();
+    $pCount = (int)$hrmsPdo->query("SELECT COUNT(*) FROM `payroll`")->fetchColumn();
     if ($pCount > 0) {
         $runStmt = $targetPdo->query("SELECT id FROM `payroll_runs` WHERE legacy_id = 999999 LIMIT 1");
         $legacyRunId = $runStmt->fetchColumn();
@@ -559,39 +592,40 @@ if (legacyTableExists($legacyPdo, 'payroll')) {
             $legacyRunId = 1;
         }
 
-        runTableImport($legacyPdo, $targetPdo, 'payroll_items', 'payroll', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($legacyRunId) {
+        runTableImport($hrmsPdo, $targetPdo, 'payroll_items', 'payroll', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($legacyRunId) {
             $empId = LegacyResolver::resolve($targetPdo, 'employees', (int)$row['employee_id'], $isDryRun);
             if ($empId === null) {
                 echo "  [WARNING] Orphan skipped: payroll_items legacy_id {$row['id']} (required employee_id {$row['employee_id']} not found)\n";
                 return null;
             }
 
+            $grossPay = (float)($row['gross_pay'] ?? 0.00);
+            $overtimePay = (float)($row['overtime_pay'] ?? 0.00);
+            $basicPay = isset($row['basic_pay']) ? (float)$row['basic_pay'] : max(0.00, $grossPay - $overtimePay);
+
             return [
                 'payroll_run_id'       => $legacyRunId,
                 'employee_id'          => $empId,
-                'basic_pay'            => (float)($row['basic_pay'] ?? 0.00),
-                'overtime_pay'         => (float)($row['overtime_pay'] ?? 0.00),
-                'bonus_pay'            => 0.00,
-                'gross_pay'            => (float)($row['gross_pay'] ?? 0.00),
-                'sss_deduction'        => (float)($row['sss_deduction'] ?? 0.00),
-                'philhealth_deduction' => (float)($row['philhealth_deduction'] ?? 0.00),
-                'pagibig_deduction'    => (float)($row['pagibig_deduction'] ?? 0.00),
-                'tax_deduction'        => (float)($row['tax_deduction'] ?? 0.00),
+                'basic_pay'            => $basicPay,
+                'overtime_pay'         => $overtimePay,
+                'bonus_pay'            => (float)($row['bonus_amount'] ?? 0.00),
+                'gross_pay'            => $grossPay,
+                'sss_deduction'        => (float)($row['sss'] ?? ($row['sss_deduction'] ?? 0.00)),
+                'philhealth_deduction' => (float)($row['philhealth'] ?? ($row['philhealth_deduction'] ?? 0.00)),
+                'pagibig_deduction'    => (float)($row['pagibig'] ?? ($row['pagibig_deduction'] ?? 0.00)),
+                'tax_deduction'        => (float)($row['tax'] ?? ($row['tax_deduction'] ?? 0.00)),
                 'net_pay'              => (float)($row['net_pay'] ?? 0.00),
                 'created_at'           => $row['created_at'] ?? date('Y-m-d H:i:s'),
                 'legacy_id'            => (int)$row['id'],
             ];
         }, $isDryRun, $summary);
-    } else {
-        echo "payroll: 0 rows found in legacy source.\n\n";
-        $summary['payroll_items'] = ['read' => 0, 'written' => 0, 'skipped' => 0];
     }
 }
 
 // ====================================================================
-// 10. Inventory Items
+// 10. Inventory Items (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'inventory_items', 'inventory', 'id', function($row) {
+runTableImport($posPdo, $targetPdo, 'inventory_items', 'inventory', 'id', function($row) {
     return [
         'item_name'  => trim($row['item_name'] ?? 'Unnamed Ingredient'),
         'unit'       => !empty($row['unit']) ? $row['unit'] : 'pcs',
@@ -602,58 +636,133 @@ runTableImport($legacyPdo, $targetPdo, 'inventory_items', 'inventory', 'id', fun
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 11. Inventory Stock
+// 11. Inventory Stock & Synthetic Opening Balance (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'inventory_stock', 'inventory_stock', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
+if (legacyTableExists($posPdo, 'inventory_stock')) {
+    echo "--- Migrating Table: inventory_stock (Source: inventory_stock) ---\n";
+    $stockRows = $posPdo->query("SELECT * FROM `inventory_stock` ORDER BY `inventory_id` ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $sRead = 0;
+    $sWritten = 0;
+    $sSkipped = 0;
+
+    $checkStockStmt = $targetPdo->prepare("SELECT id FROM `inventory_stock` WHERE legacy_id = ? LIMIT 1");
+    $insertStockStmt = $targetPdo->prepare("
+        INSERT INTO `inventory_stock` (`branch_id`, `inventory_id`, `current_stock`, `low_stock_threshold`, `created_at`, `legacy_id`)
+        VALUES (?, ?, ?, ?, NOW(), ?)
+    ");
+    $insertLedgerStmt = $targetPdo->prepare("
+        INSERT INTO `inventory_ledger` (`branch_id`, `inventory_id`, `type`, `quantity`, `unit_cost_snapshot`, `user_id`, `remarks`, `created_at`, `legacy_id`)
+        VALUES (?, ?, 'ADJUSTMENT', ?, ?, ?, 'Opening balance from legacy migration', NOW(), NULL)
+    ");
+    $checkLedgerStmt = $targetPdo->prepare("
+        SELECT id FROM `inventory_ledger` WHERE branch_id = ? AND inventory_id = ? AND remarks = 'Opening balance from legacy migration' LIMIT 1
+    ");
+
+    // Fetch existing historical transactions to compute opening balance offset
+    $txnSumStmt = $posPdo->prepare("
+        SELECT COALESCE(SUM(CASE WHEN LOWER(type) = 'spoilage' THEN -ABS(quantity) ELSE quantity END), 0)
+        FROM `inventory_transactions`
+        WHERE inventory_id = ? AND branch_id = ?
+    ");
+
+    foreach ($stockRows as $sr) {
+        $sRead++;
+        $legacyId = (int)$sr['inventory_id'];
+
+        $checkStockStmt->execute([$legacyId]);
+        if ($checkStockStmt->fetchColumn()) {
+            $sSkipped++;
+            continue;
+        }
+
+        $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$sr['branch_id'], $isDryRun) ?: 1;
+        $invId = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$sr['inventory_id'], $isDryRun);
+
+        if ($invId === null) {
+            echo "  [WARNING] Orphan skipped: inventory_stock legacy_id {$legacyId} (inventory item not found)\n";
+            $sSkipped++;
+            continue;
+        }
+
+        $currentStock = (float)($sr['stock'] ?? ($sr['current_stock'] ?? 0.00));
+        $lowThreshold = (float)($sr['low_stock_level'] ?? ($sr['low_stock_threshold'] ?? 5.00));
+
+        // Get legacy unit cost
+        $costStmt = $targetPdo->prepare("SELECT unit_cost FROM inventory_items WHERE id = ?");
+        $costStmt->execute([$invId]);
+        $unitCost = (float)$costStmt->fetchColumn();
+
+        // Calculate opening balance quantity needed so SUM(ledger.quantity) === current_stock
+        $txnSumStmt->execute([(int)$sr['inventory_id'], (int)$sr['branch_id']]);
+        $historicalTxnSum = (float)$txnSumStmt->fetchColumn();
+        $openingQty = $currentStock - $historicalTxnSum;
+
+        if (!$isDryRun) {
+            $insertStockStmt->execute([$branchId, $invId, $currentStock, $lowThreshold, $legacyId]);
+
+            // Insert synthetic opening balance if not already present
+            $checkLedgerStmt->execute([$branchId, $invId]);
+            if (!$checkLedgerStmt->fetchColumn()) {
+                $insertLedgerStmt->execute([$branchId, $invId, $openingQty, $unitCost, $adminUserId]);
+            }
+            $sWritten++;
+        } else {
+            LegacyResolver::registerPlanned('inventory_stock', $legacyId);
+            echo "  [DRY RUN SQL] INSERT INTO `inventory_stock` VALUES (branch: {$branchId}, inv: {$invId}, stock: {$currentStock}, low: {$lowThreshold})\n";
+            echo "  [DRY RUN SQL] INSERT INTO `inventory_ledger` (Opening balance synthetic): qty: {$openingQty}\n";
+            $sWritten++;
+        }
+    }
+
+    $actualWritten = $isDryRun ? 0 : $sWritten;
+    echo "inventory_stock: {$sRead} read, {$actualWritten} written, {$sSkipped} skipped\n\n";
+    $summary['inventory_stock'] = ['read' => $sRead, 'written' => $actualWritten, 'skipped' => $sSkipped];
+}
+
+// ====================================================================
+// 12. Inventory Ledger (POS inventory_transactions)
+// ====================================================================
+runTableImport($posPdo, $targetPdo, 'inventory_ledger', 'inventory_transactions', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId) {
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun) ?: 1;
     $invId = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$row['inventory_id'], $isDryRun);
 
-    if ($branchId === null || $invId === null) {
-        echo "  [WARNING] Orphan skipped: inventory_stock legacy_id {$row['id']} (branch_id or inventory_id not found)\n";
+    if ($invId === null) {
+        echo "  [WARNING] Orphan skipped: inventory_ledger legacy_id {$row['id']} (inventory_id not found)\n";
         return null;
     }
 
-    return [
-        'branch_id'           => $branchId,
-        'inventory_id'        => $invId,
-        'current_stock'       => (float)($row['current_stock'] ?? 0.00),
-        'low_stock_threshold' => (float)($row['low_stock_threshold'] ?? 5.00),
-        'created_at'          => $row['created_at'] ?? date('Y-m-d H:i:s'),
-        'legacy_id'           => (int)$row['id'],
-    ];
-}, $isDryRun, $summary);
+    $rawType = ucfirst(strtolower(trim($row['type'] ?? 'Adjustment')));
+    $type = match($rawType) {
+        'Restock'    => 'Restock',
+        'Spoilage'   => 'Spoilage',
+        'Sold'       => 'Sold',
+        'Transfer'   => 'Transfer',
+        default      => 'Adjustment'
+    };
 
-// ====================================================================
-// 12. Inventory Ledger
-// ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'inventory_ledger', 'inventory_transactions', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
-    $invId = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$row['inventory_id'], $isDryRun);
+    $rawQty = (float)($row['quantity'] ?? 0.00);
+    // Reductions/Spoilage in double-entry ledger have negative sign
+    $qty = ($type === 'Spoilage') ? -abs($rawQty) : $rawQty;
 
-    if ($branchId === null || $invId === null) {
-        echo "  [WARNING] Orphan skipped: inventory_ledger legacy_id {$row['id']} (branch_id or inventory_id not found)\n";
-        return null;
-    }
-
-    $rawType = ucfirst(strtolower(trim($row['type'] ?? 'Restock')));
-    $type = in_array($rawType, ['Restock', 'Spoilage', 'Sold', 'Transfer', 'Adjustment', 'SALE', 'PURCHASE']) ? $rawType : 'Adjustment';
+    $cost = (float)($row['financial_impact'] ?? ($row['unit_cost'] ?? 0.00));
 
     return [
         'branch_id'          => $branchId,
         'inventory_id'       => $invId,
         'type'               => $type,
-        'quantity'           => (float)($row['quantity'] ?? 0.00),
-        'unit_cost_snapshot' => (float)($row['unit_cost'] ?? 0.00),
+        'quantity'           => $qty,
+        'unit_cost_snapshot' => $cost,
         'user_id'            => $adminUserId,
-        'created_at'         => $row['created_at'] ?? date('Y-m-d H:i:s'),
+        'remarks'            => $row['remarks'] ?? 'Legacy transaction',
+        'created_at'         => $row['transaction_date'] ?? ($row['created_at'] ?? date('Y-m-d H:i:s')),
         'legacy_id'          => (int)$row['id'],
     ];
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 13. Products
+// 13. Products (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'products', 'products', 'id', function($row) {
+runTableImport($posPdo, $targetPdo, 'products', 'products', 'id', function($row) {
     $price = (float)($row['price'] ?? 0.00);
     $priceCents = (int)round($price * 100);
 
@@ -662,6 +771,8 @@ runTableImport($legacyPdo, $targetPdo, 'products', 'products', 'id', function($r
         'category'    => trim($row['category'] ?? 'General'),
         'price'       => $price,
         'price_cents' => $priceCents,
+        'image_path'  => $row['image_path'] ?? null,
+        'image_alt'   => $row['image_alt'] ?? null,
         'is_active'   => !empty($row['is_active']) ? 1 : 0,
         'created_at'  => $row['created_at'] ?? date('Y-m-d H:i:s'),
         'legacy_id'   => (int)$row['id'],
@@ -669,9 +780,9 @@ runTableImport($legacyPdo, $targetPdo, 'products', 'products', 'id', function($r
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 14. Recipes
+// 14. Recipes (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'recipes', 'recipes', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($posPdo, $targetPdo, 'recipes', 'recipes', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $prodId = LegacyResolver::resolve($targetPdo, 'products', (int)$row['product_id'], $isDryRun);
     $invId = LegacyResolver::resolve($targetPdo, 'inventory_items', (int)$row['inventory_id'], $isDryRun);
 
@@ -680,37 +791,38 @@ runTableImport($legacyPdo, $targetPdo, 'recipes', 'recipes', 'id', function($row
         return null;
     }
 
+    $qty = (float)($row['quantity'] ?? ($row['quantity_required'] ?? 1.00));
+
     return [
         'product_id'        => $prodId,
         'modifier_id'       => null,
         'inventory_id'      => $invId,
-        'quantity_required' => (float)($row['quantity_required'] ?? 1.00),
+        'quantity_required' => $qty,
         'created_at'        => $row['created_at'] ?? date('Y-m-d H:i:s'),
         'legacy_id'         => (int)$row['id'],
     ];
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 15. Cash Sessions
+// 15. Cash Sessions (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'cash_sessions', 'cash_sessions', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
+runTableImport($posPdo, $targetPdo, 'cash_sessions', 'cash_sessions', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) use ($adminUserId) {
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun) ?: 1;
     $cashierLegacyId = !empty($row['cashier_id']) ? (int)$row['cashier_id'] : null;
     $cashierId = LegacyResolver::resolve($targetPdo, 'users', $cashierLegacyId, $isDryRun);
 
-    if ($branchId === null) {
-        echo "  [WARNING] Orphan skipped: cash_sessions legacy_id {$row['id']} (branch_id {$row['branch_id']} not found)\n";
-        return null;
-    }
+    $startingCash = (float)($row['opening_float'] ?? ($row['starting_cash'] ?? 0.00));
+    $expectedCash = (float)($row['expected_cash'] ?? $startingCash);
+    $endingCash   = (float)($row['closing_cash'] ?? ($row['ending_cash'] ?? $expectedCash));
 
     $status = (strtoupper(trim($row['status'] ?? '')) === 'OPEN') ? 'OPEN' : 'CLOSED';
 
     return [
         'branch_id'     => $branchId,
         'cashier_id'    => $cashierId ?: $adminUserId,
-        'starting_cash' => (float)($row['starting_cash'] ?? 0.00),
-        'expected_cash' => (float)($row['expected_cash'] ?? 0.00),
-        'ending_cash'   => (float)($row['ending_cash'] ?? 0.00),
+        'starting_cash' => $startingCash,
+        'expected_cash' => $expectedCash,
+        'ending_cash'   => $endingCash,
         'status'        => $status,
         'opened_at'     => $row['opened_at'] ?? null,
         'closed_at'     => $row['closed_at'] ?? null,
@@ -719,14 +831,10 @@ runTableImport($legacyPdo, $targetPdo, 'cash_sessions', 'cash_sessions', 'id', f
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 16. Orders
+// 16. Orders (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'orders', 'orders', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
-    if ($branchId === null) {
-        echo "  [WARNING] Orphan skipped: orders legacy_id {$row['id']} (branch_id {$row['branch_id']} not found)\n";
-        return null;
-    }
+runTableImport($posPdo, $targetPdo, 'orders', 'orders', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun) ?: 1;
 
     $cashierLegacyId = !empty($row['cashier_id']) ? (int)$row['cashier_id'] : null;
     $cashierId = LegacyResolver::resolve($targetPdo, 'users', $cashierLegacyId, $isDryRun);
@@ -737,17 +845,33 @@ runTableImport($legacyPdo, $targetPdo, 'orders', 'orders', 'id', function($row, 
     $sessionLegacyId = !empty($row['pos_session_id']) ? (int)$row['pos_session_id'] : null;
     $sessionId = LegacyResolver::resolve($targetPdo, 'cash_sessions', $sessionLegacyId, $isDryRun);
 
+    $totalPrice = (float)($row['total_price'] ?? ($row['total_amount'] ?? 0.00));
+    $discount = (float)($row['discount_amount'] ?? 0.00);
+    $vat = (float)($row['vat_amount'] ?? 0.00);
+    $finalAmount = max(0.00, $totalPrice - $discount);
+
+    $rawStatus = strtoupper(trim($row['order_status'] ?? 'COMPLETED'));
+    $orderStatus = match($rawStatus) {
+        'PENDING'   => 'PENDING',
+        'PAID'      => 'PAID',
+        'COMPLETED' => 'COMPLETED',
+        'CANCELLED' => 'CANCELLED',
+        'VOID'      => 'VOID',
+        'REFUNDED'  => 'REFUNDED',
+        default     => 'COMPLETED'
+    };
+
     return [
         'order_number'    => $row['order_number'] ?? ('ORD-' . $row['id']),
         'branch_id'       => $branchId,
         'pos_session_id'  => $sessionId,
         'cashier_id'      => $cashierId,
-        'total_amount'    => (float)($row['total_amount'] ?? 0.00),
-        'discount_amount' => (float)($row['discount_amount'] ?? 0.00),
-        'vat_amount'      => (float)($row['vat_amount'] ?? 0.00),
-        'final_amount'    => (float)($row['final_amount'] ?? 0.00),
-        'order_status'    => 'COMPLETED',
-        'payment_status'  => 'PAID',
+        'total_amount'    => $totalPrice,
+        'discount_amount' => $discount,
+        'vat_amount'      => $vat,
+        'final_amount'    => $finalAmount,
+        'order_status'    => $orderStatus,
+        'payment_status'  => strtoupper(trim($row['payment_status'] ?? 'PAID')),
         'payment_method'  => strtoupper(trim($row['payment_method'] ?? 'CASH')),
         'created_at'      => $row['created_at'] ?? date('Y-m-d H:i:s'),
         'legacy_id'       => (int)$row['id'],
@@ -755,9 +879,9 @@ runTableImport($legacyPdo, $targetPdo, 'orders', 'orders', 'id', function($row, 
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 17. Order Items
+// 17. Order Items (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'order_items', 'order_items', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($posPdo, $targetPdo, 'order_items', 'order_items', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $orderId = LegacyResolver::resolve($targetPdo, 'orders', (int)$row['order_id'], $isDryRun);
     $prodId = LegacyResolver::resolve($targetPdo, 'products', (int)$row['product_id'], $isDryRun);
 
@@ -766,32 +890,34 @@ runTableImport($legacyPdo, $targetPdo, 'order_items', 'order_items', 'id', funct
         return null;
     }
 
-    $price = (float)($row['price'] ?? 0.00);
+    $qty = max(1, (int)($row['quantity'] ?? 1));
+    $subtotal = (float)($row['subtotal'] ?? 0.00);
+    $price = isset($row['price']) ? (float)$row['price'] : ($subtotal / $qty);
     $priceCents = (int)round($price * 100);
 
     return [
         'order_id'            => $orderId,
         'product_id'          => $prodId,
-        'quantity'            => (int)($row['quantity'] ?? 1),
+        'quantity'            => $qty,
         'price_snapshot'      => $price,
         'price_snapshot_cents'=> $priceCents,
-        'subtotal'            => (float)($row['subtotal'] ?? ($price * (int)$row['quantity'])),
+        'subtotal'            => $subtotal,
         'created_at'          => $row['created_at'] ?? date('Y-m-d H:i:s'),
         'legacy_id'           => (int)$row['id'],
     ];
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 18. Payments
+// 18. Payments (POS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'payments', 'payments', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($posPdo, $targetPdo, 'payments', 'payments', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $orderId = LegacyResolver::resolve($targetPdo, 'orders', (int)$row['order_id'], $isDryRun);
     if ($orderId === null) {
         echo "  [WARNING] Orphan skipped: payments legacy_id {$row['id']} (order_id {$row['order_id']} not found)\n";
         return null;
     }
 
-    $rawMethod = strtoupper(trim($row['payment_method'] ?? 'CASH'));
+    $rawMethod = strtoupper(trim($row['method'] ?? ($row['payment_method'] ?? 'CASH')));
     $method = match($rawMethod) {
         'GCASH' => 'GCASH',
         'MAYA'  => 'MAYA',
@@ -799,7 +925,7 @@ runTableImport($legacyPdo, $targetPdo, 'payments', 'payments', 'id', function($r
         default => 'CASH'
     };
 
-    $amountPaid = (float)($row['amount_paid'] ?? 0.00);
+    $amountPaid = (float)($row['gross_amount'] ?? ($row['amount_paid'] ?? 0.00));
 
     return [
         'order_id'       => $orderId,
@@ -814,16 +940,12 @@ runTableImport($legacyPdo, $targetPdo, 'payments', 'payments', 'id', function($r
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 19. Branch Budgets
+// 19. Branch Budgets (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'branch_budgets', 'branch_budgets', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
-    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun);
-    if ($branchId === null) {
-        echo "  [WARNING] Orphan skipped: branch_budgets legacy_id {$row['id']} (branch_id {$row['branch_id']} not found)\n";
-        return null;
-    }
+runTableImport($hrmsPdo, $targetPdo, 'branch_budgets', 'branch_budgets', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+    $branchId = LegacyResolver::resolve($targetPdo, 'branches', (int)$row['branch_id'], $isDryRun) ?: 1;
 
-    $amount = (float)($row['allocated_amount'] ?? 0.00);
+    $amount = (float)($row['allocated_labor_budget'] ?? ($row['allocated_amount'] ?? 0.00));
     $amountCents = (int)round($amount * 100);
 
     return [
@@ -837,9 +959,9 @@ runTableImport($legacyPdo, $targetPdo, 'branch_budgets', 'branch_budgets', 'id',
 }, $isDryRun, $summary);
 
 // ====================================================================
-// 20. Audit Logs
+// 20. Audit Logs (HRMS)
 // ====================================================================
-runTableImport($legacyPdo, $targetPdo, 'audit_logs', 'activity_logs', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
+runTableImport($hrmsPdo, $targetPdo, 'audit_logs', 'activity_logs', 'id', function($row, $legacyPdo, $targetPdo, $isDryRun) {
     $legacyUserId = !empty($row['user_id']) ? (int)$row['user_id'] : null;
     $userId = LegacyResolver::resolve($targetPdo, 'users', $legacyUserId, $isDryRun);
 
