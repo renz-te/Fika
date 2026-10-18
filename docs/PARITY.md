@@ -125,7 +125,7 @@ This document maps every legacy PHP page and API in `cafe_hrms/` and `cafe_pos/`
 | :--- | :--- | :--- | :--- | :--- |
 | `index.php` | Public café landing page | None | `MISSING` | Brand landing page introducing the café, ambiance, menu preview, and portal links. |
 | `login.php` | Unified central login portal | None (`app/core/Auth.php`) | `MISSING` | Standalone unified login page directing authenticated users to HRMS or POS based on role. |
-| `cafe_hrms/settlement_reports.php` | Daily POS register settlement reports | None | `MISSING` | HR/Finance view to audit closed POS cash sessions, actual vs expected cash, and cashier variances. |
+| `cafe_hrms/settlement_reports.php` | Daily POS register settlement reports | `fika_finance/fika_finance_reports.php`, `fika_finance/fika_finance_reconcile.php`, `fika_finance/api/fika_finance_reconcile.php` | `PORTED` | Rebuilt register shift settlement audit in financial reports and automated payment anomaly reconciliation with Maker-Checker resolution. |
 | `cafe_pos/receipt.php` & `cafe_pos/partials/receipt.php` | Thermal printable receipt | None | `MISSING` | Standard 58mm/80mm thermal receipt generator displaying order items, VAT, and discounts. |
 | `cafe_pos/api/payment_intent_create.php` | PayMongo payment intent creation API | `fika_pos/api/fika_pos_payment_create.php` | `PORTED` | Hardened digital payment intent creation (GCash, PayMaya, Card) using server-side keys. |
 | `cafe_pos/api/payment_status.php` | PayMongo transaction polling API | `fika_pos/api/fika_pos_payment_status.php` | `PORTED` | Polling endpoint for kiosk and cashier UI to monitor digital transaction status. |
