@@ -6,3 +6,4 @@ uploads/
 .env
 config/config.php
 !migrations/*.sql
+!app/core/Config.php

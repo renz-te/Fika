@@ -244,6 +244,25 @@ foreach ($products as $p) {
                 </div>
             </div>
 
+            <!-- Digital Payment Button & QR Display -->
+            <div id="digital-pay-container" class="space-y-3 pt-2">
+                <button id="btn-pay-gcash" onclick="initiateDigitalPayment('gcash')" 
+                        class="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    <span>Pay with GCash / E-Wallet</span>
+                </button>
+
+                <div id="qr-display-box" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3">
+                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wider">Scan QR Code to Pay</p>
+                    <div class="flex justify-center">
+                        <img id="qr-image" src="" alt="GCash QR Code" class="w-48 h-48 rounded-xl border border-slate-200 shadow-sm bg-white p-2">
+                    </div>
+                    <a id="qr-direct-link" href="#" target="_blank" class="inline-block text-xs text-blue-600 hover:text-blue-700 font-bold underline">
+                        Open Checkout on this device &rarr;
+                    </a>
+                </div>
+            </div>
+
             <div id="paid-badge" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 space-y-1">
                 <div class="font-black text-lg text-emerald-700">✓ PAYMENT RECEIVED!</div>
                 <p class="text-xs text-emerald-600">Your order has been sent to the kitchen and is now being prepared.</p>
@@ -410,6 +429,44 @@ foreach ($products as $p) {
                 alert('Order error: ' + err.message);
                 btn.disabled = false;
                 renderCart();
+            }
+        }
+
+        async function initiateDigitalPayment(method) {
+            if (!currentOrderId || !currentKioskToken) return;
+
+            const gcashBtn = document.getElementById('btn-pay-gcash');
+            gcashBtn.disabled = true;
+            gcashBtn.innerHTML = '<span class="animate-pulse">Generating payment link...</span>';
+
+            try {
+                const res = await fetch('api/fika_pos_payment_create.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Kiosk-Token': currentKioskToken
+                    },
+                    body: JSON.stringify({
+                        order_id: currentOrderId,
+                        method: method
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to initiate digital payment.');
+                }
+
+                // Show QR code
+                document.getElementById('qr-image').src = data.qr_code_url;
+                document.getElementById('qr-direct-link').href = data.checkout_url;
+                document.getElementById('qr-display-box').classList.remove('hidden');
+                gcashBtn.classList.add('hidden');
+
+            } catch (err) {
+                alert('Payment gateway error: ' + err.message);
+                gcashBtn.disabled = false;
+                gcashBtn.innerHTML = `<span>Pay with GCash / E-Wallet</span>`;
             }
         }
 

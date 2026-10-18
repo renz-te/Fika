@@ -190,10 +190,16 @@ $csrfToken = Csrf::getToken();
                                 <span class="text-[10px] font-semibold text-slate-400 uppercase block">Total Due</span>
                                 <span class="text-xl font-black text-slate-900">₱<?= $finalDecimal ?></span>
                             </div>
-                            <button onclick="openPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
-                                    class="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
-                                Process Payment
-                            </button>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="openDigitalPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
+                                        class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
+                                    Pay Digital
+                                </button>
+                                <button onclick="openPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
+                                        class="px-3 py-2 bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
+                                    Pay Cash
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -237,10 +243,16 @@ $csrfToken = Csrf::getToken();
                                 <span class="text-[10px] font-semibold text-slate-400 uppercase block">Total Due</span>
                                 <span class="text-xl font-black text-slate-900">₱<?= $finalDecimal ?></span>
                             </div>
-                            <button onclick="openPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
-                                    class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
-                                Process Payment
-                            </button>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="openDigitalPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
+                                        class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
+                                    Pay Digital
+                                </button>
+                                <button onclick="openPayModal(<?= (int)$ord['id'] ?>, '<?= e($ord['order_number']) ?>', '<?= $finalDecimal ?>')"
+                                        class="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95">
+                                    Pay Cash
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -290,11 +302,120 @@ $csrfToken = Csrf::getToken();
         </div>
     </div>
 
+    <!-- Digital Payment Modal -->
+    <div id="digital-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 text-center">
+            <div class="flex justify-between items-center pb-4 border-b border-slate-100">
+                <div class="text-left">
+                    <h3 class="text-lg font-bold text-slate-900">Digital Payment</h3>
+                    <p class="text-xs text-slate-500 font-mono" id="digital-order-number">ORD-000000</p>
+                </div>
+                <button onclick="closeDigitalModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+
+            <div class="bg-blue-50/60 rounded-2xl p-4 border border-blue-200/60 flex justify-between items-center text-left">
+                <span class="text-xs font-bold uppercase text-blue-900">Total Due</span>
+                <span class="text-2xl font-black text-blue-900" id="digital-amount-due">₱0.00</span>
+            </div>
+
+            <div id="digital-qr-wrapper" class="space-y-3">
+                <div class="flex justify-center">
+                    <img id="digital-qr-img" src="" alt="Payment QR Code" class="w-48 h-48 rounded-2xl border border-slate-200 shadow-sm p-2 bg-white">
+                </div>
+                <div class="flex items-center justify-center space-x-2 text-xs font-bold text-amber-600 bg-amber-50 py-2 rounded-xl border border-amber-200">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                    <span>Waiting for customer payment confirmation...</span>
+                </div>
+                <div class="pt-2 flex justify-center">
+                    <a id="digital-checkout-link" href="#" target="_blank" class="text-xs font-bold text-blue-600 hover:text-blue-800 underline">
+                        Open Customer Checkout Simulator &rarr;
+                    </a>
+                </div>
+            </div>
+
+            <div id="digital-paid-banner" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800">
+                <div class="font-black text-lg text-emerald-700">✓ PAYMENT CONFIRMED!</div>
+                <p class="text-xs text-emerald-600">The order has been marked as PAID via PayMongo.</p>
+            </div>
+
+            <button onclick="closeDigitalModal()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
+                Close
+            </button>
+        </div>
+    </div>
+
     <script>
         let selectedOrderId = null;
         let selectedOrderDue = 0;
+        let digitalPollTimer = null;
         const CSRF_TOKEN = document.getElementById('csrf-token').value;
         const HAS_ACTIVE_SESSION = document.getElementById('has-active-session').value === '1';
+
+        async function openDigitalPayModal(orderId, orderNumber, amountDueStr) {
+            selectedOrderId = orderId;
+            selectedOrderDue = parseFloat(amountDueStr);
+
+            document.getElementById('digital-order-number').innerText = orderNumber;
+            document.getElementById('digital-amount-due').innerText = '₱' + selectedOrderDue.toFixed(2);
+            document.getElementById('digital-paid-banner').classList.add('hidden');
+            document.getElementById('digital-qr-wrapper').classList.remove('hidden');
+
+            try {
+                const res = await fetch('api/fika_pos_payment_create.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        method: 'gcash'
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to create digital checkout.');
+                }
+
+                document.getElementById('digital-qr-img').src = data.qr_code_url;
+                document.getElementById('digital-checkout-link').href = data.checkout_url;
+                document.getElementById('digital-modal').classList.remove('hidden');
+
+                // Start polling payment status
+                startDigitalStatusPolling(orderId);
+
+            } catch (e) {
+                alert('Digital Payment Error: ' + e.message);
+            }
+        }
+
+        function closeDigitalModal() {
+            if (digitalPollTimer) clearInterval(digitalPollTimer);
+            document.getElementById('digital-modal').classList.add('hidden');
+            selectedOrderId = null;
+        }
+
+        function startDigitalStatusPolling(orderId) {
+            if (digitalPollTimer) clearInterval(digitalPollTimer);
+            digitalPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`api/fika_pos_payment_status.php?order_id=${orderId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.is_paid) {
+                            clearInterval(digitalPollTimer);
+                            document.getElementById('digital-qr-wrapper').classList.add('hidden');
+                            document.getElementById('digital-paid-banner').classList.remove('hidden');
+                            setTimeout(() => {
+                                closeDigitalModal();
+                                location.reload();
+                            }, 2500);
+                        }
+                    }
+                } catch (e) {}
+            }, 3000);
+        }
 
         function toggleAgedOrders() {
             const isChecked = document.getElementById('toggle-old-orders').checked;

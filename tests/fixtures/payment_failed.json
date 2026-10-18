@@ -1,0 +1,32 @@
+{
+  "data": {
+    "id": "evt_test_failed_1002",
+    "type": "event",
+    "attributes": {
+      "type": "payment.failed",
+      "livemode": false,
+      "data": {
+        "id": "{{INTENT_ID}}",
+        "type": "payment",
+        "attributes": {
+          "amount": 15000,
+          "fee": 0,
+          "net_amount": 15000,
+          "currency": "PHP",
+          "status": "failed",
+          "failed_code": "insufficient_funds",
+          "failed_message": "The payment failed due to insufficient funds.",
+          "source": {
+            "id": "src_test_123",
+            "type": "gcash"
+          },
+          "metadata": {
+            "order_id": "{{ORDER_ID}}",
+            "shift_id": "{{SHIFT_ID}}",
+            "method": "gcash"
+          }
+        }
+      }
+    }
+  }
+}

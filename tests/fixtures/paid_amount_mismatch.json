@@ -1,0 +1,30 @@
+{
+  "data": {
+    "id": "evt_test_mismatch_1003",
+    "type": "event",
+    "attributes": {
+      "type": "payment.paid",
+      "livemode": false,
+      "data": {
+        "id": "{{INTENT_ID}}",
+        "type": "payment",
+        "attributes": {
+          "amount": 9999,
+          "fee": 250,
+          "net_amount": 9749,
+          "currency": "PHP",
+          "status": "paid",
+          "source": {
+            "id": "src_test_123",
+            "type": "gcash"
+          },
+          "metadata": {
+            "order_id": "{{ORDER_ID}}",
+            "shift_id": "{{SHIFT_ID}}",
+            "method": "gcash"
+          }
+        }
+      }
+    }
+  }
+}
