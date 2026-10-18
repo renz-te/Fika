@@ -45,6 +45,9 @@ return [
     'payroll.release',
     'payroll.delete',
     'payroll.export',
+    'schedule.view',
+    'schedule.manage',
+    'schedule.claim',
     'settings.manage',
 
     // Finance

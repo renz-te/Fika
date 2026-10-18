@@ -122,6 +122,33 @@ $myLeaves = $leaveStmt->fetchAll();
 
 $sickLeaveBalance = (int)($employee['sick_leave_balance'] ?? 0);
 
+$empBranchId = (int)($employee['branch_id'] ?? 0);
+
+// 5. Shift Schedule (Only PUBLISHED shifts appear in ESS portal)
+$shiftStmt = $pdo->prepare("
+    SELECT s.*, 
+           os.id as open_shift_id, os.status as open_status, os.claimed_by
+    FROM shifts s
+    LEFT JOIN open_shifts os ON os.shift_id = s.id AND os.status IN ('OPEN', 'PENDING_APPROVAL')
+    WHERE s.employee_id = ? AND s.status = 'PUBLISHED'
+    ORDER BY s.shift_date ASC, s.start_time ASC
+");
+$shiftStmt->execute([$sessEmpId]);
+$myShifts = $shiftStmt->fetchAll();
+
+// Open shifts available in employee's branch
+$openShiftsStmt = $pdo->prepare("
+    SELECT os.*, s.shift_date, s.start_time, s.end_time, s.shift_type,
+           orig.first_name as orig_first, orig.last_name as orig_last, orig.employee_code as orig_code
+    FROM open_shifts os
+    JOIN shifts s ON os.shift_id = s.id
+    JOIN employees orig ON os.original_employee_id = orig.id
+    WHERE os.branch_id = ? AND os.status = 'OPEN' AND os.original_employee_id != ?
+    ORDER BY s.shift_date ASC, s.start_time ASC
+");
+$openShiftsStmt->execute([$empBranchId, $sessEmpId]);
+$availableOpenShifts = $openShiftsStmt->fetchAll();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -177,6 +204,12 @@ $sickLeaveBalance = (int)($employee['sick_leave_balance'] ?? 0);
             </button>
             <button onclick="switchTab('leave')" id="tabBtn-leave" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
                 <i class="fa-solid fa-plane-departure"></i> Leave & Time Off
+            </button>
+            <button onclick="switchTab('schedule')" id="tabBtn-schedule" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-calendar-check"></i> My Schedule
+                <?php if (count($myShifts) > 0): ?>
+                    <span class="ml-1.5 bg-slate-200 text-slate-700 text-xs px-2 py-0.5 rounded-full"><?= count($myShifts) ?></span>
+                <?php endif; ?>
             </button>
         </div>
 
@@ -561,6 +594,137 @@ $sickLeaveBalance = (int)($employee['sick_leave_balance'] ?? 0);
             </div>
         </div>
 
+        <!-- 5. MY SCHEDULE TAB -->
+        <div id="tabContent-schedule" class="tab-content hidden space-y-8">
+            
+            <!-- Published Shifts Section -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">My Assigned Shifts</h2>
+                        <p class="text-xs text-slate-500 mt-1">Only official published shifts are shown here.</p>
+                    </div>
+                    <span class="text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full">
+                        <?= count($myShifts) ?> Published Shift(s)
+                    </span>
+                </div>
+
+                <?php if (empty($myShifts)): ?>
+                    <div class="p-12 text-center text-slate-400">
+                        <i class="fa-solid fa-calendar-xmark text-4xl mb-3 text-slate-300"></i>
+                        <p class="font-medium text-base text-slate-700">No published shifts assigned to you yet</p>
+                        <p class="text-xs text-slate-500 mt-1">When your branch manager publishes the weekly schedule, your shifts will appear here.</p>
+                    </div>
+                <?php else: ?>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-slate-500 font-semibold text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-3.5 text-left">Shift Date</th>
+                                    <th class="px-6 py-3.5 text-left">Working Hours</th>
+                                    <th class="px-6 py-3.5 text-left">Shift Type</th>
+                                    <th class="px-6 py-3.5 text-center">Status</th>
+                                    <th class="px-6 py-3.5 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <?php foreach ($myShifts as $sh): 
+                                    $hasOpen = !empty($sh['open_status']);
+                                ?>
+                                    <tr class="hover:bg-slate-50/80 transition">
+                                        <td class="px-6 py-4 font-bold text-slate-900">
+                                            <?= date('l, M d, Y', strtotime($sh['shift_date'])) ?>
+                                        </td>
+                                        <td class="px-6 py-4 font-medium text-slate-700">
+                                            <?= date('h:i A', strtotime($sh['start_time'])) ?> &mdash; <?= date('h:i A', strtotime($sh['end_time'])) ?>
+                                        </td>
+                                        <td class="px-6 py-4 text-slate-600 text-xs">
+                                            <?= e($sh['shift_type']) ?>
+                                        </td>
+                                        <td class="px-6 py-4 text-center">
+                                            <?php if ($hasOpen && $sh['open_status'] === 'OPEN'): ?>
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                    <i class="fa-solid fa-clock text-[9px] mr-1"></i> Dropped (Awaiting Claim)
+                                                </span>
+                                            <?php elseif ($hasOpen && $sh['open_status'] === 'PENDING_APPROVAL'): ?>
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                                    <i class="fa-solid fa-user-clock text-[9px] mr-1"></i> Claim Pending Approval
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    <i class="fa-solid fa-circle-check text-[9px] mr-1"></i> Confirmed
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="px-6 py-4 text-center">
+                                            <?php if (!$hasOpen): ?>
+                                                <button onclick="dropShift(<?= (int)$sh['id'] ?>)" class="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold px-3 py-1.5 rounded-lg text-xs transition border border-rose-200">
+                                                    <i class="fa-solid fa-handshake-slash text-[10px]"></i> Drop Shift
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-xs text-slate-400 italic">Posted to Board</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Open Shifts Section (Available to Claim) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">Available Shifts to Claim</h2>
+                        <p class="text-xs text-slate-500 mt-1">Shifts dropped by peers in your branch. Claim extra hours!</p>
+                    </div>
+                    <span class="text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1 rounded-full">
+                        <?= count($availableOpenShifts) ?> Shift(s) Available
+                    </span>
+                </div>
+
+                <?php if (empty($availableOpenShifts)): ?>
+                    <div class="p-12 text-center text-slate-400">
+                        <i class="fa-solid fa-mug-hot text-4xl mb-3 text-slate-300"></i>
+                        <p class="font-medium text-base text-slate-700">No shifts need coverage right now</p>
+                        <p class="text-xs text-slate-500 mt-1">When team members drop shifts, they will appear here for you to claim.</p>
+                    </div>
+                <?php else: ?>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 p-6">
+                        <?php foreach ($availableOpenShifts as $os): ?>
+                            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col justify-between hover:border-indigo-300 transition">
+                                <div>
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div>
+                                            <div class="text-xs uppercase font-bold text-slate-400"><?= date('l', strtotime($os['shift_date'])) ?></div>
+                                            <div class="font-bold text-slate-900 text-base"><?= date('M d, Y', strtotime($os['shift_date'])) ?></div>
+                                        </div>
+                                        <span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">OPEN</span>
+                                    </div>
+                                    <div class="space-y-1.5 text-xs text-slate-600 my-3">
+                                        <div><i class="fa-solid fa-clock text-slate-400 mr-1.5"></i> <?= date('h:i A', strtotime($os['start_time'])) ?> &mdash; <?= date('h:i A', strtotime($os['end_time'])) ?></div>
+                                        <div><i class="fa-solid fa-tag text-slate-400 mr-1.5"></i> <?= e($os['shift_type']) ?></div>
+                                        <div><i class="fa-solid fa-user-minus text-slate-400 mr-1.5"></i> Dropped by: <strong class="text-slate-800"><?= e($os['orig_first'] . ' ' . $os['orig_last']) ?></strong></div>
+                                        <?php if ($os['drop_reason']): ?>
+                                            <div class="italic text-[11px] bg-white p-2 rounded-lg border border-slate-200 mt-2 text-slate-500">"<?= e($os['drop_reason']) ?>"</div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <div class="mt-4 pt-3 border-t border-slate-200/60">
+                                    <button onclick="claimOpenShift(<?= (int)$os['id'] ?>)" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-3 rounded-xl text-xs shadow-sm transition flex items-center justify-center gap-1.5">
+                                        <i class="fa-solid fa-hand-holding-hand"></i> Claim This Shift
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+        </div>
+
     </div>
 
     <!-- CHANGE PASSWORD MODAL -->
@@ -804,6 +968,59 @@ $sickLeaveBalance = (int)($employee['sick_leave_balance'] ?? 0);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = 'Submit Request';
+            }
+        }
+
+        // Shift Board Drop & Claim
+        async function dropShift(shiftId) {
+            const reason = prompt('Optional reason for dropping this shift:');
+            if (reason === null) return;
+
+            try {
+                const res = await fetch('api/fika_hrms_shift_claim.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify({
+                        action: 'drop',
+                        shift_id: shiftId,
+                        reason: reason,
+                        csrf_token: csrfToken
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showAlert(data.message || 'Shift dropped successfully.', true);
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    alert(data.error || 'Failed to drop shift.');
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+
+        async function claimOpenShift(openShiftId) {
+            if (!confirm('Are you sure you want to claim this open shift? Your request will be sent to your manager for approval.')) return;
+
+            try {
+                const res = await fetch('api/fika_hrms_shift_claim.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify({
+                        action: 'claim',
+                        open_shift_id: openShiftId,
+                        csrf_token: csrfToken
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showAlert(data.message || 'Shift claimed successfully.', true);
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    alert(data.error || 'Failed to claim shift.');
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
             }
         }
     </script>
