@@ -63,13 +63,19 @@ foreach ($sigParts as $part) {
     }
 }
 
-if (!isset($parsedSig['t'])) {
+if (!isset($parsedSig['t']) || (!isset($parsedSig['te']) && !isset($parsedSig['li']))) {
     http_response_code(401);
     echo json_encode(['error' => 'Unauthorized: Malformed signature header']);
     exit;
 }
 
 $timestamp = $parsedSig['t'];
+if (!is_numeric($timestamp) || abs(time() - (int)$timestamp) > 300) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized: Timestamp outside tolerance window (300 seconds)']);
+    exit;
+}
+
 $signatureToVerify = $parsedSig['te'] ?? $parsedSig['li'] ?? null;
 $expectedSignature = hash_hmac('sha256', $timestamp . '.' . $rawPayload, $webhookSecret);
 
@@ -210,6 +216,32 @@ if (!$isPaidEvent) {
                 $existingPayment = $payOrderStmt->fetch();
             }
 
+            // Check if order is already marked PAID
+            if ($orderId > 0) {
+                $ordStmt = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+                $ordStmt->execute([$orderId]);
+                $orderStatus = $ordStmt->fetchColumn();
+                if ($orderStatus === 'PAID') {
+                    http_response_code(200);
+                    echo json_encode([
+                        'status' => 'noop',
+                        'message' => 'Order is already PAID; payment.failed ignored.',
+                        'intent_id' => $intentId
+                    ]);
+                    exit;
+                }
+            }
+
+            if ($existingPayment && $existingPayment['status'] === 'paid') {
+                http_response_code(200);
+                echo json_encode([
+                    'status' => 'noop',
+                    'message' => 'Payment is already paid; payment.failed ignored.',
+                    'intent_id' => $intentId
+                ]);
+                exit;
+            }
+
             if ($existingPayment) {
                 $updFail = $pdo->prepare("UPDATE payments SET status = 'failed', raw_payload = ? WHERE id = ?");
                 $updFail->execute([$rawPayload, $existingPayment['id']]);
@@ -241,8 +273,9 @@ if (!$isPaidEvent) {
             ]);
             exit;
         } catch (Exception $e) {
+            error_log("Failed to record failed payment: " . $e->getMessage());
             http_response_code(500);
-            echo json_encode(['error' => 'Failed to record failed payment: ' . $e->getMessage()]);
+            echo json_encode(['error' => 'Failed to record failed payment.']);
             exit;
         }
     }
@@ -264,64 +297,153 @@ if (!$intentId) {
 }
 
 try {
-    // 4. Resolve payment record by intent_id or order_id fallback
-    $payStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ?");
-    $payStmt->execute([$intentId]);
-    $existingPayment = $payStmt->fetch();
-
-    // Fallback: If payment record not found by intent_id, find by order_id
-    if (!$existingPayment && $orderId > 0) {
-        $payOrderStmt = $pdo->prepare("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC LIMIT 1");
-        $payOrderStmt->execute([$orderId]);
-        $existingPayment = $payOrderStmt->fetch();
+    // Resolve order_id fallback if needed
+    if ($orderId <= 0 && $intentId) {
+        $stmtFindOrder = $pdo->prepare("SELECT order_id FROM payments WHERE intent_id = ? OR provider_payment_id = ? ORDER BY id DESC LIMIT 1");
+        $stmtFindOrder->execute([$intentId, $intentId]);
+        $foundOrderId = $stmtFindOrder->fetchColumn();
+        if ($foundOrderId) {
+            $orderId = (int)$foundOrderId;
+        }
     }
 
-    if (!$orderId && $existingPayment) {
-        $orderId = (int)$existingPayment['order_id'];
-    }
-
-    // 1. After resolving order_id/intent_id fallback, return 200 no-op if already paid
-    if ($existingPayment && $existingPayment['status'] === 'paid') {
-        http_response_code(200);
-        echo json_encode([
-            'status' => 'noop', 
-            'message' => 'Payment already processed and marked paid (idempotent no-op).',
-            'intent_id' => $intentId
-        ]);
+    if ($orderId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing or invalid order_id in metadata/payload']);
         exit;
     }
 
-    // 5. Fetch Order & Verify Amount
-    $orderStmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
-    $orderStmt->execute([$orderId]);
-    $order = $orderStmt->fetch();
+    // 4. Atomic Single Database Transaction with Pessimistic Locking
+    // Mandatory Constraint 1: Execute SELECT ... FROM orders WHERE id = ? FOR UPDATE inside the transaction
+    // BEFORE checking whether the order is already PAID, VOID, VOIDED, or REFUNDED and before deducting inventory.
+    $pdo->beginTransaction();
 
-    if (!$order) {
+    $lockOrderStmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? FOR UPDATE");
+    $lockOrderStmt->execute([$orderId]);
+    $lockedOrder = $lockOrderStmt->fetch();
+
+    if (!$lockedOrder) {
+        $pdo->rollBack();
         http_response_code(404);
         echo json_encode(['error' => "Order #{$orderId} not found"]);
         exit;
     }
 
-    // If order itself is already marked PAID, return 200 no-op
-    if ($order['payment_status'] === 'PAID') {
+    // Pessimistic lock on payments row for this order/intent
+    $lockPayStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ? OR (order_id = ? AND status = 'paid') ORDER BY id DESC LIMIT 1 FOR UPDATE");
+    $lockPayStmt->execute([$intentId, $orderId]);
+    $lockedPayment = $lockPayStmt->fetch();
+
+    if (!$lockedPayment) {
+        $lockPayStmt2 = $pdo->prepare("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
+        $lockPayStmt2->execute([$orderId]);
+        $lockedPayment = $lockPayStmt2->fetch();
+    }
+
+    // Mandatory Constraint 3: For every rejection case (VOID/VOIDED, REFUNDED, CASH-paid, amount mismatch, missing amount),
+    // ensure $pdo->rollBack() executes BEFORE inserting into order_audit_logs so the audit row is never erased.
+
+    // Check A: VOID / VOIDED order rejection
+    $orderStatusUpper = strtoupper((string)$lockedOrder['order_status']);
+    if ($orderStatusUpper === 'VOID' || $orderStatusUpper === 'VOIDED') {
+        $pdo->rollBack();
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'VOID_ORDER_PAYMENT_REJECTED', NULL, ?, NOW())
+        ")->execute([
+            (int)$lockedOrder['branch_id'],
+            $orderId,
+            "Webhook payment.paid rejected: Order #{$orderId} is voided ({$lockedOrder['order_status']})."
+        ]);
+
+        http_response_code(409);
+        echo json_encode([
+            'error' => 'Order is voided',
+            'order_status' => $lockedOrder['order_status']
+        ]);
+        exit;
+    }
+
+    // Check B: REFUNDED order rejection
+    if ($orderStatusUpper === 'REFUNDED') {
+        $pdo->rollBack();
+        $pdo->prepare("
+            INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+            VALUES (?, ?, 'REFUNDED_ORDER_PAYMENT_REJECTED', NULL, ?, NOW())
+        ")->execute([
+            (int)$lockedOrder['branch_id'],
+            $orderId,
+            "Webhook payment.paid rejected: Order #{$orderId} is refunded (REFUNDED)."
+        ]);
+
+        http_response_code(409);
+        echo json_encode([
+            'error' => 'Order is refunded',
+            'order_status' => 'REFUNDED'
+        ]);
+        exit;
+    }
+
+    // Check C: Already PAID order — Distinguish Digital Replay vs. Cash-Paid Order (Mandatory Constraint 2)
+    if ($lockedOrder['payment_status'] === 'PAID') {
+        $hasMatchingPaidDigital = false;
+        if ($lockedPayment && $lockedPayment['status'] === 'paid' && strtoupper((string)$lockedPayment['method']) !== 'CASH') {
+            $hasMatchingPaidDigital = true;
+        }
+
+        if (strtoupper((string)$lockedOrder['payment_method']) === 'CASH' && !$hasMatchingPaidDigital) {
+            $pdo->rollBack();
+            $pdo->prepare("
+                INSERT INTO order_audit_logs (branch_id, order_id, action, supervisor_id, reason, created_at)
+                VALUES (?, ?, 'CASH_ORDER_WEBHOOK_REJECTED', NULL, ?, NOW())
+            ")->execute([
+                (int)$lockedOrder['branch_id'],
+                $orderId,
+                "Webhook payment.paid rejected: Order #{$orderId} was already paid by CASH."
+            ]);
+
+            http_response_code(409);
+            echo json_encode([
+                'error' => 'Order was already paid in cash',
+                'payment_status' => 'PAID',
+                'payment_method' => 'CASH'
+            ]);
+            exit;
+        }
+
+        // Digital Replay: 200 OK idempotent no-op, no second inventory deduction
+        $pdo->rollBack();
         http_response_code(200);
         echo json_encode([
-            'status' => 'noop', 
+            'status' => 'noop',
             'message' => 'Order already processed and marked paid (idempotent no-op).',
             'intent_id' => $intentId
         ]);
         exit;
     }
 
-    // 5b. Validate Payment Amount: missing amount field or amount <= 0
+    // Check D: Locked payment is already paid (Digital Replay fallback)
+    if ($lockedPayment && $lockedPayment['status'] === 'paid') {
+        $pdo->rollBack();
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'noop',
+            'message' => 'Payment already processed and marked paid (idempotent no-op).',
+            'intent_id' => $intentId
+        ]);
+        exit;
+    }
+
+    // Check E: Missing or non-positive amount field
     if (!$hasAmountField || $amountInCents <= 0) {
-        if ($existingPayment) {
+        $pdo->rollBack();
+        if ($lockedPayment) {
             $pdo->prepare("UPDATE payments SET status = 'failed', provider_payment_id = COALESCE(?, provider_payment_id), raw_payload = ? WHERE id = ?")
-                ->execute([$providerPaymentId, $rawPayload, $existingPayment['id']]);
+                ->execute([$providerPaymentId, $rawPayload, $lockedPayment['id']]);
         }
         $rejectReason = !$hasAmountField ? 'Payment amount missing in webhook payload' : "Payment amount <= 0 ({$amountInCents} cents)";
         $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason, created_at) VALUES (?, ?, 'PAYMENT_AMOUNT_INVALID', ?, NOW())")
-            ->execute([$order['branch_id'], $orderId, $rejectReason]);
+            ->execute([(int)$lockedOrder['branch_id'], $orderId, $rejectReason]);
 
         http_response_code(400);
         echo json_encode([
@@ -332,17 +454,16 @@ try {
         exit;
     }
 
-    $expectedCents = (int)round((float)$order['total_price'] * 100);
-
-    // Amount Verification: Discrepancy check
+    // Check F: Amount mismatch (centavos check)
+    $expectedCents = (int)round((float)$lockedOrder['total_price'] * 100);
     if ($amountInCents !== $expectedCents) {
-        // Amount Mismatch: Flag it, do NOT mark paid
-        if ($existingPayment) {
+        $pdo->rollBack();
+        if ($lockedPayment) {
             $pdo->prepare("UPDATE payments SET status = 'failed', provider_payment_id = COALESCE(?, provider_payment_id), raw_payload = ? WHERE id = ?")
-                ->execute([$providerPaymentId, $rawPayload, $existingPayment['id']]);
+                ->execute([$providerPaymentId, $rawPayload, $lockedPayment['id']]);
         }
         $pdo->prepare("INSERT INTO order_audit_logs (branch_id, order_id, action, reason, created_at) VALUES (?, ?, 'PAYMENT_MISMATCH', ?, NOW())")
-            ->execute([$order['branch_id'], $orderId, "Amount mismatch: Webhook sent {$amountInCents} cents, expected {$expectedCents} cents"]);
+            ->execute([(int)$lockedOrder['branch_id'], $orderId, "Amount mismatch: Webhook sent {$amountInCents} cents, expected {$expectedCents} cents"]);
 
         http_response_code(400);
         echo json_encode([
@@ -353,51 +474,12 @@ try {
         exit;
     }
 
-    // 6. Atomic Single Database Transaction with Pessimistic Locking
-    $pdo->beginTransaction();
-
-    // 2. Pessimistic lock on orders row
-    $lockOrderStmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? FOR UPDATE");
-    $lockOrderStmt->execute([$orderId]);
-    $lockedOrder = $lockOrderStmt->fetch();
-
-    if (!$lockedOrder) {
-        $pdo->rollBack();
-        http_response_code(404);
-        echo json_encode(['error' => "Order #{$orderId} not found during lock acquisition"]);
-        exit;
-    }
-
-    // Pessimistic lock on payments row
-    $lockedPayment = null;
-    if ($existingPayment) {
-        $lockPayStmt = $pdo->prepare("SELECT * FROM payments WHERE id = ? FOR UPDATE");
-        $lockPayStmt->execute([$existingPayment['id']]);
-        $lockedPayment = $lockPayStmt->fetch();
-    } else {
-        $lockPayStmt = $pdo->prepare("SELECT * FROM payments WHERE intent_id = ? OR order_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
-        $lockPayStmt->execute([$intentId, $orderId]);
-        $lockedPayment = $lockPayStmt->fetch();
-    }
-
-    // Re-check status immediately after acquiring lock before writing (race condition defense)
-    if (($lockedPayment && $lockedPayment['status'] === 'paid') || ($lockedOrder['payment_status'] === 'PAID')) {
-        $pdo->rollBack();
-        http_response_code(200);
-        echo json_encode([
-            'status' => 'noop', 
-            'message' => 'Payment already processed and marked paid (concurrent race avoided).',
-            'intent_id' => $intentId
-        ]);
-        exit;
-    }
-
+    // HAPPY PATH: Mark paid and deduct inventory within transaction
     $grossDecimal = $amountInCents > 0 ? ($amountInCents / 100) : (float)$lockedOrder['total_price'];
     $feeDecimal = $feeInCents / 100;
     $netDecimal = $grossDecimal - $feeDecimal;
     $shiftId = $lockedPayment ? (int)$lockedPayment['shift_id'] : (int)($lockedOrder['pos_session_id'] ?: 1);
 
-    // 3. Ensure that inventory deduction runs ONLY on the pending -> paid transition
     $wasPending = (!$lockedPayment || $lockedPayment['status'] === 'pending') && ($lockedOrder['payment_status'] !== 'PAID');
 
     // Update or Insert payments row
@@ -522,6 +604,7 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    error_log("Webhook processing failed: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'Webhook processing failed: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'Webhook processing failed.']);
 }

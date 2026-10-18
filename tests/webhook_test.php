@@ -73,15 +73,16 @@ function computeSignature(string $rawBody, string $secret, ?int $timestamp = nul
 /**
  * Perform HTTP POST request to webhook endpoint.
  */
-function sendWebhook(string $url, string $rawBody, string $sigHeader): array {
+function sendWebhook(string $url, string $rawBody, ?string $sigHeader): array {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $rawBody);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Paymongo-Signature: ' . $sigHeader
-    ]);
+    $headers = ['Content-Type: application/json'];
+    if ($sigHeader !== null) {
+        $headers[] = 'Paymongo-Signature: ' . $sigHeader;
+    }
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -94,6 +95,50 @@ function sendWebhook(string $url, string $rawBody, string $sigHeader): array {
         'json' => json_decode((string)$response, true),
         'error' => $curlError
     ];
+}
+
+/**
+ * Perform concurrent HTTP POST requests to webhook endpoint using curl_multi.
+ */
+function sendConcurrentWebhooks(string $url, string $rawBody, string $sigHeader): array {
+    $mh = curl_multi_init();
+    $handles = [];
+    for ($i = 0; $i < 2; $i++) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $rawBody);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Paymongo-Signature: ' . $sigHeader
+        ]);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_multi_add_handle($mh, $ch);
+        $handles[] = $ch;
+    }
+
+    $running = null;
+    do {
+        $status = curl_multi_exec($mh, $running);
+        if ($running > 0) {
+            curl_multi_select($mh, 0.05);
+        }
+    } while ($running > 0 && $status === CURLM_OK);
+
+    $results = [];
+    foreach ($handles as $ch) {
+        $content = curl_multi_getcontent($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $results[] = [
+            'code' => $httpCode,
+            'body' => (string)$content,
+            'json' => json_decode((string)$content, true)
+        ];
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    return $results;
 }
 
 /**
@@ -772,6 +817,416 @@ try {
     }
     $case22Pass = !$hasExceptionLeak;
     recordResult(22, "no exception text in any error response", $case22Pass);
+
+    // =========================================================================
+    // SUB-PHASE H6: Webhook and Payment Test Suite (12 Comprehensive Cases)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // CASE 23 (H6.1): Replay — same signed payment.paid delivered twice -> order PAID once,
+    // exactly 1 inventory deduction per ingredient, 1 payment row paid
+    // -------------------------------------------------------------------------
+    $intentCase23 = 'pi_whk_c23_' . uniqid();
+    $orderCase23 = $createTestOrder($intentCase23, 150.00);
+    $payloadCase23 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase23, $intentCase23, $testShiftId);
+    $sigCase23 = computeSignature($payloadCase23, $webhookSecret);
+
+    $stockBefore23 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+    $txCountBefore23 = (int)$pdo->query("SELECT COUNT(*) FROM inventory_transactions WHERE inventory_id = {$testInvId}")->fetchColumn();
+
+    // 1st delivery
+    $res23_1 = sendWebhook($webhookUrl, $payloadCase23, $sigCase23);
+    // 2nd delivery (replay)
+    $res23_2 = sendWebhook($webhookUrl, $payloadCase23, $sigCase23);
+
+    $stockAfter23 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+    $txCountAfter23 = (int)$pdo->query("SELECT COUNT(*) FROM inventory_transactions WHERE inventory_id = {$testInvId}")->fetchColumn();
+
+    $stmtCheckOrder23 = $pdo->prepare("SELECT payment_status, order_status FROM orders WHERE id = ?");
+    $stmtCheckOrder23->execute([$orderCase23]);
+    $orderRow23 = $stmtCheckOrder23->fetch();
+
+    $stmtCheckPay23 = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'paid'");
+    $stmtCheckPay23->execute([$orderCase23]);
+    $paidPayCount23 = (int)$stmtCheckPay23->fetchColumn();
+
+    $case23Pass = ($res23_1['code'] === 200)
+        && ($res23_2['code'] === 200)
+        && ($orderRow23['payment_status'] === 'PAID')
+        && ($paidPayCount23 === 1)
+        && (round($stockBefore23 - $stockAfter23, 2) === 20.00)
+        && ($txCountAfter23 === $txCountBefore23 + 1);
+    recordResult(23, "H6.1 Replay: delivered twice -> order PAID once, 1 deduction, 1 payment row paid", $case23Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 24 (H6.2): Concurrency — two identical payment.paid delivered simultaneously via curl_multi_init
+    // -> exactly 1 deduction, 1 payment row paid, no race error, no deadlock
+    // -------------------------------------------------------------------------
+    $intentCase24 = 'pi_whk_c24_' . uniqid();
+    $orderCase24 = $createTestOrder($intentCase24, 150.00);
+    $payloadCase24 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase24, $intentCase24, $testShiftId);
+    $sigCase24 = computeSignature($payloadCase24, $webhookSecret);
+
+    $stockBefore24 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+    $txCountBefore24 = (int)$pdo->query("SELECT COUNT(*) FROM inventory_transactions WHERE inventory_id = {$testInvId}")->fetchColumn();
+
+    $concurrentResponses24 = sendConcurrentWebhooks($webhookUrl, $payloadCase24, $sigCase24);
+
+    $stockAfter24 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+    $txCountAfter24 = (int)$pdo->query("SELECT COUNT(*) FROM inventory_transactions WHERE inventory_id = {$testInvId}")->fetchColumn();
+
+    $stmtCheckOrder24 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder24->execute([$orderCase24]);
+    $orderStatus24 = $stmtCheckOrder24->fetchColumn();
+
+    $stmtCheckPay24 = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'paid'");
+    $stmtCheckPay24->execute([$orderCase24]);
+    $paidPayCount24 = (int)$stmtCheckPay24->fetchColumn();
+
+    $allCodes200 = ($concurrentResponses24[0]['code'] === 200 && $concurrentResponses24[1]['code'] === 200);
+
+    $case24Pass = $allCodes200
+        && ($orderStatus24 === 'PAID')
+        && ($paidPayCount24 === 1)
+        && (round($stockBefore24 - $stockAfter24, 2) === 20.00)
+        && ($txCountAfter24 === $txCountBefore24 + 1);
+    recordResult(24, "H6.2 Concurrency: simultaneous delivery -> 1 deduction, 1 payment row paid, no race/deadlock", $case24Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 25 (H6.3): payment.failed after payment.paid — delivered for an already-PAID order
+    // -> order stays PAID, payment stays paid, inventory not refunded
+    // -------------------------------------------------------------------------
+    $intentCase25 = 'pi_whk_c25_' . uniqid();
+    $orderCase25 = $createTestOrder($intentCase25, 150.00);
+    $payloadPaid25 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase25, $intentCase25, $testShiftId);
+    $sigPaid25 = computeSignature($payloadPaid25, $webhookSecret);
+
+    // Pay order first
+    $res25Paid = sendWebhook($webhookUrl, $payloadPaid25, $sigPaid25);
+
+    $stockAfterPaid25 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    // Now send payment.failed for the same order & intent
+    $payloadFailed25 = loadFixture($fixturesDir, 'payment_failed.json', $orderCase25, $intentCase25, $testShiftId);
+    $sigFailed25 = computeSignature($payloadFailed25, $webhookSecret);
+    $res25Failed = sendWebhook($webhookUrl, $payloadFailed25, $sigFailed25);
+
+    $stmtCheckOrder25 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder25->execute([$orderCase25]);
+    $orderStatus25 = $stmtCheckOrder25->fetchColumn();
+
+    $stmtCheckPay25 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay25->execute([$orderCase25, $intentCase25]);
+    $payStatus25 = $stmtCheckPay25->fetchColumn();
+
+    $stockAfterFailed25 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $case25Pass = ($res25Paid['code'] === 200)
+        && ($res25Failed['code'] === 200)
+        && ($orderStatus25 === 'PAID')
+        && ($payStatus25 === 'paid')
+        && ($stockAfterFailed25 === $stockAfterPaid25);
+    recordResult(25, "H6.3 payment.failed after payment.paid: order stays PAID, payment stays paid, inventory not refunded", $case25Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 26 (H6.4): payment.failed alone — payment row status=failed, order NOT paid, 0 inventory deduction
+    // -------------------------------------------------------------------------
+    $intentCase26 = 'pi_whk_c26_' . uniqid();
+    $orderCase26 = $createTestOrder($intentCase26, 150.00);
+    $payloadCase26 = loadFixture($fixturesDir, 'payment_failed.json', $orderCase26, $intentCase26, $testShiftId);
+    $sigCase26 = computeSignature($payloadCase26, $webhookSecret);
+
+    $stockBefore26 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase26 = sendWebhook($webhookUrl, $payloadCase26, $sigCase26);
+
+    $stockAfter26 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder26 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder26->execute([$orderCase26]);
+    $orderStatus26 = $stmtCheckOrder26->fetchColumn();
+
+    $stmtCheckPay26 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay26->execute([$orderCase26, $intentCase26]);
+    $payStatus26 = $stmtCheckPay26->fetchColumn();
+
+    $case26Pass = ($resCase26['code'] === 200)
+        && ($orderStatus26 === 'UNPAID')
+        && ($payStatus26 === 'failed')
+        && ($stockAfter26 === $stockBefore26);
+    recordResult(26, "H6.4 payment.failed alone: status=failed, order NOT paid, 0 inventory deduction", $case26Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 27 (H6.5): payment.paid for VOIDED order — NOT marked paid, 0 deduction, audit row written
+    // -------------------------------------------------------------------------
+    $intentCase27 = 'pi_whk_c27_' . uniqid();
+    $orderCase27 = $createTestOrder($intentCase27, 150.00);
+    $pdo->prepare("UPDATE orders SET order_status = 'VOID' WHERE id = ?")->execute([$orderCase27]);
+
+    $payloadCase27 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase27, $intentCase27, $testShiftId);
+    $sigCase27 = computeSignature($payloadCase27, $webhookSecret);
+
+    $stockBefore27 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase27 = sendWebhook($webhookUrl, $payloadCase27, $sigCase27);
+
+    $stockAfter27 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder27 = $pdo->prepare("SELECT payment_status, order_status FROM orders WHERE id = ?");
+    $stmtCheckOrder27->execute([$orderCase27]);
+    $orderRow27 = $stmtCheckOrder27->fetch();
+
+    $stmtCheckPay27 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay27->execute([$orderCase27, $intentCase27]);
+    $payStatus27 = $stmtCheckPay27->fetchColumn();
+
+    $stmtCheckAudit27 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'VOID_ORDER_PAYMENT_REJECTED'");
+    $stmtCheckAudit27->execute([$orderCase27]);
+    $auditCount27 = (int)$stmtCheckAudit27->fetchColumn();
+
+    $case27Pass = ($resCase27['code'] === 409)
+        && ($orderRow27['payment_status'] === 'UNPAID')
+        && ($orderRow27['order_status'] === 'VOID')
+        && ($payStatus27 !== 'paid')
+        && ($stockAfter27 === $stockBefore27)
+        && ($auditCount27 > 0);
+    recordResult(27, "H6.5 payment.paid for VOID order: 409, NOT paid, 0 deduction, audit row written", $case27Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 28 (H6.6): payment.paid for order already paid by cash — no second deduction,
+    // no digital payment row marked paid, audit row written outside transaction
+    // -------------------------------------------------------------------------
+    $intentCase28 = 'pi_whk_c28_' . uniqid();
+    $orderCase28 = $createTestOrder($intentCase28, 150.00);
+    $pdo->prepare("UPDATE orders SET payment_status = 'PAID', payment_method = 'CASH', order_status = 'COMPLETED' WHERE id = ?")->execute([$orderCase28]);
+    $pdo->prepare("DELETE FROM payments WHERE order_id = ?")->execute([$orderCase28]);
+
+    $payloadCase28 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase28, $intentCase28, $testShiftId);
+    $sigCase28 = computeSignature($payloadCase28, $webhookSecret);
+
+    $stockBefore28 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase28 = sendWebhook($webhookUrl, $payloadCase28, $sigCase28);
+
+    $stockAfter28 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder28 = $pdo->prepare("SELECT payment_status, payment_method FROM orders WHERE id = ?");
+    $stmtCheckOrder28->execute([$orderCase28]);
+    $orderRow28 = $stmtCheckOrder28->fetch();
+
+    $stmtCheckPay28 = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'paid'");
+    $stmtCheckPay28->execute([$orderCase28]);
+    $paidPayCount28 = (int)$stmtCheckPay28->fetchColumn();
+
+    $stmtCheckAudit28 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'CASH_ORDER_WEBHOOK_REJECTED'");
+    $stmtCheckAudit28->execute([$orderCase28]);
+    $auditCount28 = (int)$stmtCheckAudit28->fetchColumn();
+
+    $case28Pass = ($resCase28['code'] === 409)
+        && ($orderRow28['payment_status'] === 'PAID')
+        && ($orderRow28['payment_method'] === 'CASH')
+        && ($paidPayCount28 === 0)
+        && ($stockAfter28 === $stockBefore28)
+        && ($auditCount28 > 0);
+    recordResult(28, "H6.6 payment.paid for CASH order: 409, 0 deduction, no paid payment row, audit row written", $case28Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 29 (H6.7): Amount mismatch — centavos in webhook differ from order total_price*100
+    // -> NOT paid, payment_status unchanged, audit row written outside transaction
+    // -------------------------------------------------------------------------
+    $intentCase29 = 'pi_whk_c29_' . uniqid();
+    $orderCase29 = $createTestOrder($intentCase29, 150.00);
+    $payloadCase29 = loadFixture($fixturesDir, 'paid_amount_mismatch.json', $orderCase29, $intentCase29, $testShiftId);
+    $sigCase29 = computeSignature($payloadCase29, $webhookSecret);
+
+    $stockBefore29 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase29 = sendWebhook($webhookUrl, $payloadCase29, $sigCase29);
+
+    $stockAfter29 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder29 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder29->execute([$orderCase29]);
+    $orderStatus29 = $stmtCheckOrder29->fetchColumn();
+
+    $stmtCheckPay29 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay29->execute([$orderCase29, $intentCase29]);
+    $payStatus29 = $stmtCheckPay29->fetchColumn();
+
+    $stmtCheckAudit29 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'PAYMENT_MISMATCH'");
+    $stmtCheckAudit29->execute([$orderCase29]);
+    $auditCount29 = (int)$stmtCheckAudit29->fetchColumn();
+
+    $case29Pass = ($resCase29['code'] === 400)
+        && ($orderStatus29 === 'UNPAID')
+        && ($payStatus29 !== 'paid')
+        && ($stockAfter29 === $stockBefore29)
+        && ($auditCount29 > 0);
+    recordResult(29, "H6.7 Amount mismatch: 400, NOT paid, payment_status unchanged, audit row written", $case29Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 30 (H6.8): Missing amount — payload with no amount field -> NOT paid, audit row
+    // -------------------------------------------------------------------------
+    $intentCase30 = 'pi_whk_c30_' . uniqid();
+    $orderCase30 = $createTestOrder($intentCase30, 150.00);
+    $payloadCase30 = loadFixture($fixturesDir, 'paid_no_amount.json', $orderCase30, $intentCase30, $testShiftId);
+    $sigCase30 = computeSignature($payloadCase30, $webhookSecret);
+
+    $stockBefore30 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase30 = sendWebhook($webhookUrl, $payloadCase30, $sigCase30);
+
+    $stockAfter30 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder30 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder30->execute([$orderCase30]);
+    $orderStatus30 = $stmtCheckOrder30->fetchColumn();
+
+    $stmtCheckPay30 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay30->execute([$orderCase30, $intentCase30]);
+    $payStatus30 = $stmtCheckPay30->fetchColumn();
+
+    $stmtCheckAudit30 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'PAYMENT_AMOUNT_INVALID'");
+    $stmtCheckAudit30->execute([$orderCase30]);
+    $auditCount30 = (int)$stmtCheckAudit30->fetchColumn();
+
+    $case30Pass = ($resCase30['code'] === 400)
+        && ($orderStatus30 === 'UNPAID')
+        && ($payStatus30 !== 'paid')
+        && ($stockAfter30 === $stockBefore30)
+        && ($auditCount30 > 0);
+    recordResult(30, "H6.8 Missing amount: 400, NOT paid, 0 deduction, PAYMENT_AMOUNT_INVALID audit row", $case30Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 31 (H6.9): Bad signature, missing header, malformed header -> 401, no DB change
+    // -------------------------------------------------------------------------
+    $intentCase31 = 'pi_whk_c31_' . uniqid();
+    $orderCase31 = $createTestOrder($intentCase31, 150.00);
+    $payloadCase31 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase31, $intentCase31, $testShiftId);
+
+    $stockBefore31 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    // 1. Missing header
+    $res31Missing = sendWebhook($webhookUrl, $payloadCase31, null);
+    // 2. Malformed header (missing te / li)
+    $res31Malformed = sendWebhook($webhookUrl, $payloadCase31, "t=" . time());
+    // 3. Bad signature hash
+    $res31BadSig = sendWebhook($webhookUrl, $payloadCase31, "t=" . time() . ",te=invalid_sig_hash_abcdef");
+
+    $stockAfter31 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder31 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder31->execute([$orderCase31]);
+    $orderStatus31 = $stmtCheckOrder31->fetchColumn();
+
+    $case31Pass = ($res31Missing['code'] === 401)
+        && ($res31Malformed['code'] === 401)
+        && ($res31BadSig['code'] === 401)
+        && ($orderStatus31 === 'UNPAID')
+        && ($stockAfter31 === $stockBefore31);
+    recordResult(31, "H6.9 Bad signature, missing header, malformed header: all 401, no DB change", $case31Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 32 (H6.10): Missing webhook secret in config -> 503, no database change
+    // -------------------------------------------------------------------------
+    $intentCase32 = 'pi_whk_c32_' . uniqid();
+    $orderCase32 = $createTestOrder($intentCase32, 150.00);
+    $payloadCase32 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase32, $intentCase32, $testShiftId);
+    $sigCase32 = computeSignature($payloadCase32, $webhookSecret);
+
+    $stockBefore32 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $envContentBefore32 = file_exists($envFilePath) ? file_get_contents($envFilePath) : '';
+    try {
+        $envLines = explode("\n", $envContentBefore32);
+        $envLinesFiltered = array_filter($envLines, fn($l) => !str_starts_with(trim($l), 'PAYMONGO_WEBHOOK_SECRET='));
+        $envLinesFiltered[] = 'PAYMONGO_WEBHOOK_SECRET=';
+        file_put_contents($envFilePath, implode("\n", $envLinesFiltered));
+
+        $res32 = sendWebhook($webhookUrl, $payloadCase32, $sigCase32);
+    } finally {
+        file_put_contents($envFilePath, $envContentBefore32);
+    }
+
+    $stockAfter32 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder32 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder32->execute([$orderCase32]);
+    $orderStatus32 = $stmtCheckOrder32->fetchColumn();
+
+    $case32Pass = ($res32['code'] === 503)
+        && ($orderStatus32 === 'UNPAID')
+        && ($stockAfter32 === $stockBefore32);
+    recordResult(32, "H6.10 Missing webhook secret in config: 503, no database change", $case32Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 33 (H6.11): Timestamp tolerance — signed with timestamp older than 300s -> 401;
+    // future timestamp skew > 300s -> 401
+    // -------------------------------------------------------------------------
+    $intentCase33 = 'pi_whk_c33_' . uniqid();
+    $orderCase33 = $createTestOrder($intentCase33, 150.00);
+    $payloadCase33 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase33, $intentCase33, $testShiftId);
+
+    $stockBefore33 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    // Expired timestamp (305s ago)
+    $oldTimestamp = time() - 305;
+    $sigOld = computeSignature($payloadCase33, $webhookSecret, $oldTimestamp);
+    $res33Old = sendWebhook($webhookUrl, $payloadCase33, $sigOld);
+
+    // Future timestamp skew (+305s)
+    $futureTimestamp = time() + 305;
+    $sigFuture = computeSignature($payloadCase33, $webhookSecret, $futureTimestamp);
+    $res33Future = sendWebhook($webhookUrl, $payloadCase33, $sigFuture);
+
+    $stockAfter33 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder33 = $pdo->prepare("SELECT payment_status FROM orders WHERE id = ?");
+    $stmtCheckOrder33->execute([$orderCase33]);
+    $orderStatus33 = $stmtCheckOrder33->fetchColumn();
+
+    $case33Pass = ($res33Old['code'] === 401)
+        && ($res33Future['code'] === 401)
+        && ($orderStatus33 === 'UNPAID')
+        && ($stockAfter33 === $stockBefore33);
+    recordResult(33, "H6.11 Timestamp tolerance: >300s past (401) & future skew (401), DB unchanged", $case33Pass);
+
+    // -------------------------------------------------------------------------
+    // CASE 34 (H6.12): payment.paid for REFUNDED order — order_status='REFUNDED'
+    // -> not marked paid, 0 inventory deduction, audit row written
+    // -------------------------------------------------------------------------
+    $intentCase34 = 'pi_whk_c34_' . uniqid();
+    $orderCase34 = $createTestOrder($intentCase34, 150.00);
+    $pdo->prepare("UPDATE orders SET order_status = 'REFUNDED' WHERE id = ?")->execute([$orderCase34]);
+
+    $payloadCase34 = loadFixture($fixturesDir, 'payment_paid.json', $orderCase34, $intentCase34, $testShiftId);
+    $sigCase34 = computeSignature($payloadCase34, $webhookSecret);
+
+    $stockBefore34 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $resCase34 = sendWebhook($webhookUrl, $payloadCase34, $sigCase34);
+
+    $stockAfter34 = (float)$pdo->query("SELECT stock FROM inventory_stock WHERE inventory_id = {$testInvId} AND branch_id = 1")->fetchColumn();
+
+    $stmtCheckOrder34 = $pdo->prepare("SELECT payment_status, order_status FROM orders WHERE id = ?");
+    $stmtCheckOrder34->execute([$orderCase34]);
+    $orderRow34 = $stmtCheckOrder34->fetch();
+
+    $stmtCheckPay34 = $pdo->prepare("SELECT status FROM payments WHERE order_id = ? AND intent_id = ?");
+    $stmtCheckPay34->execute([$orderCase34, $intentCase34]);
+    $payStatus34 = $stmtCheckPay34->fetchColumn();
+
+    $stmtCheckAudit34 = $pdo->prepare("SELECT COUNT(*) FROM order_audit_logs WHERE order_id = ? AND action = 'REFUNDED_ORDER_PAYMENT_REJECTED'");
+    $stmtCheckAudit34->execute([$orderCase34]);
+    $auditCount34 = (int)$stmtCheckAudit34->fetchColumn();
+
+    $case34Pass = ($resCase34['code'] === 409)
+        && ($orderRow34['payment_status'] === 'UNPAID')
+        && ($orderRow34['order_status'] === 'REFUNDED')
+        && ($payStatus34 !== 'paid')
+        && ($stockAfter34 === $stockBefore34)
+        && ($auditCount34 > 0);
+    recordResult(34, "H6.12 payment.paid for REFUNDED order: 409, NOT paid, 0 deduction, audit row written", $case34Pass);
 
 } catch (Throwable $t) {
     echo "ERROR during test execution: " . $t->getMessage() . "\n";
