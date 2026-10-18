@@ -50,4 +50,7 @@ return [
     // Finance
     'finance.view',
     'finance.manage',
+    'finance.expense.create',
+    'finance.expense.approve',
+    'finance.budget.manage',
 ];
