@@ -45,6 +45,23 @@ if ($branchId) {
     $orderStmt = $pdo->prepare($orderSql);
     $orderStmt->execute([$branchId]);
     $orders = $orderStmt->fetchAll();
+
+    // 4. Fetch Recent Paid Orders (for receipt printing)
+    $recentPaidSql = "
+        SELECT o.id, o.order_number, o.branch_id, o.final_amount, o.order_status, o.payment_status, o.created_at,
+               (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', p.name) SEPARATOR ', ')
+                FROM order_items oi
+                JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = o.id) AS items_summary
+        FROM orders o
+        WHERE o.branch_id = ? 
+          AND o.payment_status = 'PAID'
+        ORDER BY o.created_at DESC
+        LIMIT 6
+    ";
+    $recentPaidStmt = $pdo->prepare($recentPaidSql);
+    $recentPaidStmt->execute([$branchId]);
+    $recentPaidOrders = $recentPaidStmt->fetchAll();
 }
 
 $activeOrders = [];
@@ -259,6 +276,56 @@ $csrfToken = Csrf::getToken();
                 </div>
             <?php endif; ?>
         </div>
+
+        <!-- Recent Completed Orders & Receipts Section -->
+        <div class="space-y-4 pt-6 border-t border-slate-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+                        <span>Recent Completed Orders & Receipts</span>
+                        <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700"><?= count($recentPaidOrders) ?></span>
+                    </h2>
+                    <p class="text-xs text-slate-500">Print or reprint 58mm thermal receipts for paid branch orders.</p>
+                </div>
+            </div>
+
+            <?php if (empty($recentPaidOrders)): ?>
+                <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-sm">
+                    No paid orders recorded yet.
+                </div>
+            <?php else: ?>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <?php foreach ($recentPaidOrders as $pord): 
+                        $paidDecimal = Money::toDecimal(Money::toCentavos($pord['final_amount']));
+                    ?>
+                    <div class="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition p-5 flex flex-col justify-between" id="paid-order-card-<?= (int)$pord['id'] ?>">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-mono text-base font-black text-slate-900"><?= e($pord['order_number']) ?></span>
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                    PAID
+                                </span>
+                            </div>
+                            <div class="text-xs text-slate-500 mb-3 line-clamp-1">
+                                <?= e($pord['items_summary'] ?: 'Order items') ?>
+                            </div>
+                        </div>
+
+                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between mt-2">
+                            <div>
+                                <span class="text-[10px] font-semibold text-slate-400 uppercase block">Total Paid</span>
+                                <span class="text-lg font-black text-slate-900">₱<?= $paidDecimal ?></span>
+                            </div>
+                            <a href="fika_pos_receipt.php?order_id=<?= (int)$pord['id'] ?>" target="_blank"
+                               class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm transition inline-flex items-center space-x-1.5 active:scale-95">
+                                <span>🖨️ Print Receipt</span>
+                            </a>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </main>
 
     <!-- Cash Payment Modal -->
@@ -333,9 +400,13 @@ $csrfToken = Csrf::getToken();
                 </div>
             </div>
 
-            <div id="digital-paid-banner" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800">
+            <div id="digital-paid-banner" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 space-y-3">
                 <div class="font-black text-lg text-emerald-700">✓ PAYMENT CONFIRMED!</div>
                 <p class="text-xs text-emerald-600">The order has been marked as PAID via PayMongo.</p>
+                <button onclick="printReceiptForOrder(selectedOrderId)"
+                        class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-xs shadow-sm">
+                    🖨️ Print Thermal Receipt
+                </button>
             </div>
 
             <button onclick="closeDigitalModal()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
@@ -514,13 +585,22 @@ $csrfToken = Csrf::getToken();
                     throw new Error(data.error || 'Payment failed.');
                 }
 
-                alert(`Payment successful! Change: ₱${data.change}`);
+                const paidOrderId = selectedOrderId;
                 closePayModal();
+                if (confirm(`Payment successful! Change: ₱${data.change}\n\nWould you like to print the receipt now?`)) {
+                    window.open(`fika_pos_receipt.php?order_id=${paidOrderId}`, '_blank');
+                }
                 location.reload();
             } catch (err) {
                 showPayError(err.message);
                 btn.disabled = false;
                 btn.innerText = 'Confirm & Pay';
+            }
+        }
+
+        function printReceiptForOrder(orderId) {
+            if (orderId) {
+                window.open(`fika_pos_receipt.php?order_id=${orderId}`, '_blank');
             }
         }
 

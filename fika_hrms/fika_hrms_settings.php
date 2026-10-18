@@ -110,6 +110,37 @@ $leaveTypes = $leaveStmt->fetchAll();
                 </div>
             </div>
 
+            <!-- Thermal Receipt & BIR Settings -->
+            <?php if (Rbac::can('settings.manage')): ?>
+            <div class="bg-white shadow rounded p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Thermal Receipt & BIR Settings</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Business Name (Header)</label>
+                        <input type="text" name="receipt_business_name" value="<?= e($settings['receipt_business_name'] ?? 'Fika Coffee & Pastries') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">TIN (Taxpayer Identification Number)</label>
+                        <input type="text" name="receipt_tin" value="<?= e($settings['receipt_tin'] ?? 'TIN: 123-456-789-00000 VAT') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">Receipt Address</label>
+                        <input type="text" name="receipt_address" value="<?= e($settings['receipt_address'] ?? '123 Coffee St., BGC, Taguig City') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">Receipt Footer Text</label>
+                        <input type="text" name="receipt_footer" value="<?= e($settings['receipt_footer'] ?? 'Thank you for your visit!') ?>" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="md:col-span-2 flex items-center pt-2">
+                        <input type="checkbox" id="receipt_bir_registered" name="receipt_bir_registered" value="1" <?= (!empty($settings['receipt_bir_registered']) || !empty($settings['bir_registered'])) ? 'checked' : '' ?> class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="receipt_bir_registered" class="ml-2 block text-sm font-semibold text-gray-900">
+                            BIR-Registered Business (Displays "THIS SERVES AS YOUR OFFICIAL RECEIPT" and VAT Breakdown)
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <div class="flex justify-end gap-4 mt-8">
                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded shadow text-lg">Save Settings</button>
             </div>
@@ -126,6 +157,16 @@ $leaveTypes = $leaveStmt->fetchAll();
             const formData = new FormData(this);
             const payload = {
                 late_grace_minutes: formData.get('late_grace_minutes'),
+                contrib_FULL_TIME: formData.get('contrib_FULL_TIME') ? '1' : '0',
+                contrib_PART_TIME: formData.get('contrib_PART_TIME') ? '1' : '0',
+                contrib_CONTRACTUAL: formData.get('contrib_CONTRACTUAL') ? '1' : '0',
+                contrib_INTERN: formData.get('contrib_INTERN') ? '1' : '0',
+                receipt_business_name: formData.get('receipt_business_name'),
+                receipt_address: formData.get('receipt_address'),
+                receipt_tin: formData.get('receipt_tin'),
+                receipt_footer: formData.get('receipt_footer'),
+                receipt_bir_registered: formData.get('receipt_bir_registered') ? '1' : '0',
+                bir_registered: formData.get('receipt_bir_registered') ? '1' : '0',
                 leave_types: {}
             };
             

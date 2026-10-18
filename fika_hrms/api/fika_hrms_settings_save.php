@@ -26,6 +26,19 @@ try {
         $val = !empty($input[$c]) ? '1' : '0';
         $stmt->execute([$val, $user['id'], $c]);
     }
+
+    // Save Receipt & BIR settings
+    $receiptKeys = ['receipt_business_name', 'receipt_address', 'receipt_tin', 'receipt_footer', 'receipt_bir_registered', 'bir_registered'];
+    $upsertStmt = $pdo->prepare("
+        INSERT INTO settings (setting_key, setting_value, updated_by, updated_at)
+        VALUES (?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by), updated_at = NOW()
+    ");
+    foreach ($receiptKeys as $rk) {
+        if (isset($input[$rk])) {
+            $upsertStmt->execute([$rk, (string)$input[$rk], $user['id']]);
+        }
+    }
     
     // Save leave types
     $leaveStmt = $pdo->prepare("UPDATE leave_types SET name = ?, is_paid = ?, annual_days = ?, min_service_months = ?, statutory = ? WHERE code = ?");
