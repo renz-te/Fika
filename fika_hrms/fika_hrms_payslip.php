@@ -2,40 +2,66 @@
 require __DIR__ . '/../app/bootstrap.php';
 class_exists('Output'); // Force load the class to get e() helper
 Auth::requireLogin();
-Rbac::require_permission('payroll.view');
 
 $itemId = (int)($_GET['item'] ?? 0);
 if (!$itemId) {
+    http_response_code(400);
     die("Invalid item ID");
 }
 
 global $pdo;
 
-// Branch Scoping: Apply to the employee's branch to ensure a branch manager can't view an item for another branch
-list($scopeSql, $params) = Rbac::branch_scope('e');
-$params[] = $itemId;
+$canViewPayroll = Rbac::can('payroll.view');
 
-$stmt = $pdo->prepare("
-    SELECT pi.*, 
-           pr.period_start, pr.period_end, pr.status as run_status, pr.id as run_id, pr.scope as run_scope,
-           e.first_name, e.last_name, e.employee_code, e.employment_type, e.basic_salary, e.position,
-           e.sss_no_enc as sss, e.philhealth_no_enc as philhealth, e.pagibig_no_enc as pagibig, e.tin_enc as tin, e.bank_no_enc as bank_account,
-           b.name as branch_name
-    FROM payroll_items pi
-    JOIN payroll_runs pr ON pi.payroll_run_id = pr.id
-    JOIN employees e ON pi.employee_id = e.id
-    LEFT JOIN branches b ON e.branch_id = b.id
-    WHERE 1=1 $scopeSql AND pi.id = ?
-");
-$stmt->execute($params);
-$slip = $stmt->fetch();
+if ($canViewPayroll) {
+    // Branch Scoping: Apply to the employee's branch to ensure a branch manager can't view an item for another branch
+    list($scopeSql, $params) = Rbac::branch_scope('e');
+    $params[] = $itemId;
+
+    $stmt = $pdo->prepare("
+        SELECT pi.*, 
+               pr.period_start, pr.period_end, pr.status as run_status, pr.id as run_id, pr.scope as run_scope,
+               e.first_name, e.last_name, e.employee_code, e.employment_type, e.basic_salary, e.position,
+               e.sss_no_enc as sss, e.philhealth_no_enc as philhealth, e.pagibig_no_enc as pagibig, e.tin_enc as tin, e.bank_no_enc as bank_account,
+               b.name as branch_name
+        FROM payroll_items pi
+        JOIN payroll_runs pr ON pi.payroll_run_id = pr.id
+        JOIN employees e ON pi.employee_id = e.id
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE 1=1 $scopeSql AND pi.id = ?
+    ");
+    $stmt->execute($params);
+    $slip = $stmt->fetch();
+} else {
+    // ESS Self-Service: strictly scoped to own employee_id and RELEASED payslips
+    $sessEmpId = (int)($_SESSION['user']['employee_id'] ?? 0);
+    if (!$sessEmpId) {
+        http_response_code(403);
+        die("Payslip not found or access denied.");
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT pi.*, 
+               pr.period_start, pr.period_end, pr.status as run_status, pr.id as run_id, pr.scope as run_scope,
+               e.first_name, e.last_name, e.employee_code, e.employment_type, e.basic_salary, e.position,
+               e.sss_no_enc as sss, e.philhealth_no_enc as philhealth, e.pagibig_no_enc as pagibig, e.tin_enc as tin, e.bank_no_enc as bank_account,
+               b.name as branch_name
+        FROM payroll_items pi
+        JOIN payroll_runs pr ON pi.payroll_run_id = pr.id
+        JOIN employees e ON pi.employee_id = e.id
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE pi.id = ? AND pi.employee_id = ? AND pr.status = 'RELEASED'
+    ");
+    $stmt->execute([$itemId, $sessEmpId]);
+    $slip = $stmt->fetch();
+}
 
 if (!$slip) {
     http_response_code(403);
     die("Payslip not found or access denied.");
 }
 
-$canViewSensitive = Rbac::can('hr.employee.view_sensitive');
+$canViewSensitive = Rbac::can('hr.employee.view_sensitive') || ((int)($_SESSION['user']['employee_id'] ?? 0) === (int)$slip['employee_id']);
 
 function format_sensitive($encryptedValue, $canViewSensitive) {
     if (!$encryptedValue) return 'N/A';
@@ -97,7 +123,11 @@ $net = (float)$slip['net_pay'];
 
     <div class="mb-4 text-center no-print">
         <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded shadow font-bold hover:bg-blue-700">Print Payslip</button>
-        <a href="fika_hrms_payroll_run.php?id=<?= $slip['run_id'] ?>" class="ml-4 text-gray-600 hover:underline">Back to Run</a>
+        <?php if ($canViewPayroll): ?>
+            <a href="fika_hrms_payroll_run.php?id=<?= $slip['run_id'] ?>" class="ml-4 text-gray-600 hover:underline">Back to Run</a>
+        <?php else: ?>
+            <a href="fika_hrms_ess.php" class="ml-4 text-gray-600 hover:underline">Back to ESS</a>
+        <?php endif; ?>
     </div>
 
     <div class="a5-container p-6 print-border">
