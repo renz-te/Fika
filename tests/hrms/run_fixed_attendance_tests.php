@@ -48,7 +48,7 @@ Expected for Nov 1 to 15 (Nov 1 is Sun. Nov 15 is Sun. Total 10 Business Days: 2
 - days_worked: 10 - (1 absence + 1 paid leave) = 8
 */
 
-assertTest("Summary has exactly the expected keys", array_keys($summary) === ['days_worked', 'late_minutes', 'ot_minutes', 'night_diff_minutes', 'holiday_days', 'paid_leave_days', 'unpaid_leave_days', 'absences'], "Keys mismatch");
+assertTest("Summary has exactly the expected keys", array_keys($summary) === ['days_worked', 'late_minutes', 'ot_minutes', 'night_diff_minutes', 'holiday_days', 'paid_leave_days', 'unpaid_leave_days', 'absences', 'total_worked_minutes'], "Keys mismatch");
 
 assertTest("Days worked is 8", (float)$summary['days_worked'] === 8.0, "Got {$summary['days_worked']}");
 assertTest("Paid leave days is 1", (float)$summary['paid_leave_days'] === 1.0, "Got {$summary['paid_leave_days']}");

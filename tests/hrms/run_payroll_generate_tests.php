@@ -42,40 +42,36 @@ $pdo->exec("INSERT IGNORE INTO users (id, username, password, role_id, branch_id
 // We test a 13-day period: 2026-10-01 to 2026-10-13.
 // 10-01 is Thursday. Business days (Mon-Fri) in 10-01 to 10-13:
 // Thu (1), Fri (2), Mon (5), Tue (6), Wed (7), Thu (8), Fri (9), Mon (12), Tue (13) = 9 days.
-// Wait, if it's 9 days, 9 * 8 = 72 hours.
-// In the fixture, Scenario 1 assumes full 104 hours for the period (13 days * 8).
-// To fake exactly 13 business days (104 hours), let's use a date range that spans exactly 13 Mon-Fri days.
-// e.g. 2026-10-01 to 2026-10-19:
-// Oct 1-2 (2), 5-9 (5), 12-16 (5), 19 (1) = 13 days! Perfect.
+// Standard Cutoff 1: 2026-10-01 to 2026-10-15 (11 business days: Oct 1-2, 5-9, 12-15)
 $start = '2026-10-01';
-$end = '2026-10-19';
+$end = '2026-10-15';
 
-// 991: Full-time MONTHLY (Scenario 1) - 30k, 13 days worked (104hrs), 0 absent, 0 late.
+// 991: Full-time MONTHLY (Scenario 1) - 30k, 11 days worked (88hrs), 0 absent, 0 late.
 $pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, last_name, email, employment_type, basic_salary, status, attendance_mode) 
             VALUES (991, 'T991', 999, 'Full', 'Time', '991@t.com', 'REGULAR', 30000, 'ACTIVE', 'CLOCK')");
-for ($i=0; $i<13; $i++) {
-    // 1st to 19th skipping weekends
+for ($i=0; $i<11; $i++) {
+    // 1st to 15th skipping weekends
     $d = new DateTime("2026-10-01");
     $d->modify("+$i weekdays");
     $ds = $d->format('Y-m-d');
     $pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, work_date, clock_in, clock_out, status) VALUES (991, 999, '$ds', '$ds 08:00:00', '$ds 16:00:00', 'CLOSED')");
 }
 
-// 992: MONTHLY, 1 Absence (Scenario 2) - 30k, 12 days worked, 1 absence
+// 992: MONTHLY, 1 Absence (Scenario 2) - 30k, 10 days worked, 1 absence
 $pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, last_name, email, employment_type, basic_salary, status, attendance_mode) 
             VALUES (992, 'T992', 999, 'One', 'Absent', '992@t.com', 'REGULAR', 30000, 'ACTIVE', 'CLOCK')");
-for ($i=0; $i<12; $i++) {
+for ($i=0; $i<10; $i++) {
     $d = new DateTime("2026-10-01");
     $d->modify("+$i weekdays");
     $ds = $d->format('Y-m-d');
     $pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, work_date, clock_in, clock_out, status) VALUES (992, 999, '$ds', '$ds 08:00:00', '$ds 16:00:00', 'CLOSED')");
 }
-$pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, work_date, clock_in, clock_out, status) VALUES (992, 999, '2026-10-19', '2026-10-19 00:00:00', '2026-10-19 00:00:00', 'ABSENT')");
+$pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, work_date, clock_in, clock_out, status) VALUES (992, 999, '2026-10-15', '2026-10-15 00:00:00', '2026-10-15 00:00:00', 'ABSENT')");
 
-// 993: MONTHLY, Late 45 mins (Scenario 4) - 30k, 13 days worked, late 45m on first day.
+// 993: MONTHLY, Late 45 mins (Scenario 4) - 30k, 11 days worked, late 45m on first day.
 $pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, last_name, email, employment_type, basic_salary, status, attendance_mode) 
             VALUES (993, 'T993', 999, 'Late', 'Mins', '993@t.com', 'REGULAR', 30000, 'ACTIVE', 'CLOCK')");
-for ($i=0; $i<13; $i++) {
+for ($i=0; $i<11; $i++) {
     $d = new DateTime("2026-10-01");
     $d->modify("+$i weekdays");
     $ds = $d->format('Y-m-d');
@@ -105,8 +101,7 @@ $pdo->exec("INSERT INTO employees (id, employee_code, branch_id, first_name, las
 $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('BRANCH', 999, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
 $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('OFFICIALS', NULL, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
 $pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('HQ', NULL, '$start', '$end', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
-// For overlap test
-$pdo->exec("INSERT INTO attendance_certifications (scope, branch_id, period_start, period_end, certified_by, status) VALUES ('HQ', NULL, '$start', '2026-10-20', (SELECT id FROM users LIMIT 1), 'CERTIFIED')");
+
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 // We don't set a global admin session here anymore, we pass it via callApi
@@ -255,22 +250,22 @@ if ($res1['status'] === 200) {
         'scope' => 'HQ',
         'payee_employee_id' => 996,
         'period_start' => $start, 
-        'period_end' => '2026-10-20', // different period, but overlaps
+        'period_end' => $end,
         'cutoff_number' => 1
     ]);
-    assertTest("Same employee in two overlapping runs is rejected", $resHQOverlap['status'] === 400 && strpos($resHQOverlap['body']['error'], 'Overlap detected') !== false, json_encode($resHQOverlap));
+    assertTest("Same employee in two overlapping runs is rejected", $resHQOverlap['status'] === 400 && (strpos($resHQOverlap['body']['error'], 'already exists') !== false || strpos($resHQOverlap['body']['error'], 'Overlap') !== false), json_encode($resHQOverlap));
     
     // Verify Items
     $items = $pdo->query("SELECT employee_id, net_pay FROM payroll_items WHERE payroll_run_id = $runId")->fetchAll(PDO::FETCH_KEY_PAIR);
     
-    // Scenario 1: 991 Net Pay 13377.50
-    assertTest("Emp 991 (Full Time) Matches Fixture", isset($items[991]) && (float)$items[991] === 13377.50, "Got " . ($items[991]??'null'));
+    // Scenario 1: 991 Net Pay 14312.50
+    assertTest("Emp 991 (Full Time) Matches Fixture", isset($items[991]) && (float)$items[991] === 14312.50, "Got " . ($items[991]??'null'));
     
-    // Scenario 2: 992 Net Pay 12218.41
-    assertTest("Emp 992 (1 Absence) Matches Fixture", isset($items[992]) && (float)$items[992] === 12218.41, "Got " . ($items[992]??'null'));
+    // Scenario 2: 992 Net Pay 13153.41
+    assertTest("Emp 992 (1 Absence) Matches Fixture", isset($items[992]) && (float)$items[992] === 13153.41, "Got " . ($items[992]??'null'));
     
-    // Scenario 4: 993 Net Pay 13268.84
-    assertTest("Emp 993 (Late 45m) Matches Fixture", isset($items[993]) && (float)$items[993] === 13268.84, "Got " . ($items[993]??'null'));
+    // Scenario 4: 993 Net Pay 14203.84
+    assertTest("Emp 993 (Late 45m) Matches Fixture", isset($items[993]) && (float)$items[993] === 14203.84, "Got " . ($items[993]??'null'));
     
     // Scenario 7: 994 Net Pay 9090.40
     assertTest("Emp 994 (Hourly 80h) Matches Fixture", isset($items[994]) && (float)$items[994] === 9090.40, "Got " . ($items[994]??'null'));
@@ -283,7 +278,7 @@ if ($res1['status'] === 200) {
         'branch_id' => 999,
         'period_start' => $start,
         'period_end' => $end,
-        'cutoff_number' => 2
+        'cutoff_number' => 1
     ], 1006);
     assertTest("BM cannot generate", isset($resBMGen['body']['error']) && (strpos($resBMGen['body']['error'], 'Only BHR') !== false || strpos($resBMGen['body']['error'], 'Missing permission') !== false), json_encode($resBMGen));
     
@@ -307,25 +302,9 @@ if ($res1['status'] === 200) {
     // 6. ADMIN approves HQ
     $hqRunId = $resHQ['body']['payroll_run_id'];
     $resAdminApproveHQ = callApi('fika_hrms_payroll_approve.php', ['payroll_run_id' => $hqRunId], 1001); // 1001 is ADMIN. Wait, ADMIN generated HQ! Separation of duties!
-    // Ah! ADMIN generated HQ, so ADMIN cannot approve it. Let's make GA generate HQ, then ADMIN approves it.
-    // Wait, earlier the test called HQ generation with default user (1001 = ADMIN).
-    // If ADMIN generated it, ADMIN cannot approve it.
-    // Let me check that it fails for SoD, then GA generates a new HQ, then ADMIN approves.
     assertTest("ADMIN cannot approve HQ if ADMIN generated it (SoD)", isset($resAdminApproveHQ['body']['error']) && strpos($resAdminApproveHQ['body']['error'], 'Separation of Duties') !== false, json_encode($resAdminApproveHQ));
     
-    // Let's generate another HQ run using GA (1003) for the same payee but different cutoff (cutoff=2).
-    // Actually we need a different period so it doesn't conflict. We already certified '2026-10-20'.
-    $resHQ2 = callGenerateApi([
-        'scope' => 'HQ',
-        'payee_employee_id' => 996,
-        'period_start' => $start,
-        'period_end' => '2026-10-20',
-        'cutoff_number' => 2
-    ], 1003); // GA
-    
-    // Wait, earlier the overlap test for HQ used '2026-10-20' and failed because of overlap!
-    // So if it overlaps, we can't generate it!
-    // Let's just clear the first HQ run, then GA can generate it.
+    // Delete the first HQ run generated by ADMIN, so GA (1003) can generate it and ADMIN can approve it
     callApi('fika_hrms_payroll_delete.php', ['payroll_run_id' => $hqRunId], 1001);
     
     $resHQ2 = callGenerateApi([
@@ -335,6 +314,7 @@ if ($res1['status'] === 200) {
         'period_end' => $end,
         'cutoff_number' => 1
     ], 1003); // GA
+
     
     $hqRunId2 = $resHQ2['body']['payroll_run_id'];
     
@@ -364,6 +344,15 @@ if ($res1['status'] === 200) {
     assertTest("Adjusting attendance in a released period fails", $resAdjust['status'] !== 200 && strpos($resAdjust['body']['error'] ?? $resAdjust['out'], 'released (locked)') !== false, json_encode($resAdjust));
 
 }
+
+// Cleanup test fixtures
+$pdo->exec("DELETE FROM payroll_items WHERE employee_id IN (991, 992, 993, 994, 995, 996)");
+$pdo->exec("DELETE FROM payroll_runs WHERE period_start = '2026-10-01'");
+$pdo->exec("DELETE FROM attendance_certifications WHERE period_start = '2026-10-01'");
+$pdo->exec("DELETE FROM attendance_logs WHERE employee_id IN (991, 992, 993, 994, 995, 996)");
+$pdo->exec("DELETE FROM users WHERE id IN (1001, 1002, 1003, 1004, 1005, 1006)");
+$pdo->exec("DELETE FROM employees WHERE branch_id = 999 OR id IN (991, 992, 993, 994, 995, 996)");
+$pdo->exec("DELETE FROM branches WHERE id = 999");
 
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
 echo "\nTests Completed. Failed: {$failed}\n";

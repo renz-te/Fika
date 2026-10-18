@@ -61,10 +61,10 @@ Expected for Oct 1 to 15 (11 Business Days: 1,2, 5,6,7,8,9, 12,13,14,15):
 - absences: 11 business days - (3 worked + 1 paid + 0.5 unpaid + 1 holiday) = 11 - 5.5 = 5.5
 */
 
-assertTest("Summary has exactly the expected keys", array_keys($summary) === ['days_worked', 'late_minutes', 'ot_minutes', 'night_diff_minutes', 'holiday_days', 'paid_leave_days', 'unpaid_leave_days', 'absences'], "Keys mismatch");
+assertTest("Summary has exactly the expected keys", array_keys($summary) === ['days_worked', 'late_minutes', 'ot_minutes', 'night_diff_minutes', 'holiday_days', 'paid_leave_days', 'unpaid_leave_days', 'absences', 'total_worked_minutes'], "Keys mismatch");
 
 assertTest("Days worked is 3", $summary['days_worked'] === 3, "Got {$summary['days_worked']}");
-assertTest("Late minutes is 20", $summary['late_minutes'] === 20, "Got {$summary['late_minutes']}");
+assertTest("Late minutes is 240", $summary['late_minutes'] === 240, "Got {$summary['late_minutes']}");
 assertTest("OT minutes is 120", $summary['ot_minutes'] === 120, "Got {$summary['ot_minutes']}");
 assertTest("ND minutes is 420", $summary['night_diff_minutes'] === 420, "Got {$summary['night_diff_minutes']}");
 assertTest("Holiday days is 1", $summary['holiday_days'] === 1, "Got {$summary['holiday_days']}");

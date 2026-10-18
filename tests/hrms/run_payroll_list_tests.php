@@ -41,21 +41,20 @@ if ($ref->hasProperty('cache')) {
     $prop->setValue(null, []);
 }
 
-// Emulate hitting fika_hrms_payroll.php
-ob_start();
-$is403 = false;
-try {
-    // Rbac::require_permission uses die() and http_response_code(403)
-    Rbac::require_permission('payroll.view');
-} catch (Exception $e) {
-    // Not thrown
-} catch (Error $e) {
-    // Not thrown
-}
-$output = ob_get_clean();
-$status = http_response_code();
+// Emulate hitting an endpoint requiring payroll.view
+$wrapper = __DIR__ . '/wrapper_list_' . uniqid() . '.php';
+$code = "<?php
+require_once '" . addslashes(__DIR__ . '/../../app/bootstrap.php') . "';
+session_start();
+\$_SESSION['user'] = ['id' => 9999, 'role_id' => 9999, 'branch_id' => null, 'employee_id' => null];
+Rbac::require_permission('payroll.view');
+";
+file_put_contents($wrapper, $code);
+$output = shell_exec(PHP_BINARY . " " . escapeshellarg($wrapper));
+unlink($wrapper);
 
-assertTest("User without payroll.view gets 403", $status === 403, "Got HTTP status {$status}");
+$is403 = strpos($output, 'Forbidden. Missing permission: payroll.view') !== false;
+assertTest("User without payroll.view gets 403", $is403, "Got output: {$output}");
 
 // Clean up
 $pdo->exec("DELETE FROM role_permissions WHERE role_id = 9999;");

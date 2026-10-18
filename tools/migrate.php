@@ -13,8 +13,35 @@ sort($files);
 
 global $pdo;
 
+// Ensure schema_migrations table exists
+$pdo->exec("CREATE TABLE IF NOT EXISTS `schema_migrations` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `filename` VARCHAR(255) NOT NULL UNIQUE,
+  `applied_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+// Read already-applied migrations
+$stmt = $pdo->query("SELECT filename FROM schema_migrations");
+$applied = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+$appliedMap = array_flip($applied);
+
+$pending = [];
 foreach ($files as $file) {
-    echo "Running migration: " . basename($file) . "\n";
+    $base = basename($file);
+    if (!isset($appliedMap[$base])) {
+        $pending[] = $file;
+    }
+}
+
+if (empty($pending)) {
+    echo "0 migrations to run.\n";
+    echo "All migrations completed successfully.\n";
+    exit(0);
+}
+
+foreach ($pending as $file) {
+    $base = basename($file);
+    echo "Running migration: " . $base . "\n";
     $sql = file_get_contents($file);
     
     try {
@@ -47,6 +74,11 @@ foreach ($files as $file) {
         } else {
             $pdo->exec($sql);
         }
+
+        // Record in schema_migrations
+        $rec = $pdo->prepare("INSERT INTO schema_migrations (filename) VALUES (?)");
+        $rec->execute([$base]);
+
         echo " -> Success\n";
     } catch (PDOException $e) {
         echo " -> Failed: " . $e->getMessage() . "\n";

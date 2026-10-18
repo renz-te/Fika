@@ -55,11 +55,16 @@ function mockAuthForTest($userId) {
 mockAuthForTest(999);
 $adminCanViewEmp = Rbac::can('hr.employee.view');
 $adminCanManageSet = Rbac::can('settings.manage');
-$adminCanFake = Rbac::can('fake.permission.does.not.exist'); // Should pass because ADMIN gets everything
+$threwForUndeclared = false;
+try {
+    Rbac::can('fake.permission.does.not.exist');
+} catch (Exception $e) {
+    $threwForUndeclared = true;
+}
 
 assertTest("Admin passes hr.employee.view", $adminCanViewEmp, "Admin rejected.");
 assertTest("Admin passes settings.manage", $adminCanManageSet, "Admin rejected.");
-assertTest("Admin passes ANY permission check", $adminCanFake, "Admin rejected for unknown permission.");
+assertTest("Undeclared permission throws Exception", $threwForUndeclared, "Expected Exception for undeclared permission.");
 
 // 2. Non-Admin fails permission if not granted
 mockAuthForTest(998);
