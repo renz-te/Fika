@@ -262,58 +262,12 @@ try {
         WHERE id = ?
     ")->execute([strtoupper($method), $intentId, $orderId]);
 
-    // 9. Constraint 1: Inventory Deduction with Graceful Fallback
+    // 9. Constraint 1: Inventory Deduction with Idempotency
     if (empty($lockedOrder['is_test'])) {
         $branchId = (int)$lockedOrder['branch_id'];
         $systemUserId = (int)($lockedOrder['cashier_id'] ?: 1);
 
-        $ledgerStmt = $pdo->prepare("
-            INSERT INTO inventory_ledger (branch_id, inventory_id, type, quantity, unit_cost_snapshot, user_id, remarks, created_at)
-            VALUES (?, ?, 'Sold', ?, ?, ?, ?, NOW())
-        ");
-        $stockDeductStmt = $pdo->prepare("
-            UPDATE inventory_stock SET current_stock = current_stock - ? 
-            WHERE branch_id = ? AND inventory_id = ?
-        ");
-
-        // Product Recipes
-        $itemsStmt = $pdo->prepare("
-            SELECT oi.quantity as order_qty, r.inventory_id, r.quantity_required, ii.unit_cost
-            FROM order_items oi
-            JOIN recipes r ON r.product_id = oi.product_id
-            JOIN inventory_items ii ON ii.id = r.inventory_id
-            WHERE oi.order_id = ?
-        ");
-        $itemsStmt->execute([$orderId]);
-        $deductions = $itemsStmt->fetchAll();
-
-        foreach ($deductions as $d) {
-            $totalQtyUsed = (float)$d['order_qty'] * (float)$d['quantity_required'];
-            $ledgerStmt->execute([
-                $branchId, $d['inventory_id'], $totalQtyUsed, $d['unit_cost'], $systemUserId, "Order #{$lockedOrder['order_number']} (PayMongo Webhook)"
-            ]);
-            $stockDeductStmt->execute([$totalQtyUsed, $branchId, $d['inventory_id']]);
-        }
-
-        // Modifier Recipes
-        $modStmt = $pdo->prepare("
-            SELECT oi.quantity as order_qty, r.inventory_id, r.quantity_required, ii.unit_cost
-            FROM order_item_modifiers oim
-            JOIN order_items oi ON oi.id = oim.order_item_id
-            JOIN recipes r ON r.modifier_id = oim.modifier_id
-            JOIN inventory_items ii ON ii.id = r.inventory_id
-            WHERE oi.order_id = ?
-        ");
-        $modStmt->execute([$orderId]);
-        $modDeductions = $modStmt->fetchAll();
-
-        foreach ($modDeductions as $md) {
-            $totalQtyUsed = (float)$md['order_qty'] * (float)$md['quantity_required'];
-            $ledgerStmt->execute([
-                $branchId, $md['inventory_id'], $totalQtyUsed, $md['unit_cost'], $systemUserId, "Order #{$lockedOrder['order_number']} (PayMongo Webhook Modifier)"
-            ]);
-            $stockDeductStmt->execute([$totalQtyUsed, $branchId, $md['inventory_id']]);
-        }
+        InventoryDeduction::deductOrder($orderId, $branchId, $systemUserId, $lockedOrder['order_number']);
     }
 
     $pdo->commit();

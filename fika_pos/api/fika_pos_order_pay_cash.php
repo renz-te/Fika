@@ -101,69 +101,8 @@ try {
         WHERE id = ?
     ")->execute([$user['id'], $sessionId, $orderId]);
 
-    // 6. Write to Inventory Ledger (Recipes deduction)
-    $ledgerStmt = $pdo->prepare("
-        INSERT INTO inventory_ledger (branch_id, inventory_id, type, quantity, unit_cost_snapshot, user_id, remarks, created_at)
-        VALUES (?, ?, 'Sold', ?, ?, ?, ?, NOW())
-    ");
-    
-    $stockDeductStmt = $pdo->prepare("
-        UPDATE inventory_stock SET current_stock = current_stock - ? 
-        WHERE branch_id = ? AND inventory_id = ?
-    ");
-    
-    // Fetch all items + their recipes
-    $itemsStmt = $pdo->prepare("
-        SELECT oi.quantity as order_qty, r.inventory_id, r.quantity_required, ii.unit_cost
-        FROM order_items oi
-        JOIN recipes r ON r.product_id = oi.product_id
-        JOIN inventory_items ii ON ii.id = r.inventory_id
-        WHERE oi.order_id = ?
-    ");
-    $itemsStmt->execute([$orderId]);
-    $deductions = $itemsStmt->fetchAll();
-
-    foreach ($deductions as $deduction) {
-        $totalQtyUsed = $deduction['order_qty'] * $deduction['quantity_required'];
-        
-        $ledgerStmt->execute([
-            $order['branch_id'],
-            $deduction['inventory_id'],
-            $totalQtyUsed,
-            $deduction['unit_cost'],
-            $user['id'],
-            "Order #{$order['order_number']}"
-        ]);
-        
-        $stockDeductStmt->execute([$totalQtyUsed, $order['branch_id'], $deduction['inventory_id']]);
-    }
-
-    // Do the same for modifiers
-    $modItemsStmt = $pdo->prepare("
-        SELECT oi.quantity as order_qty, r.inventory_id, r.quantity_required, ii.unit_cost
-        FROM order_item_modifiers oim
-        JOIN order_items oi ON oi.id = oim.order_item_id
-        JOIN recipes r ON r.modifier_id = oim.modifier_id
-        JOIN inventory_items ii ON ii.id = r.inventory_id
-        WHERE oi.order_id = ?
-    ");
-    $modItemsStmt->execute([$orderId]);
-    $modDeductions = $modItemsStmt->fetchAll();
-
-    foreach ($modDeductions as $deduction) {
-        $totalQtyUsed = $deduction['order_qty'] * $deduction['quantity_required'];
-        
-        $ledgerStmt->execute([
-            $order['branch_id'],
-            $deduction['inventory_id'],
-            $totalQtyUsed,
-            $deduction['unit_cost'],
-            $user['id'],
-            "Order #{$order['order_number']} (Modifier)"
-        ]);
-        
-        $stockDeductStmt->execute([$totalQtyUsed, $order['branch_id'], $deduction['inventory_id']]);
-    }
+    // 6. Write to Inventory Ledger (Recipes deduction with idempotency)
+    InventoryDeduction::deductOrder($orderId, (int)$order['branch_id'], $user['id'], $order['order_number']);
 
     Audit::log('ORDER_PAID', "Order ID {$orderId} paid in cash. Reference: {$idempotencyKey}");
     $pdo->commit();

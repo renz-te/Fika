@@ -27,6 +27,20 @@ global $pdo;
 try {
     $pdo->beginTransaction();
     
+    // Support direct deduction / replay if existing order_id provided
+    if (!empty($input['order_id'])) {
+        $existingOrderId = (int)$input['order_id'];
+        InventoryDeduction::deductOrder($existingOrderId, $branchId, $user['id'], "ORD-{$existingOrderId}");
+        $pdo->commit();
+        echo json_encode([
+            'success' => true,
+            'order_id' => $existingOrderId,
+            'order_number' => "ORD-{$existingOrderId}",
+            'message' => 'Idempotent order deduction processed.'
+        ]);
+        exit;
+    }
+
     // 1. Generate Order Number
     $stmt = $pdo->query("SELECT current_count, prefix, padding FROM doc_counters WHERE document_type = 'ORDER' FOR UPDATE");
     $counter = $stmt->fetch();
@@ -38,8 +52,14 @@ try {
         $pdo->prepare("UPDATE doc_counters SET current_count = ? WHERE document_type = 'ORDER'")->execute([$next]);
         $orderNumber = $counter['prefix'] . str_pad((string)$next, (int)$counter['padding'], '0', STR_PAD_LEFT);
     }
+
+    // 2. Pre-check stock availability for all products and modifiers (Constraint 1 & 5)
+    $requiredIngredients = InventoryDeduction::calculateRequiredIngredients($input['items']);
+    if (!empty($requiredIngredients)) {
+        InventoryDeduction::checkStockAvailability($branchId, $requiredIngredients);
+    }
     
-    // 2. Validate Items and Compute Totals
+    // 3. Validate Items and Compute Totals
     $totalAmountCentavos = 0;
     
     // Create the order header first to get ID
@@ -48,7 +68,7 @@ try {
         VALUES (?, ?, ?, ?, 'PENDING', 'UNPAID', 0, 0)
     ");
     $orderStmt->execute([$orderNumber, $branchId, $sessionId, $user['id']]);
-    $orderId = $pdo->lastInsertId();
+    $orderId = (int)$pdo->lastInsertId();
     
     $itemStmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, quantity, price_snapshot, price_snapshot_cents, subtotal) VALUES (?, ?, ?, ?, ?, ?)");
     $modStmt = $pdo->prepare("INSERT INTO order_item_modifiers (order_item_id, modifier_id, price_snapshot) VALUES (?, ?, ?)");
@@ -60,31 +80,6 @@ try {
         WHERE p.id = ? AND p.deleted_at IS NULL
     ");
     $modLookup = $pdo->prepare("SELECT price, is_active FROM modifiers WHERE id = ?");
-
-    $recipeLookup = $pdo->prepare("
-        SELECT r.inventory_id, r.quantity_required, ii.item_name 
-        FROM recipes r 
-        JOIN inventory_items ii ON ii.id = r.inventory_id 
-        WHERE r.product_id = ?
-    ");
-
-    $stockLookup = $pdo->prepare("
-        SELECT current_stock 
-        FROM inventory_stock 
-        WHERE branch_id = ? AND inventory_id = ? 
-        FOR UPDATE
-    ");
-
-    $stockUpdate = $pdo->prepare("
-        UPDATE inventory_stock 
-        SET current_stock = current_stock - ? 
-        WHERE branch_id = ? AND inventory_id = ?
-    ");
-
-    $ledgerInsert = $pdo->prepare("
-        INSERT INTO inventory_ledger (branch_id, inventory_id, type, quantity, unit_cost_snapshot, user_id, remarks, created_at)
-        VALUES (?, ?, 'Sold', ?, 0.00, ?, ?, NOW())
-    ");
     
     foreach ($input['items'] as $item) {
         $prodId = (int) $item['id'];
@@ -96,34 +91,6 @@ try {
         $isAvailable = $product && (int)$product['is_active'] === 1 && ($product['branch_active'] === null || (int)$product['branch_active'] === 1);
         if (!$isAvailable) {
             throw new Exception("Product ID {$prodId} is invalid or inactive.");
-        }
-
-        // Recipe-based inventory deduction with FOR UPDATE lock (Constraint 2)
-        $recipeLookup->execute([$prodId]);
-        $recipes = $recipeLookup->fetchAll();
-
-        if (!empty($recipes)) {
-            foreach ($recipes as $rec) {
-                $invId = (int)$rec['inventory_id'];
-                $requiredPerItem = (float)$rec['quantity_required'];
-                $totalRequired = $requiredPerItem * $qty;
-
-                $stockLookup->execute([$branchId, $invId]);
-                $stockRow = $stockLookup->fetch();
-
-                if (!$stockRow || (float)$stockRow['current_stock'] < $totalRequired) {
-                    throw new Exception("Insufficient stock");
-                }
-
-                $stockUpdate->execute([$totalRequired, $branchId, $invId]);
-                $ledgerInsert->execute([
-                    $branchId,
-                    $invId,
-                    $totalRequired,
-                    $user['id'],
-                    "Order #{$orderNumber} product {$prodId}"
-                ]);
-            }
         }
         
         $basePriceCentavos = isset($product['price_cents']) && (int)$product['price_cents'] > 0
@@ -172,6 +139,9 @@ try {
         Money::toDecimal($finalAmountCentavos),
         $orderId
     ]);
+
+    // Deduct stock idempotently (Constraint 1, 2, 3)
+    InventoryDeduction::deductOrder($orderId, $branchId, $user['id'], $orderNumber);
     
     Audit::log('ORDER_CREATED', "Order Number: {$orderNumber}");
     $pdo->commit();
