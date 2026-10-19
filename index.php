@@ -1,23 +1,70 @@
 <?php
-// Ensure bootstrap is available if needed for configuration or sessions
 require_once __DIR__ . '/app/bootstrap.php';
+require_once __DIR__ . '/app/core/Output.php';
 
-$pageTitle = 'Enterprise Café Management & POS Suite';
+// Helper for root-relative or configured base_url
+if (!function_exists('base_url')) {
+    function base_url(string $path = ''): string {
+        $base = rtrim((string)config('app.base_url', ''), '/');
+        $clean = ltrim($path, '/');
+        return $base !== '' ? $base . '/' . $clean : $clean;
+    }
+}
+
+$logoUrl = base_url('public/assets/logo.svg');
+
+// Query 4 active products for Menu Highlights (gracefully handling any count)
+global $pdo;
+$menuHighlights = [];
+try {
+    $stmt = $pdo->query("SELECT id, name, category, price, price_cents, image_path FROM products WHERE is_active = 1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 4");
+    if ($stmt) {
+        $menuHighlights = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Throwable $e) {
+    $menuHighlights = [];
+}
+
+// Query active branches for Locations section
+$branches = [];
+try {
+    $bStmt = $pdo->query("SELECT id, name, address, contact_number, status FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY id ASC");
+    if ($bStmt) {
+        $branches = $bStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Throwable $e) {
+    $branches = [];
+}
+
+// Fallback high-res café imagery for items without uploaded photos
+$defaultImages = [
+    'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=800&q=80', // Latte art
+    'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=800&q=80', // Rich espresso
+    'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80', // Iced brew
+    'https://images.unsplash.com/photo-1509785307050-d4066910ec1e?auto=format&fit=crop&w=800&q=80'  // Pour over
+];
 ?>
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fika &middot; Slow Hours | Enterprise Café Management</title>
+    <title>Fika &middot; Slow Hours | Specialty Café & Roastery</title>
     <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,900;1,400;1,600&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        serif: ['"Playfair Display"', 'serif'],
+                    },
                     colors: {
                         espresso: {
                             50: '#fbf8f5',
@@ -26,14 +73,28 @@ $pageTitle = 'Enterprise Café Management & POS Suite';
                             300: '#dbc0ad',
                             400: '#c59d83',
                             700: '#5c3821',
-                            800: '#4a2e1b',
-                            900: '#331d10',
-                            950: '#1f1008'
+                            800: '#422415',
+                            900: '#2c180e',
+                            950: '#1a0d07'
                         },
                         amber: {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            200: '#fde68a',
+                            300: '#fcd34d',
+                            400: '#fbbf24',
                             500: '#f59e0b',
                             600: '#d97706',
-                            700: '#b45309'
+                            700: '#b45309',
+                            800: '#92400e',
+                            900: '#78350f'
+                        },
+                        cream: {
+                            50: '#fdfbf7',
+                            100: '#fbf7f0',
+                            200: '#f5eee1',
+                            300: '#ece1ce',
+                            400: '#decbb0'
                         }
                     }
                 }
@@ -41,38 +102,43 @@ $pageTitle = 'Enterprise Café Management & POS Suite';
         }
     </script>
 </head>
-<body class="bg-stone-900 text-stone-100 font-sans antialiased selection:bg-amber-500 selection:text-white">
+<body class="bg-cream-50 text-espresso-950 font-sans antialiased selection:bg-amber-600 selection:text-white">
 
     <!-- Top Navigation Bar -->
-    <header class="sticky top-0 z-50 bg-stone-950/80 backdrop-blur-md border-b border-stone-800">
+    <header class="sticky top-0 z-50 bg-cream-50/90 backdrop-blur-md border-b border-cream-200/80 transition-all">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a href="index.php" class="flex items-center gap-3 group">
-                    <img src="public/assets/logo.svg" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200">
-                    <div>
-                        <span class="text-xl font-black tracking-wider text-white">FIKA</span>
-                        <span class="text-xs uppercase tracking-widest text-amber-500 block font-bold">Slow Hours</span>
+            <!-- Brand Logo -->
+            <a href="index.php" class="flex items-center gap-3.5 group">
+                <div class="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
+                    <img src="<?= e($logoUrl) ?>" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-nav-fallback').classList.remove('hidden');">
+                    <div id="logo-nav-fallback" class="hidden w-12 h-12 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40">
+                        <span>F</span>
                     </div>
-                </a>
-            </div>
+                </div>
+                <div>
+                    <span class="text-2xl font-black tracking-wider text-espresso-900 font-serif leading-none block">FIKA</span>
+                    <span class="text-[10px] uppercase tracking-[0.25em] text-amber-700 font-bold block mt-1">Slow Hours</span>
+                </div>
+            </a>
 
-            <!-- Desktop Nav Items -->
-            <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-stone-300">
-                <a href="#modules" class="hover:text-amber-400 transition-colors">Modules</a>
-                <a href="#architecture" class="hover:text-amber-400 transition-colors">Enterprise Platform</a>
-                <a href="careers.php" class="hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                    <i class="fa-solid fa-briefcase text-amber-500 text-xs"></i>
+            <!-- Nav Links -->
+            <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-espresso-800">
+                <a href="#menu" class="hover:text-amber-700 transition-colors">Menu</a>
+                <a href="#story" class="hover:text-amber-700 transition-colors">Our Story</a>
+                <a href="#locations" class="hover:text-amber-700 transition-colors">Locations</a>
+                <a href="careers.php" class="hover:text-amber-700 transition-colors flex items-center gap-1.5">
                     <span>Careers</span>
+                    <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-200">Hiring</span>
                 </a>
             </nav>
 
-            <!-- Actions -->
+            <!-- Backoffice CTA -->
             <div class="flex items-center gap-3">
-                <a href="careers.php" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-amber-400 border border-amber-500/40 hover:bg-amber-500/10 rounded-xl transition-all">
-                    <span>We're Hiring</span>
+                <a href="careers.php" class="hidden lg:inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 transition-colors">
+                    Join Our Crew
                 </a>
-                <a href="login.php" class="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-stone-950 font-bold text-sm rounded-xl shadow-lg shadow-amber-900/30 transition-all transform hover:-translate-y-0.5">
-                    <i class="fa-solid fa-arrow-right-to-bracket text-xs"></i>
+                <a href="login.php" class="inline-flex items-center gap-2 px-5 py-2.5 bg-espresso-900 hover:bg-espresso-800 text-amber-100 font-bold text-xs uppercase tracking-wider rounded-full shadow-md shadow-espresso-950/20 transition-all transform hover:-translate-y-0.5 border border-amber-600/30">
+                    <i class="fa-solid fa-mug-hot text-amber-400 text-xs"></i>
                     <span>Staff Login</span>
                 </a>
             </div>
@@ -80,231 +146,177 @@ $pageTitle = 'Enterprise Café Management & POS Suite';
     </header>
 
     <!-- Hero Section -->
-    <section class="relative overflow-hidden pt-12 pb-24 sm:pt-20 sm:pb-32">
-        <!-- Radial Glow Background -->
-        <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-amber-600/10 blur-[130px] rounded-full pointer-events-none"></div>
-        <div class="absolute top-1/3 left-1/4 w-[400px] h-[400px] bg-espresso-800/30 blur-[100px] rounded-full pointer-events-none"></div>
+    <section class="relative min-h-[85vh] flex items-center justify-center overflow-hidden bg-espresso-950 text-white">
+        <!-- Background Imagery with Warm Espresso Vignette -->
+        <div class="absolute inset-0 bg-cover bg-center opacity-45 mix-blend-overlay" style="background-image: url('https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=2000&q=85');"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-espresso-950 via-espresso-900/80 to-espresso-950/90 pointer-events-none"></div>
 
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-            <!-- Premium Center Logo (Hero Visual) -->
-            <div class="flex justify-center mb-8">
-                <div class="relative group">
-                    <div class="absolute -inset-1 rounded-full bg-gradient-to-r from-amber-600 to-amber-400 opacity-30 blur group-hover:opacity-60 transition duration-500"></div>
-                    <img src="public/assets/logo.svg" alt="Fika Logo Large" class="relative w-48 h-48 sm:w-56 sm:h-56 object-contain drop-shadow-2xl">
-                </div>
-            </div>
-
-            <!-- Hero Badge -->
-            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-stone-800/80 border border-stone-700/80 text-amber-400 text-xs sm:text-sm font-semibold mb-6">
+        <div class="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
+            <!-- Warm Pill Badge -->
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-espresso-800/80 border border-amber-500/30 text-amber-300 text-xs sm:text-sm font-semibold mb-8 shadow-lg backdrop-blur-sm">
                 <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                <span>Enterprise Café Management Suite &bull; Slow Hours Architecture</span>
+                <span class="tracking-widest uppercase text-[11px]">The Swedish Ritual of Slow Coffee</span>
             </div>
 
-            <!-- Headline -->
-            <h1 class="text-4xl sm:text-6xl font-black text-white tracking-tight leading-tight sm:leading-none max-w-4xl mx-auto">
-                Specialty Hospitality <br class="hidden sm:inline" />
-                <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
-                    Engineered for Precision.
-                </span>
+            <!-- Hero Headline -->
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-black font-serif tracking-tight text-cream-50 leading-[1.05]">
+                Fika &middot; <span class="italic font-normal text-amber-400">Slow Hours</span>
             </h1>
 
-            <p class="mt-6 text-base sm:text-xl text-stone-300 max-w-2xl mx-auto leading-relaxed">
-                The unified operating system for high-volume specialty cafés. Connecting multi-branch POS, biometric attendance, statutory payroll, audited inventory COGS, and real-time ledger accounting.
+            <p class="mt-6 text-xl sm:text-2xl text-cream-200 font-serif italic max-w-2xl mx-auto font-normal">
+                &ldquo;Take the time to sip.&rdquo;
             </p>
 
-            <!-- CTA Buttons -->
+            <p class="mt-4 text-sm sm:text-base text-cream-300/80 max-w-xl mx-auto leading-relaxed">
+                Step away from the rush. Specialty small-batch espresso, handcrafted seasonal pours, and freshly baked Swedish pastries prepared with intentional care.
+            </p>
+
+            <!-- Call to Actions -->
             <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="login.php" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-base shadow-xl shadow-amber-950/40 transition-all transform hover:-translate-y-0.5">
-                    <i class="fa-solid fa-lock"></i>
-                    <span>Access Staff Backoffice</span>
+                <a href="#menu" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-amber-500 hover:bg-amber-400 text-espresso-950 font-bold text-sm tracking-wider uppercase shadow-xl shadow-amber-950/50 transition-all transform hover:-translate-y-0.5">
+                    <span>Explore Menu</span>
+                    <i class="fa-solid fa-arrow-down text-xs"></i>
                 </a>
-                <a href="careers.php" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-xl bg-stone-800/90 hover:bg-stone-700 border border-stone-700 text-white font-bold text-base transition-all">
-                    <i class="fa-solid fa-coffee text-amber-400"></i>
-                    <span>Join Our Team (Careers)</span>
+                <a href="#locations" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
+                    <i class="fa-solid fa-location-dot text-amber-400 text-xs"></i>
+                    <span>Find Our Cafés</span>
                 </a>
             </div>
 
-            <!-- Key Feature Badges -->
-            <div class="mt-14 pt-10 border-t border-stone-800/80 grid grid-cols-2 md:grid-cols-4 gap-4 text-stone-400 text-xs sm:text-sm font-medium">
+            <!-- Café Pillars -->
+            <div class="mt-16 pt-10 border-t border-cream-200/10 grid grid-cols-2 md:grid-cols-4 gap-6 text-cream-300 text-xs uppercase tracking-widest font-semibold">
                 <div class="flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check-circle text-amber-500"></i>
-                    <span>Role-Based PAM Access</span>
+                    <i class="fa-solid fa-seedling text-amber-400"></i>
+                    <span>Direct Trade Beans</span>
                 </div>
                 <div class="flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check-circle text-amber-500"></i>
-                    <span>Audited Recipe COGS</span>
+                    <i class="fa-solid fa-fire-burner text-amber-400"></i>
+                    <span>Small-Batch Roast</span>
                 </div>
                 <div class="flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check-circle text-amber-500"></i>
-                    <span>Branch-Scoped Ledger</span>
+                    <i class="fa-solid fa-bread-slice text-amber-400"></i>
+                    <span>House Bakes Daily</span>
                 </div>
                 <div class="flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check-circle text-amber-500"></i>
-                    <span>Maker-Checker Controls</span>
+                    <i class="fa-solid fa-heart text-amber-400"></i>
+                    <span>Zero Rush Space</span>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Modules Showcase Section -->
-    <section id="modules" class="py-20 bg-stone-950 border-t border-stone-800/80 relative">
+    <!-- Menu Highlights Section -->
+    <section id="menu" class="py-24 bg-cream-100/70 border-b border-cream-200 relative">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center max-w-3xl mx-auto mb-16">
-                <span class="text-xs uppercase font-extrabold tracking-widest text-amber-500">Comprehensive Ecosystem</span>
-                <h2 class="text-3xl sm:text-4xl font-black text-white mt-2 tracking-tight">Four Integrated Enterprise Engines</h2>
-                <p class="text-stone-400 mt-3 text-sm sm:text-base">
-                    No fragmented third-party add-ons. Every transaction, punch, recipe, and expense directly reconciles across core ledgers.
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Crafted with Purpose</span>
+                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">Menu Highlights</h2>
+                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
+                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base leading-relaxed">
+                    A taste of our specialty offerings. Sourced responsibly from high-altitude micro-lots and extracted to exacting brew ratios.
                 </p>
             </div>
 
-            <!-- Modules Grid (4 Pillars) -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <!-- Module 1: POS -->
-                <div class="p-8 rounded-2xl bg-stone-900 border border-stone-800 hover:border-amber-500/40 transition-all duration-300 relative group">
-                    <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-xl mb-6 group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-cash-register"></i>
-                    </div>
-                    <div class="text-xs font-bold uppercase tracking-wider text-amber-500 mb-1">Store Front Operations</div>
-                    <h3 class="text-2xl font-bold text-white mb-3">POS & Register Engine</h3>
-                    <p class="text-stone-400 text-sm leading-relaxed mb-6">
-                        Rapid register checkout with dual-custody supervisor overrides, dynamic beverage size/milk modifiers, PayMongo QR integration, and strict cashier shift float reconciliations.
-                    </p>
-                    <ul class="space-y-2.5 text-xs text-stone-300">
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-shield text-amber-400"></i>
-                            <span>Dual-custody supervisor PINs for voids and refunds</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-mobile-screen text-amber-400"></i>
-                            <span>Touch-optimized customer self-ordering Kiosk terminal</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-receipt text-amber-400"></i>
-                            <span>Atomic Bill-of-Materials inventory deduction per order</span>
-                        </li>
-                    </ul>
+            <?php if (!empty($menuHighlights)): ?>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                    <?php foreach ($menuHighlights as $idx => $item): 
+                        // Price calculation via Money::format()
+                        $priceCents = (int)($item['price_cents'] ?? round(((float)$item['price']) * 100));
+                        $formattedPrice = Money::format($priceCents);
+                        
+                        // Image resolution
+                        $imgSrc = !empty($item['image_path']) ? $item['image_path'] : ($defaultImages[$idx % count($defaultImages)]);
+                    ?>
+                        <div class="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl border border-cream-200 transition-all duration-300 flex flex-col transform hover:-translate-y-1">
+                            <div class="relative h-56 overflow-hidden bg-espresso-100">
+                                <img src="<?= e($imgSrc) ?>" alt="<?= e($item['name']) ?>" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+                                <div class="absolute top-3 right-3 px-3 py-1 bg-espresso-950/80 backdrop-blur-sm text-amber-300 font-bold text-xs uppercase tracking-wider rounded-full border border-amber-500/20">
+                                    <?= e($item['category'] ?? 'Specialty') ?>
+                                </div>
+                            </div>
+                            <div class="p-6 flex-1 flex flex-col justify-between">
+                                <div>
+                                    <h3 class="font-serif font-bold text-xl text-espresso-900 group-hover:text-amber-700 transition-colors line-clamp-1">
+                                        <?= e($item['name']) ?>
+                                    </h3>
+                                    <p class="text-xs text-espresso-700/70 mt-1 uppercase tracking-wider">
+                                        Single Origin &bull; Artisan Crafted
+                                    </p>
+                                </div>
+                                <div class="mt-6 pt-4 border-t border-cream-100 flex items-center justify-between">
+                                    <span class="text-lg font-black text-espresso-900 font-serif">
+                                        <?= e($formattedPrice) ?>
+                                    </span>
+                                    <span class="inline-flex items-center text-xs font-bold text-amber-700 group-hover:text-amber-800">
+                                        <span>Order at Counter</span>
+                                        <i class="fa-solid fa-chevron-right text-[10px] ml-1"></i>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
+            <?php else: ?>
+                <!-- Graceful empty state -->
+                <div class="bg-white rounded-2xl p-12 text-center max-w-md mx-auto border border-cream-200 shadow-sm">
+                    <div class="w-16 h-16 rounded-full bg-cream-100 text-amber-700 flex items-center justify-center mx-auto mb-4 text-2xl">
+                        <i class="fa-solid fa-mug-saucer"></i>
+                    </div>
+                    <h3 class="font-serif font-bold text-xl text-espresso-900">New Seasonal Menu Brewing</h3>
+                    <p class="text-sm text-espresso-700/80 mt-2">
+                        Our baristas are curating the next seasonal rotation. Visit our counters today to explore current roaster selects.
+                    </p>
+                </div>
+            <?php endif; ?>
 
-                <!-- Module 2: HRMS & Attendance -->
-                <div class="p-8 rounded-2xl bg-stone-900 border border-stone-800 hover:border-amber-500/40 transition-all duration-300 relative group">
-                    <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-xl mb-6 group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-users-gear"></i>
-                    </div>
-                    <div class="text-xs font-bold uppercase tracking-wider text-amber-500 mb-1">Human Capital & ATS</div>
-                    <h3 class="text-2xl font-bold text-white mb-3">HRMS, Biometrics & ESS</h3>
-                    <p class="text-stone-400 text-sm leading-relaxed mb-6">
-                        Biometric clock-in terminals with hardware token binding, automated grace periods, PhilHealth/SSS statutory payroll calculation, shift swap board, and employee self-service.
-                    </p>
-                    <ul class="space-y-2.5 text-xs text-stone-300">
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-fingerprint text-amber-400"></i>
-                            <span>Device-bound terminal punch verification with lockout protection</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-calendar-days text-amber-400"></i>
-                            <span>Weekly Shift Board with peer drop/claim approval workflow</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-user-lock text-amber-400"></i>
-                            <span>Employee Self-Service (ESS) payslip and leave management</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Module 3: Finance & Reconcile -->
-                <div class="p-8 rounded-2xl bg-stone-900 border border-stone-800 hover:border-amber-500/40 transition-all duration-300 relative group">
-                    <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-xl mb-6 group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-scale-balanced"></i>
-                    </div>
-                    <div class="text-xs font-bold uppercase tracking-wider text-amber-500 mb-1">Treasury & Accounting</div>
-                    <h3 class="text-2xl font-bold text-white mb-3">Finance, Budgets & Reconcile</h3>
-                    <p class="text-stone-400 text-sm leading-relaxed mb-6">
-                        Integer centavos ledger calculation. Live executive P&L with ingredient COGS deduction, monthly store operating expense budgets, and automated 4-way payment anomaly reconciliation.
-                    </p>
-                    <ul class="space-y-2.5 text-xs text-stone-300">
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-coins text-amber-400"></i>
-                            <span>Integer centavos calculations avoiding IEEE floating-point drift</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-magnifying-glass-dollar text-amber-400"></i>
-                            <span>Reconciliation detection for uncaptured payments & overpayments</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-amber-400"></i>
-                            <span>Strict ledger-based COGS formula linked to paid orders</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Module 4: Inventory & Procurement -->
-                <div class="p-8 rounded-2xl bg-stone-900 border border-stone-800 hover:border-amber-500/40 transition-all duration-300 relative group">
-                    <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-xl mb-6 group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-boxes-stacked"></i>
-                    </div>
-                    <div class="text-xs font-bold uppercase tracking-wider text-amber-500 mb-1">Supply Chain & Recipes</div>
-                    <h3 class="text-2xl font-bold text-white mb-3">Inventory & Procurement</h3>
-                    <p class="text-stone-400 text-sm leading-relaxed mb-6">
-                        Live branch stock tracking with low-threshold alerts, multi-item purchase orders with Maker-Checker approvals, atomic goods receiving, and multi-ingredient recipe cost yields.
-                    </p>
-                    <ul class="space-y-2.5 text-xs text-stone-300">
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-truck-ramp-box text-amber-400"></i>
-                            <span>Purchase order lifecycle: DRAFT &rarr; APPROVED &rarr; RECEIVED</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-flask text-amber-400"></i>
-                            <span>Composite recipes mapping dairy, beans, and syrups per cup</span>
-                        </li>
-                        <li class="flex items-center gap-2">
-                            <i class="fa-solid fa-arrow-down-wide-short text-amber-400"></i>
-                            <span>Maker-checker stock adjustment threshold verification</span>
-                        </li>
-                    </ul>
-                </div>
+            <div class="text-center mt-12">
+                <p class="text-xs uppercase tracking-widest text-espresso-700/70">
+                    Oat, almond, and lactose-free milk options available on request.
+                </p>
             </div>
         </div>
     </section>
 
-    <!-- Architecture & Security Highlights -->
-    <section id="architecture" class="py-20 bg-stone-900 border-t border-stone-800">
+    <!-- Our Story Section -->
+    <section id="story" class="py-24 bg-cream-50 relative overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="bg-gradient-to-br from-stone-950 to-stone-900 border border-stone-800 rounded-3xl p-8 sm:p-12 shadow-2xl relative overflow-hidden">
-                <div class="max-w-2xl">
-                    <span class="text-xs font-bold uppercase tracking-widest text-amber-500">Security Architecture</span>
-                    <h3 class="text-2xl sm:text-3xl font-black text-white mt-2">Zero-Trust Enterprise Café Architecture</h3>
-                    <p class="text-stone-400 text-sm sm:text-base mt-4 leading-relaxed">
-                        Fika is crafted specifically for enterprise café operations with strict regulatory separation, data isolation between branches, and immutable audit logs on all monetary actions.
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                <!-- Visual Collage -->
+                <div class="relative">
+                    <div class="relative z-10 rounded-3xl overflow-hidden shadow-2xl border-4 border-white">
+                        <img src="https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1000&q=80" alt="Artisan brewing coffee" class="w-full h-[450px] object-cover">
+                    </div>
+                    <div class="hidden sm:block absolute -bottom-8 -right-8 w-64 rounded-2xl overflow-hidden shadow-2xl border-4 border-white z-20">
+                        <img src="https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=600&q=80" alt="Fresh cinnamon buns" class="w-full h-48 object-cover">
+                    </div>
+                    <div class="absolute -top-6 -left-6 w-32 h-32 bg-amber-400/20 rounded-full blur-2xl pointer-events-none"></div>
+                </div>
+
+                <!-- Story Narrative -->
+                <div>
+                    <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">The Art of Pausing</span>
+                    <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2 leading-tight">
+                        More Than Coffee.<br>
+                        A State of Mind.
+                    </h2>
+                    <div class="w-16 h-1 bg-amber-600 mt-4 rounded-full"></div>
+
+                    <p class="mt-6 text-espresso-800 leading-relaxed text-base sm:text-lg">
+                        In Sweden, <strong class="text-espresso-950 font-semibold">fika</strong> is not a coffee break—it is a cultural imperative. It means carving out sacred time in the middle of a chaotic day to pause, savor a warm beverage, and share meaningful conversation.
                     </p>
 
-                    <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="flex items-start gap-3 p-4 rounded-xl bg-stone-900/80 border border-stone-800">
-                            <i class="fa-solid fa-building text-amber-400 mt-1"></i>
-                            <div>
-                                <h4 class="text-sm font-bold text-white">Branch Data Isolation</h4>
-                                <p class="text-xs text-stone-400 mt-1">Managers and accountants can strictly access records belonging to their assigned store.</p>
-                            </div>
+                    <p class="mt-4 text-espresso-700 leading-relaxed text-sm sm:text-base">
+                        At Fika Café, we created <span class="font-serif italic text-amber-800">Slow Hours</span> as an antidote to rush-hour culture. From our calibrated extraction profiles to our quiet, sun-drenched oak seating, everything is deliberately paced so you can unwind and reconnect.
+                    </p>
+
+                    <div class="mt-8 pt-6 border-t border-cream-200 grid grid-cols-2 gap-6">
+                        <div>
+                            <span class="block font-serif text-3xl font-black text-espresso-900">100%</span>
+                            <span class="text-xs uppercase tracking-wider text-espresso-700 font-semibold">Ethically Sourced Arabica</span>
                         </div>
-                        <div class="flex items-start gap-3 p-4 rounded-xl bg-stone-900/80 border border-stone-800">
-                            <i class="fa-solid fa-user-check text-amber-400 mt-1"></i>
-                            <div>
-                                <h4 class="text-sm font-bold text-white">Dual-Custody Approvals</h4>
-                                <p class="text-xs text-stone-400 mt-1">Self-approvals blocked; orders and adjustments require independent manager sign-off.</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 p-4 rounded-xl bg-stone-900/80 border border-stone-800">
-                            <i class="fa-solid fa-lock text-amber-400 mt-1"></i>
-                            <div>
-                                <h4 class="text-sm font-bold text-white">Encrypted Bank & Tax Data</h4>
-                                <p class="text-xs text-stone-400 mt-1">Sensitive employee bank details and numbers are AES-256 encrypted at rest.</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3 p-4 rounded-xl bg-stone-900/80 border border-stone-800">
-                            <i class="fa-solid fa-file-shield text-amber-400 mt-1"></i>
-                            <div>
-                                <h4 class="text-sm font-bold text-white">Protected Storage</h4>
-                                <p class="text-xs text-stone-400 mt-1">Candidate resumes and receipts are stored outside web roots and served via authenticated RBAC proxies.</p>
-                            </div>
+                        <div>
+                            <span class="block font-serif text-3xl font-black text-espresso-900">0 min</span>
+                            <span class="text-xs uppercase tracking-wider text-espresso-700 font-semibold">Pressure to Leave</span>
                         </div>
                     </div>
                 </div>
@@ -312,46 +324,129 @@ $pageTitle = 'Enterprise Café Management & POS Suite';
         </div>
     </section>
 
-    <!-- Call to Action Banner -->
-    <section class="py-16 bg-gradient-to-r from-espresso-800 via-espresso-900 to-stone-950 text-white border-t border-stone-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h2 class="text-3xl sm:text-4xl font-black mb-4 tracking-tight">Ready to access the Fika Backoffice?</h2>
-            <p class="text-stone-300 text-sm sm:text-base max-w-xl mx-auto mb-8">
-                Authorized café staff, branch managers, and central administrators can log into their designated portal.
-            </p>
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="login.php" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-base shadow-xl transition-all">
-                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
-                    <span>Open Staff Portal</span>
-                </a>
-                <a href="careers.php" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-base border border-stone-700 transition-all">
-                    <i class="fa-solid fa-briefcase text-amber-400"></i>
-                    <span>View Career Opportunities</span>
-                </a>
+    <!-- Locations Section -->
+    <section id="locations" class="py-24 bg-cream-100/60 border-t border-cream-200 relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Come Sit With Us</span>
+                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">Our Locations</h2>
+                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
+                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base">
+                    Find your neighborhood sanctuary. Each Fika space is designed with cozy corners and natural light.
+                </p>
             </div>
+
+            <?php if (!empty($branches)): ?>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <?php foreach ($branches as $branch): ?>
+                        <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between mb-4">
+                                    <div class="w-10 h-10 rounded-full bg-cream-100 text-amber-700 flex items-center justify-center text-lg">
+                                        <i class="fa-solid fa-mug-hot"></i>
+                                    </div>
+                                    <span class="px-2.5 py-1 text-[11px] font-bold bg-amber-100/80 text-amber-800 rounded-full border border-amber-200">
+                                        Open Daily
+                                    </span>
+                                </div>
+                                <h3 class="font-serif font-bold text-2xl text-espresso-900 mb-2">
+                                    <?= e($branch['name']) ?>
+                                </h3>
+                                <p class="text-sm text-espresso-700/90 leading-relaxed mb-4">
+                                    <i class="fa-solid fa-location-dot text-amber-600 mr-2"></i>
+                                    <?= !empty($branch['address']) ? e($branch['address']) : 'Specialty Café & Espresso Bar' ?>
+                                </p>
+                                <?php if (!empty($branch['contact_number'])): ?>
+                                    <p class="text-xs text-espresso-600 flex items-center gap-2">
+                                        <i class="fa-solid fa-phone text-amber-600"></i>
+                                        <span><?= e($branch['contact_number']) ?></span>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="mt-8 pt-6 border-t border-cream-100 flex items-center justify-between text-xs text-espresso-600">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-regular fa-clock text-amber-600"></i>
+                                    <span>7:00 AM &ndash; 10:00 PM</span>
+                                </span>
+                                <span class="font-bold text-amber-800">Dine-in &bull; Takeout</span>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <!-- Graceful fallback -->
+                <div class="bg-white rounded-2xl p-10 text-center max-w-md mx-auto border border-cream-200">
+                    <p class="text-espresso-800 font-serif text-lg font-bold">Main Flagship Roastery</p>
+                    <p class="text-sm text-espresso-600 mt-2">123 Coffee Boulevard, Cityville &bull; Open 7am - 10pm</p>
+                </div>
+            <?php endif; ?>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="bg-stone-950 text-stone-400 py-12 border-t border-stone-800 text-sm">
+    <footer class="bg-espresso-950 text-cream-200 pt-16 pb-12 border-t border-espresso-900">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div class="flex items-center gap-3">
-                    <img src="public/assets/logo.svg" alt="Fika Logo Small" class="w-8 h-8 object-contain">
-                    <div>
-                        <div class="text-white font-bold text-sm">FIKA &middot; Slow Hours</div>
-                        <div class="text-xs text-stone-500">Enterprise Hospitality Management &bull; PHP 8 Native</div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-espresso-800/80">
+                <!-- Brand Info -->
+                <div class="md:col-span-2">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
+                            <img src="<?= e($logoUrl) ?>" alt="Fika Logo" class="w-10 h-10 object-contain" onerror="this.style.display='none'; document.getElementById('logo-footer-fallback').classList.remove('hidden');">
+                            <div id="logo-footer-fallback" class="hidden w-10 h-10 rounded-full bg-espresso-900 text-amber-400 flex items-center justify-center font-serif font-black text-lg border border-amber-500/30">
+                                <span>F</span>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="text-2xl font-black tracking-wider text-cream-50 font-serif leading-none block">FIKA</span>
+                            <span class="text-[9px] uppercase tracking-[0.25em] text-amber-400 font-bold block mt-1">Slow Hours</span>
+                        </div>
+                    </div>
+                    <p class="text-xs sm:text-sm text-cream-300/80 max-w-sm leading-relaxed mb-6">
+                        Dedicated to slow hours, intentional sips, and the timeless tradition of European café culture.
+                    </p>
+                    <!-- Social Icons -->
+                    <div class="flex items-center gap-4 text-amber-400">
+                        <a href="#" aria-label="Instagram" class="w-9 h-9 rounded-full bg-espresso-900 hover:bg-amber-600 hover:text-espresso-950 flex items-center justify-center transition-colors">
+                            <i class="fa-brands fa-instagram text-sm"></i>
+                        </a>
+                        <a href="#" aria-label="Facebook" class="w-9 h-9 rounded-full bg-espresso-900 hover:bg-amber-600 hover:text-espresso-950 flex items-center justify-center transition-colors">
+                            <i class="fa-brands fa-facebook-f text-sm"></i>
+                        </a>
+                        <a href="#" aria-label="TikTok" class="w-9 h-9 rounded-full bg-espresso-900 hover:bg-amber-600 hover:text-espresso-950 flex items-center justify-center transition-colors">
+                            <i class="fa-brands fa-tiktok text-sm"></i>
+                        </a>
                     </div>
                 </div>
-                <div class="flex flex-wrap justify-center gap-6 text-xs font-medium text-stone-400">
-                    <a href="#modules" class="hover:text-amber-400 transition-colors">Modules</a>
-                    <a href="#architecture" class="hover:text-amber-400 transition-colors">Architecture</a>
-                    <a href="careers.php" class="hover:text-amber-400 transition-colors">Careers</a>
-                    <a href="login.php" class="hover:text-amber-400 transition-colors">Staff Login</a>
+
+                <!-- Navigation Links -->
+                <div>
+                    <h4 class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-4">Explore</h4>
+                    <ul class="space-y-2.5 text-xs text-cream-300">
+                        <li><a href="#menu" class="hover:text-amber-300 transition-colors">Menu Highlights</a></li>
+                        <li><a href="#story" class="hover:text-amber-300 transition-colors">Our Story & Roastery</a></li>
+                        <li><a href="#locations" class="hover:text-amber-300 transition-colors">Café Locations</a></li>
+                        <li><a href="careers.php" class="hover:text-amber-300 transition-colors">Join Our Team (Careers)</a></li>
+                    </ul>
                 </div>
-                <div class="text-xs text-stone-500 text-center md:text-right">
-                    &copy; <?= date('Y') ?> Fika Café System. All rights reserved.
+
+                <!-- Operations & Staff -->
+                <div>
+                    <h4 class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-4">Operations</h4>
+                    <p class="text-xs text-cream-300/80 mb-4 leading-relaxed">
+                        Authorized staff and management backoffice portal access.
+                    </p>
+                    <a href="login.php" class="inline-flex items-center gap-2 px-4 py-2 bg-espresso-900 hover:bg-espresso-800 text-amber-300 hover:text-amber-200 text-xs font-semibold rounded-lg border border-espresso-800 transition-colors">
+                        <i class="fa-solid fa-lock text-[10px]"></i>
+                        <span>Backoffice Login</span>
+                    </a>
                 </div>
+            </div>
+
+            <!-- Copyright Notice -->
+            <div class="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-cream-400/60">
+                <p>&copy; <?= date('Y') ?> Fika Café. All rights reserved. &bull; Slow Hours Roastery</p>
+                <p class="mt-2 sm:mt-0 font-serif italic text-cream-300/80">Take the time to sip.</p>
             </div>
         </div>
     </footer>

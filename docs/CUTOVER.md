@@ -96,9 +96,9 @@ Create a dedicated staging folder outside git or on your desktop for manual FTP 
 #### A. Production `.env` (`.env.production`)
 Create a file named `.env` for production with the following content:
 ```ini
-PAYMONGO_PUBLIC_KEY=pk_test_Ry6QFKY1ofUtzimUW9xeF7ex
-PAYMONGO_SECRET_KEY=sk_test_DMPoHmYv73Y4wB5xMM62f9q2
-PAYMONGO_WEBHOOK_SECRET=whsk_RH3xNDf9hmDkQvNDYMPqNkWn
+PAYMONGO_PUBLIC_KEY=YOUR_PUBLIC_KEY_HERE
+PAYMONGO_SECRET_KEY=YOUR_SECRET_KEY_HERE
+PAYMONGO_WEBHOOK_SECRET=YOUR_WEBHOOK_SECRET_HERE
 PAYMONGO_IS_TEST=true
 ```
 > [!IMPORTANT]
