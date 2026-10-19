@@ -20,11 +20,45 @@ jobs:
           exclude: |
             **/*
             !app/**
-            !config/**
-            config/config.example.php
             !fika_hrms/**
             !fika_pos/**
             !fika_finance/**
             !fika_inventory/**
-            !*.php
+            !public/**
+            !index.php
+            !login.php
+            !careers.php
+            !applicant_form.php
+            !config/permissions.php
+            !config/paymongo.php
+            !uploads/.htaccess
+            !uploads/menu/.htaccess
+            !storage/.htaccess
             !.htaccess
+            !**/.htaccess
+            config/config.php
+            config/config.example.php
+            **/.env*
+            .env*
+            tests/**
+            **/tests/**
+            tools/**
+            **/tools/**
+            migrations/**
+            **/migrations/**
+            docs/**
+            **/docs/**
+            **/*.md
+            *.md
+            **/*.sql
+            *.sql
+            **/*.txt
+            *.txt
+            **/*_fix.php
+            *_fix.php
+            **/*_report.md
+            *_report.md
+            **/temp_*
+            temp_*
+            cafe_hrms/**
+            cafe_pos/**
