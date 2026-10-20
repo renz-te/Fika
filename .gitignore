@@ -2,6 +2,7 @@ vendor/
 
 config.php
 *.sql
+!migrations/*.sql
 uploads/
 storage/
 .env

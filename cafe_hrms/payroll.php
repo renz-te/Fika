@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/init.php';
+require_once __DIR__ . '/includes/payroll_chain.php';
 require_login();
 $user = current_user();
 
@@ -304,20 +305,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             die("Bad Request: Only payroll records in Pending Approval state can be approved.");
         }
 
-        $stmt = $pdo->prepare("UPDATE payroll SET status = 'Approved', approved_by = ?, rejection_reason = NULL WHERE id = ?");
-        $stmt->execute([$user['id'], $payrollId]);
+        // Calculate cryptographic checksum and total centavos
+        $targetRunOrId = !empty($row['run_id']) ? $row['run_id'] : $payrollId;
+        $chain = calculate_payroll_checksum($pdo, $targetRunOrId);
+        $approvedChecksum = $chain['checksum'];
+        $approvedTotalCentavos = $chain['total_centavos'];
+
+        $stmt = $pdo->prepare("UPDATE payroll 
+            SET status = 'Approved', 
+                approved_by = ?, 
+                rejection_reason = NULL,
+                approved_checksum = ?,
+                approved_total_centavos = ?,
+                approved_at = NOW()
+            WHERE id = ?");
+        $stmt->execute([$user['id'], $approvedChecksum, $approvedTotalCentavos, $payrollId]);
 
         if (!empty($row['run_id'])) {
             $rem = $pdo->prepare("SELECT COUNT(*) FROM payroll WHERE run_id = ? AND status != 'Approved'");
             $rem->execute([$row['run_id']]);
             if ($rem->fetchColumn() == 0) {
-                $pdo->prepare("UPDATE payroll_runs SET status = 'Approved', approved_by = ? WHERE id = ?")
-                    ->execute([$user['id'], $row['run_id']]);
+                $pdo->prepare("UPDATE payroll_runs 
+                    SET status = 'Approved', 
+                        approved_by = ?,
+                        approved_checksum = ?,
+                        approved_total_centavos = ?,
+                        approved_at = NOW()
+                    WHERE id = ?")
+                    ->execute([$user['id'], $approvedChecksum, $approvedTotalCentavos, $row['run_id']]);
             }
         }
 
-        $message = "Payroll approved by Branch Accountant and forwarded to Branch Manager for release.";
-        log_activity($pdo, $user['id'], 'approve_payroll', "Approved payroll ID $payrollId (Sent to BM)");
+        $message = "Payroll approved by Branch Accountant (Checksum: " . substr($approvedChecksum, 0, 8) . "...) and forwarded to Branch Manager for release.";
+        log_activity($pdo, $user['id'], 'approve_payroll', "Approved payroll ID $payrollId (Checksum: $approvedChecksum, Sent to BM)");
 
     // --- 5. REJECT PAYROLL (BA -> BHR): Pending Approval -> Rejected with mandatory reason ---
     } elseif ($action === 'reject') {
@@ -343,12 +363,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             die("Bad Request: Only payroll records in Pending Approval state can be rejected.");
         }
 
-        $stmt = $pdo->prepare("UPDATE payroll SET status = 'Rejected', rejection_reason = ? WHERE id = ?");
-        $stmt->execute([$reason, $payrollId]);
+        $stmt = $pdo->prepare("UPDATE payroll SET status = 'Rejected', rejected_by = ?, rejection_reason = ? WHERE id = ?");
+        $stmt->execute([$user['id'], $reason, $payrollId]);
 
         if (!empty($row['run_id'])) {
-            $pdo->prepare("UPDATE payroll_runs SET status = 'Rejected', rejection_reason = ? WHERE id = ?")
-                ->execute([$reason, $row['run_id']]);
+            $pdo->prepare("UPDATE payroll_runs SET status = 'Rejected', rejected_by = ?, rejection_reason = ? WHERE id = ?")
+                ->execute([$user['id'], $reason, $row['run_id']]);
         }
 
         $message = "Payroll returned to HR as Rejected with feedback.";
@@ -371,7 +391,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $payrollId = (int)($_POST['payroll_id'] ?? 0);
-        $chk = $pdo->prepare("SELECT status, run_id FROM payroll WHERE id = ?");
+        $chk = $pdo->prepare("SELECT status, run_id, approved_checksum, approved_total_centavos FROM payroll WHERE id = ?");
         $chk->execute([$payrollId]);
         $row = $chk->fetch();
 
@@ -386,20 +406,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             die("Bad Request: Payroll record must be in 'Approved' state before it can be Released.");
         }
 
+        // Recalculate checksum to check for tampering
+        $targetRunOrId = !empty($row['run_id']) ? $row['run_id'] : $payrollId;
+        $currentChain = calculate_payroll_checksum($pdo, $targetRunOrId);
+        $currentChecksum = $currentChain['checksum'];
+
+        // If stored checksum exists and does not match recalculated checksum -> ABORT WITH 400!
+        if (!empty($row['approved_checksum']) && $currentChecksum !== $row['approved_checksum']) {
+            http_response_code(400);
+            log_activity($pdo, $user['id'], 'payroll_tamper_detected', "Data tampering detected for payroll ID $payrollId. Checksum mismatch: expected {$row['approved_checksum']}, got {$currentChecksum}");
+            die("Data tampering detected. Payroll totals do not match approved values.");
+        }
+
         $paymentMethod = trim($_POST['payment_method'] ?? 'Cash');
         $allowed_methods = ['Cash', 'Bank Transfer', 'eWallet'];
         if (!in_array($paymentMethod, $allowed_methods)) {
             $paymentMethod = 'Cash';
         }
 
-        $stmt = $pdo->prepare('UPDATE payroll SET status = "Released", payment_method = ?, released_by = ? WHERE id = ? AND status = "Approved"');
+        $stmt = $pdo->prepare('UPDATE payroll SET status = "Released", payment_method = ?, released_by = ?, released_at = NOW() WHERE id = ? AND status = "Approved"');
         $stmt->execute([$paymentMethod, $user['id'], $payrollId]);
 
         if (!empty($row['run_id'])) {
             $rem = $pdo->prepare('SELECT COUNT(*) FROM payroll WHERE run_id = ? AND status != "Released"');
             $rem->execute([$row['run_id']]);
             if ($rem->fetchColumn() == 0) {
-                $pdo->prepare('UPDATE payroll_runs SET status = "Released", released_by = ? WHERE id = ?')
+                $pdo->prepare('UPDATE payroll_runs SET status = "Released", released_by = ?, released_at = NOW() WHERE id = ?')
                     ->execute([$user['id'], $row['run_id']]);
             }
         }
