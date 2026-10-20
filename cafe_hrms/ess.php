@@ -28,28 +28,68 @@ if (!empty($user['employee_id'])) {
 } else {
     $stmt = $pdo->prepare('SELECT employee_id FROM users WHERE id = ?');
     $stmt->execute([$user['id']]);
-    $empId = $stmt->fetchColumn();
+    $empId = $stmt->fetchColumn() ?: null;
 }
 
-// Fallback for Admin preview or unlinked accounts
-if (!$empId) {
-    $empId = (int)($pdo->query("SELECT id FROM employees ORDER BY id ASC LIMIT 1")->fetchColumn() ?: 1);
+$employee = null;
+if ($empId) {
+    $empStmt = $pdo->prepare('SELECT *, CONCAT(first_name, " ", last_name) AS full_name FROM employees WHERE id = ?');
+    $empStmt->execute([$empId]);
+    $employee = $empStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
-// Fetch basic Employee info
-$empStmt = $pdo->prepare('SELECT *, CONCAT(first_name, " ", last_name) AS full_name FROM employees WHERE id = ?');
-$empStmt->execute([$empId]);
-$employee = $empStmt->fetch(PDO::FETCH_ASSOC) ?: [
-    'id' => $empId,
-    'full_name' => $user['name'] ?? 'Team Member',
-    'first_name' => 'Team',
-    'last_name' => 'Member',
-    'position' => 'Staff',
-    'department' => 'Operations',
-    'sick_leave_balance' => 5,
-    'date_hired' => date('Y-m-d'),
-    'sex' => 'Male'
-];
+// CRITICAL CONSTRAINT 1: Admin ESS Fallback: If not linked to employee profile, do not crash. Display clean message.
+if (!$empId || !$employee) {
+    $pageTitle = 'Employee Self Service';
+    require_once __DIR__ . '/includes/header.php';
+    ?>
+    <!-- Tailwind CDN & Brand Configuration Guarantee -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (typeof tailwind !== 'undefined') {
+            tailwind.config = tailwind.config || {};
+            tailwind.config.theme = tailwind.config.theme || {};
+            tailwind.config.theme.extend = tailwind.config.theme.extend || {};
+            tailwind.config.theme.extend.colors = Object.assign(tailwind.config.theme.extend.colors || {}, {
+                espresso: {
+                    50: '#fbf8f5', 100: '#f5efe9', 200: '#ebdcd0', 300: '#dbc0ad', 400: '#c59d83',
+                    700: '#5c3821', 800: '#422415', 900: '#2c180e', 950: '#1a0d07'
+                },
+                amber: {
+                    50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d', 400: '#fbbf24',
+                    500: '#f59e0b', 600: '#d97706', 700: '#b45309', 800: '#92400e', 900: '#78350f'
+                },
+                cream: {
+                    50: '#fdfbf7', 100: '#fbf7f0', 200: '#f5eee1', 300: '#ece1ce', 400: '#decbb0'
+                }
+            });
+        }
+    </script>
+    <div class="p-6 max-w-4xl mx-auto space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-amber-200/80 p-8 text-center space-y-4">
+            <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-3xl mx-auto">
+                <i class="fa-solid fa-user-slash"></i>
+            </div>
+            <div class="space-y-1">
+                <h2 class="text-xl font-bold font-serif text-slate-800">No employee profile linked to this account.</h2>
+                <p class="text-sm text-slate-600 max-w-md mx-auto">
+                    Employee Self-Service (ESS) is designed for active staff members. Your account (<strong><?= h($user['name'] ?? $user['username'] ?? 'User') ?></strong> &mdash; <em><?= h($user['role'] ?? 'Admin') ?></em>) is not currently associated with an active employee record.
+                </p>
+            </div>
+            <div class="pt-2 flex flex-wrap justify-center gap-3">
+                <a href="dashboard" class="inline-flex items-center px-4 py-2 bg-amber-500 hover:bg-amber-400 text-espresso-950 font-bold text-sm rounded-xl transition-all shadow-sm">
+                    <i class="fa-solid fa-gauge-high mr-2"></i> Go to HR Dashboard
+                </a>
+                <a href="employees" class="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-sm rounded-xl transition-all">
+                    <i class="fa-solid fa-users mr-2"></i> View Employees
+                </a>
+            </div>
+        </div>
+    </div>
+    <?php
+    require_once __DIR__ . '/includes/footer.php';
+    exit;
+}
 
 $message = null;
 $messageType = 'success';
@@ -184,6 +224,29 @@ if (!empty($employee['date_hired'])) {
 $pageTitle = 'Employee Self Service';
 require_once __DIR__ . '/includes/header.php';
 ?>
+
+<!-- Tailwind CDN & Brand Configuration Guarantee -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    if (typeof tailwind !== 'undefined') {
+        tailwind.config = tailwind.config || {};
+        tailwind.config.theme = tailwind.config.theme || {};
+        tailwind.config.theme.extend = tailwind.config.theme.extend || {};
+        tailwind.config.theme.extend.colors = Object.assign(tailwind.config.theme.extend.colors || {}, {
+            espresso: {
+                50: '#fbf8f5', 100: '#f5efe9', 200: '#ebdcd0', 300: '#dbc0ad', 400: '#c59d83',
+                700: '#5c3821', 800: '#422415', 900: '#2c180e', 950: '#1a0d07'
+            },
+            amber: {
+                50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d', 400: '#fbbf24',
+                500: '#f59e0b', 600: '#d97706', 700: '#b45309', 800: '#92400e', 900: '#78350f'
+            },
+            cream: {
+                50: '#fdfbf7', 100: '#fbf7f0', 200: '#f5eee1', 300: '#ece1ce', 400: '#decbb0'
+            }
+        });
+    }
+</script>
 
 <!-- Main Content Wrapper -->
 <div class="p-6 max-w-7xl mx-auto space-y-6">
@@ -817,8 +880,14 @@ function handleHash() {
     }
 }
 
+// Ensure both hashchange and DOMContentLoaded are listened to
 window.addEventListener('hashchange', handleHash);
 document.addEventListener('DOMContentLoaded', handleHash);
+
+// Immediate execution if DOM is already parsed (e.g. page loads at ess.php#payslips)
+if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    handleHash();
+}
 
 window.addEventListener('click', (e) => {
     const lm = document.getElementById('leaveModal');
