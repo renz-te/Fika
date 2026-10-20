@@ -1,4 +1,20 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// CLI Support: If executed directly from command line, supply mock session before init.php auth check
+if (php_sapi_name() === 'cli' && empty($_SESSION['user'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        @session_start();
+    }
+    $_SESSION['user'] = [
+        'id' => 1,
+        'role' => 'Super Admin',
+        'branch_id' => 1,
+        'name' => 'System Administrator'
+    ];
+}
+
 require_once __DIR__ . '/init.php';
 require_login();
 $user = current_user();
@@ -20,6 +36,17 @@ try {
         CREATE TABLE IF NOT EXISTS `expense_categories` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `name` VARCHAR(100) NOT NULL UNIQUE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ");
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `branch_budgets` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `branch_id` INT NOT NULL,
+            `budget_month` VARCHAR(7) NOT NULL COMMENT 'YYYY-MM format',
+            `allocated_labor_budget` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+            `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uq_branch_month` (`branch_id`, `budget_month`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ");
     $pdo->exec("
