@@ -48,14 +48,51 @@ if (isset($_SESSION['user']['id'])) {
     <!-- Tailwind CSS (via CDN for rapid prototyping) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,900;1,400;1,600&display=swap" rel="stylesheet">
     
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        serif: ['"Playfair Display"', 'serif'],
+                    },
                     colors: {
-                        primary: '#4f46e5',
-                        secondary: '#1e293b',
+                        primary: '#f59e0b',
+                        secondary: '#1a0d07',
+                        espresso: {
+                            50: '#fbf8f5',
+                            100: '#f5efe9',
+                            200: '#ebdcd0',
+                            300: '#dbc0ad',
+                            400: '#c59d83',
+                            700: '#5c3821',
+                            800: '#422415',
+                            900: '#2c180e',
+                            950: '#1a0d07'
+                        },
+                        amber: {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            200: '#fde68a',
+                            300: '#fcd34d',
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                            700: '#b45309',
+                            800: '#92400e',
+                            900: '#78350f'
+                        },
+                        cream: {
+                            50: '#fdfbf7',
+                            100: '#fbf7f0',
+                            200: '#f5eee1',
+                            300: '#ece1ce',
+                            400: '#decbb0'
+                        }
                     }
                 }
             }
@@ -63,8 +100,7 @@ if (isset($_SESSION['user']['id'])) {
     </script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        body { font-family: '"Plus Jakarta Sans"', sans-serif; background-color: #f8fafc; }
         .glass-panel {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(10px);
@@ -77,11 +113,14 @@ if (isset($_SESSION['user']['id'])) {
             width: 6px;
         }
         aside nav::-webkit-scrollbar-track {
-            background: #1e293b; /* Matches secondary bg */
+            background: #1a0d07; /* Matches espresso-950 */
         }
         aside nav::-webkit-scrollbar-thumb {
-            background-color: #4f46e5; /* Matches primary theme */
+            background-color: #5c3821; /* Matches espresso-700 */
             border-radius: 10px;
+        }
+        aside nav::-webkit-scrollbar-thumb:hover {
+            background-color: #f59e0b; /* Amber */
         }
     </style>
 </head>
@@ -89,31 +128,19 @@ if (isset($_SESSION['user']['id'])) {
 
 <?php if ($showSidebar): ?>
     <!-- Sidebar -->
-    <aside id="main-sidebar" class="w-64 bg-secondary text-white flex flex-col transition-all duration-300 flex-shrink-0 z-20">
+    <aside id="main-sidebar" class="w-64 bg-espresso-950 text-cream-100 flex flex-col transition-all duration-300 flex-shrink-0 z-20 border-r border-espresso-900">
         <!-- Fika Brand Header -->
-        <div class="flex items-center h-16 px-4 border-b border-slate-700">
-            <!-- SVG Logo: Bean, Clock, and Circular Text -->
-            <svg class="w-10 h-10 text-primary flex-shrink-0" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <!-- Circular Typography Path -->
-                <path id="brand-arc" d="M 12 50 A 38 38 0 1 1 88 50 A 38 38 0 1 1 12 50" fill="none" />
-                <text fill="currentColor" font-size="9.5" font-weight="bold" letter-spacing="1.5">
-                    <textPath href="#brand-arc" startOffset="50%" text-anchor="middle">FIKA · SLOW HOURS ·</textPath>
-                </text>
-                
-                <!-- Coffee Bean Center -->
-                <ellipse cx="50" cy="50" rx="16" ry="22" stroke="currentColor" stroke-width="2" fill="none"/>
-                <path d="M 50 28 C 40 40 60 60 50 72" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
-                
-                <!-- Clock Hands intersecting the bean -->
-                <circle cx="50" cy="50" r="2.5" fill="currentColor"/>
-                <line x1="50" y1="50" x2="50" y2="35" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                <line x1="50" y1="50" x2="60" y2="58" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            </svg>
+        <div class="flex items-center h-16 px-4 border-b border-espresso-900">
+            <!-- Fika Brand Logo -->
+            <img src="../public/assets/logo.svg" alt="Fika Logo" class="w-10 h-10 object-contain drop-shadow flex-shrink-0" onerror="this.style.display='none'; document.getElementById('hrms-logo-fallback').classList.remove('hidden');">
+            <div id="hrms-logo-fallback" class="hidden w-10 h-10 rounded-full bg-espresso-900 text-amber-400 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40 flex-shrink-0">
+                <span>F</span>
+            </div>
             
             <!-- Collapsible Sidebar Text -->
             <div class="sidebar-text ml-3 flex flex-col justify-center overflow-hidden whitespace-nowrap">
-                <span class="text-xl font-black text-white leading-none tracking-wide">FIKA</span>
-                <span class="text-xs text-slate-400 leading-tight uppercase tracking-widest mt-0.5">Slow Hours</span>
+                <span class="text-xl font-black text-cream-50 leading-none tracking-wide font-serif">FIKA</span>
+                <span class="text-[10px] text-amber-400/90 leading-tight uppercase tracking-widest mt-0.5 font-bold">Slow Hours</span>
             </div>
         </div>
         
@@ -130,14 +157,14 @@ if (isset($_SESSION['user']['id'])) {
                     }
                 }
             ?>
-                <a href="ess" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'ess.php' ? 'bg-primary rounded-lg text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors' ?>" title="My Dashboard">
+                <a href="ess" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'ess.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="My Dashboard">
                     <i class="fa-solid fa-chart-pie w-6 text-center"></i> <span class="sidebar-text ml-3">My Dashboard</span>
                 </a>
-                <a href="shift_board" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'bg-primary rounded-lg text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors' ?>" title="Shift Board">
+                <a href="shift_board" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="Shift Board">
                     <i class="fa-solid fa-clipboard-list w-6 text-center"></i> <span class="sidebar-text ml-3">Shift Board</span>
                 </a>
                 <?php if ($isHB): ?>
-                <a href="performance" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'bg-primary rounded-lg text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors' ?>" title="Performance">
+                <a href="performance" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="Performance">
                     <i class="fa-solid fa-star-half-stroke w-6 text-center"></i> <span class="sidebar-text ml-3">Performance</span>
                 </a>
                 <?php endif; ?>
@@ -148,30 +175,30 @@ if (isset($_SESSION['user']['id'])) {
                     
                     <!-- HRMS & OPERATIONS -->
                     <div>
-                        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HRMS & OPERATIONS</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HRMS & OPERATIONS</span></div>
                         <div class="space-y-1">
-                            <a href="dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Dashboard">
+                            <a href="dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Dashboard">
                                 <i class="fa-solid fa-chart-pie w-5 text-center"></i> <span class="sidebar-text ml-2">Dashboard</span>
                             </a>
-                            <a href="shift_board" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Shift Board">
+                            <a href="shift_board" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Shift Board">
                                 <i class="fa-solid fa-clipboard-list w-5 text-center"></i> <span class="sidebar-text ml-2">Shift Board</span>
                             </a>
-                            <a href="applications" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'applications.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Applications">
+                            <a href="applications" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'applications.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Applications">
                                 <i class="fa-solid fa-user-plus w-5 text-center"></i> <span class="sidebar-text ml-2">Applications</span>
                             </a>
-                            <a href="employees" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'employees.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Employees">
+                            <a href="employees" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'employees.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Employees">
                                 <i class="fa-solid fa-users w-5 text-center"></i> <span class="sidebar-text ml-2">Employees</span>
                             </a>
-                            <a href="attendance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'attendance.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Attendance">
+                            <a href="attendance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'attendance.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Attendance">
                                 <i class="fa-solid fa-clock w-5 text-center"></i> <span class="sidebar-text ml-2">Attendance</span>
                             </a>
-                            <a href="leave" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'leave.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Leave & Shifts">
+                            <a href="leave" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'leave.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Leave & Shifts">
                                 <i class="fa-solid fa-calendar-alt w-5 text-center"></i> <span class="sidebar-text ml-2">Leave & Shifts</span>
                             </a>
-                            <a href="payroll" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'payroll.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Payroll">
+                            <a href="payroll" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'payroll.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Payroll">
                                 <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Payroll</span>
                             </a>
-                            <a href="performance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Performance">
+                            <a href="performance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Performance">
                                 <i class="fa-solid fa-star w-5 text-center"></i> <span class="sidebar-text ml-2">Performance</span>
                             </a>
                         </div>
@@ -180,28 +207,28 @@ if (isset($_SESSION['user']['id'])) {
                     <?php if (in_array($role, [ROLE_SUPER_ADMIN, ROLE_BRANCH_MANAGER])): ?>
                     <!-- POS & INVENTORY -->
                     <div>
-                        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">POS & INVENTORY</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">POS & INVENTORY</span></div>
                         <div class="space-y-1">
-                            <a href="pos_dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'pos_dashboard.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="POS Dashboard">
+                            <a href="pos_dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'pos_dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="POS Dashboard">
                                 <i class="fa-solid fa-cash-register w-5 text-center"></i> <span class="sidebar-text ml-2">POS Dashboard</span>
                             </a>
-                            <a href="menu_list" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'menu_list.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Menu List">
+                            <a href="menu_list" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'menu_list.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Menu List">
                                 <i class="fa-solid fa-list-ul w-5 text-center"></i> <span class="sidebar-text ml-2">Menu List</span>
                             </a>
-                            <a href="inventory" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'inventory.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Inventory">
+                            <a href="inventory" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'inventory.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Inventory">
                                 <i class="fa-solid fa-box-open w-5 text-center"></i> <span class="sidebar-text ml-2">Inventory</span>
                             </a>
                             <?php
                                 $term_branch_id = $_SESSION['user']['branch_id'] ?? 1;
                                 $term_params = in_array($_SESSION['user']['role'], [ROLE_SUPER_ADMIN]) ? "?mode=test&branch_id={$term_branch_id}" : "?branch_id={$term_branch_id}";
                             ?>
-                            <a href="../cafe_pos/cashier<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-slate-400 hover:text-white transition-colors mt-2 border-t border-slate-700/50 pt-2" title="Cashier Terminal">
+                            <a href="../cafe_pos/cashier<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors mt-2 border-t border-espresso-900 pt-2" title="Cashier Terminal">
                                 <i class="fa-solid fa-desktop w-5 text-center"></i> <span class="sidebar-text ml-2">Cashier Terminal <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
                             </a>
-                            <a href="../cafe_pos/kiosk<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-slate-400 hover:text-white transition-colors" title="Kiosk Mode">
+                            <a href="../cafe_pos/kiosk<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="Kiosk Mode">
                                 <i class="fa-solid fa-tablet-screen-button w-5 text-center"></i> <span class="sidebar-text ml-2">Kiosk Mode <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
                             </a>
-                            <a href="procurement" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'procurement.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Procurement">
+                            <a href="procurement" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'procurement.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Procurement">
                                 <i class="fa-solid fa-truck-loading w-5 text-center"></i> <span class="sidebar-text ml-2">Procurement</span>
                             </a>
                         </div>
@@ -210,12 +237,12 @@ if (isset($_SESSION['user']['id'])) {
 
                     <!-- FINANCE -->
                     <div>
-                        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE</span></div>
                         <div class="space-y-1">
-                            <a href="finance_budgeting" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_budgeting.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="P&L Dashboard">
+                            <a href="finance_budgeting" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_budgeting.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="P&L Dashboard">
                                 <i class="fa-solid fa-chart-line w-5 text-center"></i> <span class="sidebar-text ml-2">P&L Dashboard</span>
                             </a>
-                            <a href="finance_reports" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_reports.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Inventory Write-Offs">
+                            <a href="finance_reports" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_reports.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Inventory Write-Offs">
                                 <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Inventory Write-Offs</span>
                             </a>
                         </div>
@@ -224,12 +251,12 @@ if (isset($_SESSION['user']['id'])) {
                     <?php if (in_array($role, ['Super Admin', 'Admin'])): ?>
                     <!-- ADMINISTRATION -->
                     <div>
-                        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">ADMINISTRATION</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">ADMINISTRATION</span></div>
                         <div class="space-y-1">
-                            <a href="system_accounts" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'system_accounts.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="System Accounts">
+                            <a href="system_accounts" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'system_accounts.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="System Accounts">
                                 <i class="fa-solid fa-server w-5 text-center"></i> <span class="sidebar-text ml-2">System Accounts</span>
                             </a>
-                            <a href="account_management" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'account_management.php' ? 'text-white font-medium bg-slate-800 rounded' : 'text-slate-400 hover:text-white transition-colors' ?>" title="Account Management">
+                            <a href="account_management" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'account_management.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Account Management">
                                 <i class="fa-solid fa-user-shield w-5 text-center"></i> <span class="sidebar-text ml-2">Account Management</span>
                             </a>
                         </div>
@@ -239,11 +266,11 @@ if (isset($_SESSION['user']['id'])) {
             <?php endif; ?>
         </nav>
         
-        <div class="p-4 border-t border-slate-700">
-            <a href="settings" class="flex items-center px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors" title="Settings">
-                <i class="fa-solid fa-cog w-6 text-center"></i> <span class="sidebar-text ml-3">Settings</span>
+        <div class="p-4 border-t border-espresso-900">
+            <a href="settings" class="flex items-center px-4 py-2 text-sm text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="Settings">
+                <i class="fa-solid fa-cog w-6 text-center text-amber-500/70"></i> <span class="sidebar-text ml-3">Settings</span>
             </a>
-            <a href="#" id="logout-trigger" class="flex items-center px-4 py-2 text-sm text-red-400 hover:bg-slate-800 hover:text-red-300 rounded transition-colors mt-1" title="Logout">
+            <a href="#" id="logout-trigger" class="flex items-center px-4 py-2 text-sm text-red-400 hover:bg-espresso-900 hover:text-red-300 rounded-lg transition-colors mt-1" title="Logout">
                 <i class="fa-solid fa-sign-out-alt w-6 text-center"></i> <span class="sidebar-text ml-3">Logout</span>
             </a>
         </div>
@@ -271,18 +298,18 @@ if (isset($_SESSION['user']['id'])) {
     <!-- Main Content Wrapper -->
     <div class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
         <!-- Top Navbar -->
-        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-10 flex-shrink-0">
+        <header class="h-16 bg-espresso-900 border-b border-espresso-800 flex items-center justify-between px-6 z-10 flex-shrink-0 text-cream-100">
             <div class="flex items-center gap-4">
-                <button id="sidebar-toggle" class="text-slate-500 hover:text-primary transition-colors focus:outline-none p-1 -ml-2 rounded hover:bg-slate-100">
-                    <i class="fa-solid fa-bars text-xl"></i>
+                <button id="sidebar-toggle" class="text-amber-400 hover:text-amber-300 transition-colors focus:outline-none p-1.5 -ml-2 rounded-lg hover:bg-espresso-800">
+                    <i class="fa-solid fa-bars text-lg"></i>
                 </button>
-                <h2 class="text-xl font-semibold text-slate-800"><?= h($pageTitle ?? 'Dashboard') ?></h2>
+                <h2 class="text-lg font-bold font-serif text-cream-50 tracking-tight"><?= h($pageTitle ?? 'Dashboard') ?></h2>
             </div>
             <div class="flex items-center space-x-4">
 
                 <!-- Notification Dropdown -->
                 <div class="relative">
-                    <button onclick="document.getElementById('notifDropdown').classList.toggle('hidden')" class="relative text-slate-400 hover:text-primary transition-colors focus:outline-none pt-1">
+                    <button onclick="document.getElementById('notifDropdown').classList.toggle('hidden')" class="relative text-cream-100/80 hover:text-amber-300 transition-colors focus:outline-none pt-1">
                         <i class="fa-regular fa-bell text-xl"></i>
                         <?php if ($unreadCount > 0): ?>
                         <span class="absolute top-0 right-0 -mt-1 -mr-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white font-bold border-2 border-white">
@@ -352,7 +379,7 @@ if (isset($_SESSION['user']['id'])) {
                 }
                 ?>
                 <div class="relative group">
-                    <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-white font-bold cursor-pointer overflow-hidden border-2 border-white shadow-sm">
+                    <div class="h-8 w-8 rounded-full bg-amber-500 text-espresso-950 font-bold flex items-center justify-center cursor-pointer overflow-hidden border-2 border-amber-400/40 shadow-sm">
                         <?php if ($empPhoto && file_exists(__DIR__ . '/../' . $empPhoto)): ?>
                             <img src="<?= h($empPhoto) ?>" alt="Avatar" class="w-full h-full object-cover">
                         <?php else: ?>

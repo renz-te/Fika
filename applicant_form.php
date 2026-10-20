@@ -110,6 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// Dynamic logo path for local subdirectory and production root
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+$cleanDir = str_replace('\\', '/', $scriptDir);
+$baseDir = ($cleanDir === '/' || $cleanDir === '.') ? '' : rtrim($cleanDir, '/');
+$logoUrl = $baseDir . '/public/assets/logo.svg';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -117,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submit Application &middot; Fika Slow Hours</title>
-    <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
+    <link rel="icon" type="image/svg+xml" href="<?= $logoUrl ?>">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -176,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="max-w-4xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
             <a href="careers.php" class="flex items-center gap-3.5 group">
                 <div class="relative w-11 h-11 flex-shrink-0 flex items-center justify-center">
-                    <img src="public/assets/logo.svg" alt="Fika Logo" class="w-11 h-11 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-form-fallback').classList.remove('hidden');">
+                    <img src="<?= $logoUrl ?>" alt="Fika Logo" class="w-11 h-11 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-form-fallback').classList.remove('hidden');">
                     <div id="logo-form-fallback" class="hidden w-11 h-11 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40">
                         <span>F</span>
                     </div>

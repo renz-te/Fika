@@ -11,7 +11,7 @@ if (empty($_SESSION['csrf_token'])) {
 
 // 1. Authentication Check
 $current_page = basename($_SERVER['PHP_SELF']);
-$public_pages = ['login.php', 'forgot_password.php', 'reset_password.php', 'verify.php', 'careers.php'];
+$public_pages = ['login.php', 'forgot_password.php', 'reset_password.php', 'verify.php', 'careers.php', 'logout.php'];
 
 if (!isset($_SESSION['user']) && !in_array($current_page, $public_pages)) {
     header('Location: login');

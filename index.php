@@ -60,6 +60,12 @@ $defaultImages = [
     'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=800&q=80', // Iced brew
     'https://images.unsplash.com/photo-1509785307050-d4066910ec1e?auto=format&fit=crop&w=800&q=80'  // Pour over
 ];
+
+// Dynamic logo path for local subdirectory and production root
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+$cleanDir = str_replace('\\', '/', $scriptDir);
+$baseDir = ($cleanDir === '/' || $cleanDir === '.') ? '' : rtrim($cleanDir, '/');
+$logoUrl = $baseDir . '/public/assets/logo.svg';
 ?>
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -67,7 +73,7 @@ $defaultImages = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fika &middot; Slow Hours | Specialty Café & Roastery</title>
-    <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
+    <link rel="icon" type="image/svg+xml" href="<?= $logoUrl ?>">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -127,7 +133,7 @@ $defaultImages = [
             <!-- Brand Logo -->
             <a href="index.php" class="flex items-center gap-3.5 group">
                 <div class="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
-                    <img src="public/assets/logo.svg" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-nav-fallback').classList.remove('hidden');">
+                    <img src="<?= $logoUrl ?>" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-nav-fallback').classList.remove('hidden');">
                     <div id="logo-nav-fallback" class="hidden w-12 h-12 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40">
                         <span>F</span>
                     </div>
@@ -406,7 +412,7 @@ $defaultImages = [
                 <div class="md:col-span-2">
                     <div class="flex items-center gap-3 mb-4">
                         <div class="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
-                            <img src="public/assets/logo.svg" alt="Fika Logo" class="w-10 h-10 object-contain" onerror="this.style.display='none'; document.getElementById('logo-footer-fallback').classList.remove('hidden');">
+                            <img src="<?= $logoUrl ?>" alt="Fika Logo" class="w-10 h-10 object-contain" onerror="this.style.display='none'; document.getElementById('logo-footer-fallback').classList.remove('hidden');">
                             <div id="logo-footer-fallback" class="hidden w-10 h-10 rounded-full bg-espresso-900 text-amber-400 flex items-center justify-center font-serif font-black text-lg border border-amber-500/30">
                                 <span>F</span>
                             </div>

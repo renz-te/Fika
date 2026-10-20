@@ -1,4 +1,8 @@
 <?php
+// Deprecated legacy login: redirect to root Fika backoffice portal
+header('Location: ../login.php');
+exit;
+
 require_once __DIR__ . '/init.php';
 
 if (empty($_SESSION['user']) && !empty($_COOKIE['remember_me'])) {

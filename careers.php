@@ -44,6 +44,12 @@ $openings = [
         'requirements' => 'At least 1 year supervisory experience in hospitality or high-volume café environment.'
     ]
 ];
+
+// Dynamic logo path for local subdirectory and production root
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+$cleanDir = str_replace('\\', '/', $scriptDir);
+$baseDir = ($cleanDir === '/' || $cleanDir === '.') ? '' : rtrim($cleanDir, '/');
+$logoUrl = $baseDir . '/public/assets/logo.svg';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -51,7 +57,7 @@ $openings = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Careers &amp; Opportunities &middot; Fika Slow Hours</title>
-    <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
+    <link rel="icon" type="image/svg+xml" href="<?= $logoUrl ?>">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -111,7 +117,7 @@ $openings = [
             <div class="flex items-center gap-3">
                 <a href="index.php" class="flex items-center gap-3.5 group">
                     <div class="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
-                        <img src="public/assets/logo.svg" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-careers-fallback').classList.remove('hidden');">
+                        <img src="<?= $logoUrl ?>" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-careers-fallback').classList.remove('hidden');">
                         <div id="logo-careers-fallback" class="hidden w-12 h-12 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40">
                             <span>F</span>
                         </div>

@@ -137,6 +137,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// Dynamic logo path for local subdirectory and production root
+$scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+$cleanDir = str_replace('\\', '/', $scriptDir);
+$baseDir = ($cleanDir === '/' || $cleanDir === '.') ? '' : rtrim($cleanDir, '/');
+$logoUrl = $baseDir . '/public/assets/logo.svg';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -144,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff Backoffice Portal &middot; Fika Slow Hours</title>
-    <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
+    <link rel="icon" type="image/svg+xml" href="<?= $logoUrl ?>">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -215,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="text-center mb-8">
             <div class="inline-block relative group">
                 <div class="relative w-24 h-24 mx-auto flex items-center justify-center">
-                    <img src="public/assets/logo.svg" alt="Fika Logo" class="w-24 h-24 object-contain drop-shadow-xl" onerror="this.style.display='none'; document.getElementById('logo-login-fallback').classList.remove('hidden');">
+                    <img src="<?= $logoUrl ?>" alt="Fika Logo" class="w-24 h-24 object-contain drop-shadow-xl" onerror="this.style.display='none'; document.getElementById('logo-login-fallback').classList.remove('hidden');">
                     <div id="logo-login-fallback" class="hidden w-20 h-20 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-3xl shadow-inner border border-amber-600/40">
                         <span>F</span>
                     </div>
