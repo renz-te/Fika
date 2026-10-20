@@ -25,17 +25,36 @@ if (!function_exists('e')) {
 
 // Helper: Determine target portal based on legacy user role
 function get_legacy_role_redirect(string $role): string {
-    if (in_array($role, ['Admin', 'System Admin', 'Super Admin', 'Central HR', 'Executives', 'Branch Manager', 'HR'], true)) {
-        return 'cafe_hrms/dashboard.php';
-    } elseif (in_array($role, ['Cashier', 'Cashier Terminal', 'Barista'], true)) {
-        return 'cafe_pos/cashier.php';
-    } elseif (stripos($role, 'kiosk') !== false) {
-        return 'cafe_pos/kiosk.php';
-    } elseif ($role === 'Clock') {
-        return 'cafe_hrms/attendance.php';
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+    // Resolve Laragon base URL path dynamically (e.g. /Fika/Fika)
+    $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+    $cleanDir = str_replace('\\', '/', $scriptDir);
+    if ($cleanDir === '/' || $cleanDir === '.' || $cleanDir === '') {
+        $baseDir = '/Fika/Fika';
     } else {
-        return 'cafe_hrms/ess.php';
+        $baseDir = rtrim($cleanDir, '/');
     }
+
+    $baseUrl = $protocol . $host . $baseDir;
+
+    if (in_array($role, ['Admin', 'System Admin', 'Super Admin', 'Central HR', 'Executives', 'Branch Manager', 'HR'], true)) {
+        $target = $baseUrl . '/cafe_hrms/dashboard.php';
+    } elseif (in_array($role, ['Cashier', 'Cashier Terminal', 'Barista'], true)) {
+        $target = $baseUrl . '/cafe_pos/cashier.php';
+    } elseif (stripos($role, 'kiosk') !== false) {
+        $target = $baseUrl . '/cafe_pos/kiosk.php';
+    } elseif ($role === 'Clock') {
+        $target = $baseUrl . '/cafe_hrms/attendance.php';
+    } else {
+        $target = $baseUrl . '/cafe_hrms/ess.php';
+    }
+
+    // Guard against physical filesystem path leaks
+    $target = str_replace(['C:/laragon/www', 'c:/laragon/www'], '', $target);
+
+    return $target;
 }
 
 // Handle Logout request
@@ -50,7 +69,13 @@ if (isset($_GET['logout'])) {
 
 // If already logged in, redirect directly to user's portal
 if (!empty($_SESSION['user']['role'])) {
-    header('Location: ' . get_legacy_role_redirect($_SESSION['user']['role']));
+    $redirectUrl = get_legacy_role_redirect($_SESSION['user']['role']);
+    if (isset($_GET['debug'])) {
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo "REDIRECT_TARGET: " . $redirectUrl;
+        exit;
+    }
+    header('Location: ' . $redirectUrl);
     exit;
 }
 
@@ -98,7 +123,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $logStmt->execute([$user['id']]);
                 } catch (\Throwable $t) {}
 
-                header('Location: ' . get_legacy_role_redirect($user['role_name']));
+                $redirectUrl = get_legacy_role_redirect($user['role_name']);
+                if (isset($_GET['debug']) || isset($_POST['debug'])) {
+                    header('Content-Type: text/plain; charset=UTF-8');
+                    echo "REDIRECT_TARGET: " . $redirectUrl;
+                    exit;
+                }
+                header('Location: ' . $redirectUrl);
                 exit;
             }
         } else {
