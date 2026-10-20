@@ -1,10 +1,11 @@
 RewriteEngine On
 
-# Force remove .php from the visible URL (External Redirect)
-RewriteCond %{REQUEST_METHOD} GET
-RewriteCond %{REQUEST_URI} !^/Fika/cafe_hrms/api/
-RewriteCond %{ENV:REDIRECT_STATUS} ^$
-RewriteRule ^(.+)\.php$ $1 [R=301,L]
+# Force remove .php from the visible URL (External Redirect) - Disabled to prevent physical path leak
+# RewriteCond %{REQUEST_METHOD} GET
+# RewriteCond %{REQUEST_URI} !^/Fika/cafe_hrms/api/
+# RewriteCond %{ENV:REDIRECT_STATUS} ^$
+# RewriteRule ^(.+)\.php$ $1 [R=301,L]
+
 
 # Internally map the clean URL back to the .php file
 RewriteCond %{REQUEST_FILENAME} !-d
