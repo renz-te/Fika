@@ -163,19 +163,13 @@ if (isset($_SESSION['user']['id'])) {
                 <a href="shift_board" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="Shift Board">
                     <i class="fa-solid fa-clipboard-list w-6 text-center"></i> <span class="sidebar-text ml-3">Shift Board</span>
                 </a>
-                <?php if ($isHB): ?>
-                <a href="performance" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="Performance">
-                    <i class="fa-solid fa-star-half-stroke w-6 text-center"></i> <span class="sidebar-text ml-3">Performance</span>
-                </a>
-                <?php endif; ?>
-
             <?php else: ?>
                 <!-- Sidebar Sections -->
                 <div class="mt-4 space-y-6">
                     
-                    <!-- HRMS & OPERATIONS -->
+                    <!-- HR & PERSONNEL -->
                     <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HRMS & OPERATIONS</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HR & PERSONNEL</span></div>
                         <div class="space-y-1">
                             <a href="dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Dashboard">
                                 <i class="fa-solid fa-chart-pie w-5 text-center"></i> <span class="sidebar-text ml-2">Dashboard</span>
@@ -198,16 +192,13 @@ if (isset($_SESSION['user']['id'])) {
                             <a href="payroll" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'payroll.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Payroll">
                                 <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Payroll</span>
                             </a>
-                            <a href="performance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'performance.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Performance">
-                                <i class="fa-solid fa-star w-5 text-center"></i> <span class="sidebar-text ml-2">Performance</span>
-                            </a>
                         </div>
                     </div>
 
                     <?php if (in_array($role, [ROLE_SUPER_ADMIN, ROLE_BRANCH_MANAGER])): ?>
-                    <!-- POS & INVENTORY -->
+                    <!-- STORE OPERATIONS -->
                     <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">POS & INVENTORY</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">STORE OPERATIONS</span></div>
                         <div class="space-y-1">
                             <a href="pos_dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'pos_dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="POS Dashboard">
                                 <i class="fa-solid fa-cash-register w-5 text-center"></i> <span class="sidebar-text ml-2">POS Dashboard</span>
@@ -235,9 +226,9 @@ if (isset($_SESSION['user']['id'])) {
                     </div>
                     <?php endif; ?>
 
-                    <!-- FINANCE -->
+                    <!-- FINANCE & ACCOUNTING -->
                     <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE & ACCOUNTING</span></div>
                         <div class="space-y-1">
                             <a href="finance_budgeting" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_budgeting.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="P&L Dashboard">
                                 <i class="fa-solid fa-chart-line w-5 text-center"></i> <span class="sidebar-text ml-2">P&L Dashboard</span>
@@ -249,9 +240,9 @@ if (isset($_SESSION['user']['id'])) {
                     </div>
 
                     <?php if (in_array($role, ['Super Admin', 'Admin'])): ?>
-                    <!-- ADMINISTRATION -->
+                    <!-- SYSTEM ADMIN -->
                     <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">ADMINISTRATION</span></div>
+                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">SYSTEM ADMIN</span></div>
                         <div class="space-y-1">
                             <a href="system_accounts" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'system_accounts.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="System Accounts">
                                 <i class="fa-solid fa-server w-5 text-center"></i> <span class="sidebar-text ml-2">System Accounts</span>

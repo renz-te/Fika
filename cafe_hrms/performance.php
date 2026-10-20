@@ -1,4 +1,6 @@
 <?php
+header('Location: dashboard.php');
+exit;
 require_once __DIR__ . '/init.php';
 require_login();
 $user = current_user();

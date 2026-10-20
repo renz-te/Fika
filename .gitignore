@@ -3,4 +3,5 @@ vendor/
 config.php
 *.sql
 uploads/
+storage/
 .env

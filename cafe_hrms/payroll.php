@@ -3,8 +3,16 @@ require_once __DIR__ . '/init.php';
 require_login();
 $user = current_user();
 
-$allowed_roles = [ROLE_SUPER_ADMIN, ROLE_EXECUTIVE, ROLE_CENTRAL_HR, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_MANAGER];
-if (!in_array($user['role'], $allowed_roles)) {
+// Role determination from session & current user
+$userRole = $_SESSION['user']['role'] ?? ($user['role'] ?? '');
+$isFinance = in_array($userRole, [ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_ACCOUNTANT]);
+$isHr = in_array($userRole, [ROLE_CENTRAL_HR, 'HR', 'Central HR', 'Branch HR', 'HR Manager']);
+$isBM = ($userRole === ROLE_BRANCH_MANAGER);
+$isAdmin = in_array($userRole, [ROLE_SUPER_ADMIN, 'Admin', ROLE_EXECUTIVE]);
+
+$allowed_roles = [ROLE_SUPER_ADMIN, ROLE_EXECUTIVE, ROLE_CENTRAL_HR, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_ACCOUNTANT, ROLE_BRANCH_MANAGER, 'HR', 'Central HR', 'Branch HR', 'HR Manager', 'Admin'];
+if (!in_array($userRole, $allowed_roles)) {
+    http_response_code(403);
     die("Access denied.");
 }
 
@@ -18,6 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'generate_drafts') {
+        // Server-side guard: Finance roles are not allowed to generate payroll
+        if ($isFinance && !$isAdmin) {
+            http_response_code(403);
+            die("Access denied: Finance roles cannot generate payroll drafts.");
+        }
+        if (!$isHr && !$isBM && !$isAdmin) {
+            http_response_code(403);
+            die("Access denied: You do not have permission to generate payroll drafts.");
+        }
         $periodParts = explode('|', $_POST['payroll_period']);
         $periodStart = $periodParts[0];
         $periodEnd = $periodParts[1];
@@ -189,6 +206,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = "Error generating payroll: " . $e->getMessage();
         }
     } elseif ($action === 'clear_drafts') {
+        // Server-side guard: Finance roles cannot clear drafts
+        if ($isFinance && !$isAdmin) {
+            http_response_code(403);
+            die("Access denied: Finance roles cannot clear payroll drafts.");
+        }
+        if (!$isHr && !$isBM && !$isAdmin) {
+            http_response_code(403);
+            die("Access denied: You do not have permission to clear payroll drafts.");
+        }
         $periodParts = explode('|', $_POST['payroll_period']);
         $periodStart = $periodParts[0];
         $periodEnd = $periodParts[1];
@@ -227,7 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = "Error clearing drafts: " . $e->getMessage();
         }
     } elseif ($action === 'approve') {
-        if (!in_array($user['role'], ['Super Admin', 'Admin', 'Central HR', 'Global Accountant'])) {
+        if (!in_array($userRole, [ROLE_SUPER_ADMIN, 'Admin', ROLE_EXECUTIVE, ROLE_CENTRAL_HR, 'HR', 'Central HR', 'Branch HR', ROLE_BRANCH_MANAGER, ROLE_GLOBAL_ACCOUNTANT, ROLE_BRANCH_ACCOUNTANT])) {
             http_response_code(403);
             die("Access denied: You do not have permission to approve payroll.");
         }
@@ -255,9 +281,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if ($action === 'release') {
-        if (!in_array($user['role'], ['Super Admin', 'Admin', 'Central HR', 'Global Accountant'])) {
+        // Server-side guard: Only Finance and Super Admin can release payroll!
+        // Central HR / BM are strictly blocked with 403 Forbidden.
+        if (!$isFinance && !$isAdmin) {
             http_response_code(403);
-            die("Access denied: You do not have permission to release payroll.");
+            die("Access denied: Only Finance roles have permission to release payroll.");
         }
         $payrollId = $_POST['payroll_id'];
         $paymentMethod = trim($_POST['payment_method']);
@@ -300,15 +328,33 @@ $drafts = $pdo->query('SELECT p.*, CONCAT(e.first_name, " ",   e.last_name) AS f
 $approved = $pdo->query('SELECT p.*, CONCAT(e.first_name, " ",   e.last_name) AS full_name, e.employment_category FROM payroll p JOIN employees e ON e.id = p.employee_id WHERE p.status = "Approved" ' . $branchFilterE . ' ORDER BY p.created_at DESC')->fetchAll();
 $released = $pdo->query('SELECT p.*, CONCAT(e.first_name, " ",   e.last_name) AS full_name, e.employment_category FROM payroll p JOIN employees e ON e.id = p.employee_id WHERE p.status = "Released" ' . $branchFilterE . ' ORDER BY p.created_at DESC LIMIT 50')->fetchAll();
 
-$currentTab = $_GET['tab'] ?? 'drafts';
+// Tab routing: Finance defaults to approved (Pending Approval), HR & BM default to drafts
+if (isset($_GET['tab'])) {
+    $currentTab = $_GET['tab'];
+} else {
+    $currentTab = ($isFinance && !$isAdmin) ? 'approved' : 'drafts';
+}
 
 require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="px-6 py-4 border-b border-slate-200 flex space-x-6 bg-white">
-    <a href="?tab=drafts" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'drafts' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">Drafts <span class="ml-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs"><?= count($drafts) ?></span></a>
-    <a href="?tab=approved" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'approved' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">Approved <span class="ml-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs"><?= count($approved) ?></span></a>
-    <a href="?tab=released" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'released' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">Released History</a>
+    <?php if (!$isFinance || $isAdmin): ?>
+    <a href="?tab=drafts" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'drafts' ? 'border-primary text-primary font-bold' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">
+        <?= $isBM ? 'Review Drafts' : 'Drafts' ?> <span class="ml-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs"><?= count($drafts) ?></span>
+    </a>
+    <?php endif; ?>
+    <a href="?tab=approved" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'approved' ? 'border-primary text-primary font-bold' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">
+        Pending Approval <span class="ml-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs"><?= count($approved) ?></span>
+    </a>
+    <?php if ($isFinance && !$isAdmin): ?>
+    <a href="?tab=drafts" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'drafts' ? 'border-primary text-primary font-bold' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">
+        Drafts <span class="ml-1 bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs"><?= count($drafts) ?></span>
+    </a>
+    <?php endif; ?>
+    <a href="?tab=released" class="font-medium px-1 py-2 border-b-2 transition <?= $currentTab === 'released' ? 'border-primary text-primary font-bold' : 'border-transparent text-slate-500 hover:text-slate-800' ?>">
+        Released History
+    </a>
 </div>
 
 <div class="p-6">
@@ -320,6 +366,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
 
     <?php if ($currentTab === 'drafts'): ?>
+        <?php if (!$isFinance || $isAdmin): ?>
     <!-- Generation Panel -->
     <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
         <h2 class="text-lg font-bold text-slate-800 mb-4"><i class="fa-solid fa-calculator text-primary mr-2"></i> Generate Payroll Run</h2>
@@ -359,7 +406,7 @@ require_once __DIR__ . '/includes/header.php';
                         Calculate Drafts
                     </button>
                 <?php else: ?>
-                    <button type="submit" name="action" value="generate_drafts" class="bg-primary hover:bg-indigo-700 text-white px-6 py-2 rounded font-medium shadow-sm transition h-[42px]">
+                    <button type="submit" name="action" value="generate_drafts" class="bg-primary hover:bg-amber-600 text-white px-6 py-2 rounded font-medium shadow-sm transition h-[42px]">
                         Calculate Drafts
                     </button>
                 <?php endif; ?>
@@ -371,6 +418,14 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         </form>
     </div>
+        <?php else: ?>
+    <div class="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-sm flex items-center shadow-sm">
+        <i class="fa-solid fa-info-circle mr-3 text-lg text-amber-600"></i>
+        <div>
+            <span class="font-bold">Draft View (Finance Read-Only):</span> Payroll draft calculation is performed by HR and Branch Managers. Once finalized, records appear in <a href="?tab=approved" class="underline font-semibold hover:text-amber-950">Pending Approval</a> for Finance disbursement release.
+        </div>
+    </div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <!-- Payroll Lists -->
@@ -420,14 +475,22 @@ require_once __DIR__ . '/includes/header.php';
                             <td class="p-4 font-bold text-emerald-600 text-right text-base">₱<?= number_format($row['net_pay'], 2) ?></td>
                             <td class="p-4 text-center">
                                 <?php if ($currentTab === 'drafts'): ?>
+                                    <?php if (!$isFinance || $isAdmin): ?>
                                     <form autocomplete="off" method="POST" action="payroll?tab=drafts">
                                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                         <input type="hidden" name="action" value="approve">
                                         <input type="hidden" name="payroll_id" value="<?= $row['id'] ?>">
-                                        <button type="submit" class="text-primary hover:text-indigo-800 font-medium px-3 py-1 rounded bg-indigo-50 hover:bg-indigo-100 transition">Approve</button>
+                                        <button type="submit" class="text-primary hover:text-amber-700 font-medium px-3 py-1 rounded bg-amber-50 hover:bg-amber-100 transition shadow-sm"><?= $isBM ? 'Verify & Submit' : 'Approve Draft' ?></button>
                                     </form>
+                                    <?php else: ?>
+                                    <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">In Draft</span>
+                                    <?php endif; ?>
                                 <?php elseif ($currentTab === 'approved'): ?>
-                                    <button type="button" onclick="openReleaseModal(<?= $row['id'] ?>, <?= htmlspecialchars(json_encode($row['full_name']), ENT_QUOTES, 'UTF-8') ?>)" class="text-emerald-600 hover:text-emerald-800 font-medium px-3 py-1 rounded bg-emerald-50 hover:bg-emerald-100 transition"><i class="fa-solid fa-money-bill-wave mr-1"></i> Release</button>
+                                    <?php if ($isFinance || $isAdmin): ?>
+                                    <button type="button" onclick="openReleaseModal(<?= $row['id'] ?>, <?= htmlspecialchars(json_encode($row['full_name']), ENT_QUOTES, 'UTF-8') ?>)" class="text-emerald-700 hover:text-emerald-900 font-medium px-3 py-1 rounded bg-emerald-50 hover:bg-emerald-100 transition shadow-sm"><i class="fa-solid fa-money-bill-wave mr-1"></i> Release</button>
+                                    <?php else: ?>
+                                    <span class="inline-flex items-center text-xs bg-amber-100 text-amber-800 font-medium px-2.5 py-1 rounded-full"><i class="fa-solid fa-clock mr-1"></i> Pending Finance Release</span>
+                                    <?php endif; ?>
                                 <?php elseif ($currentTab === 'released'): ?>
                                     <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-medium"><i class="fa-solid fa-check mr-1"></i> <?= h($row['payment_method']) ?></span>
                                 <?php endif; ?>
