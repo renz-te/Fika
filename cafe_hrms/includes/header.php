@@ -1,11 +1,11 @@
 <?php
+$role = $_SESSION['user']['role'] ?? '';
 $companyName = get_setting($pdo, 'company_name', 'HRMS');
 $showSidebar = $showSidebar ?? true;
 
 $userNotifs = [];
 $unreadCount = 0;
 if (isset($_SESSION['user']['id'])) {
-    $role = $_SESSION['user']['role'] ?? '';
     $userId = $_SESSION['user']['id'];
     
     // For HR and Admins, use target_roles. For Employees, Baristas, and Head Baristas, use target_user_id.
@@ -144,116 +144,120 @@ if (isset($_SESSION['user']['id'])) {
             </div>
         </div>
         
-        <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-            <?php 
-            if (isset(current_user()['role']) && in_array(current_user()['role'], ['Employee', 'Barista', 'Head Barista'])): 
-                $isHB = false;
-                if (isset($pdo)) {
-                    $hbStmt = $pdo->prepare("SELECT position FROM employees WHERE id = (SELECT employee_id FROM users WHERE id = ?)");
-                    $hbStmt->execute([current_user()['id']]);
-                    $empPos = $hbStmt->fetchColumn();
-                    if ($empPos && stripos($empPos, 'Head Barista') !== false) {
-                        $isHB = true;
-                    }
+        <?php
+        $currentScript = basename($_SERVER['PHP_SELF']);
+        if (!function_exists('nav_active')) {
+            function nav_active($page, $currentScript) {
+                $pClean = str_replace('.php', '', $page);
+                if ($currentScript === $page || $currentScript === $pClean || $currentScript === $pClean . '.php') {
+                    return 'bg-amber-500 text-espresso-950 font-bold rounded-lg shadow-sm';
                 }
-            ?>
-                <a href="ess" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'ess.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="My Dashboard">
-                    <i class="fa-solid fa-chart-pie w-6 text-center"></i> <span class="sidebar-text ml-3">My Dashboard</span>
-                </a>
-                <a href="shift_board" class="flex items-center px-4 py-3 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'bg-amber-500 rounded-lg text-espresso-950 font-bold shadow-sm' : 'text-cream-100/70 hover:bg-espresso-900 hover:text-amber-300 rounded-lg transition-colors' ?>" title="Shift Board">
-                    <i class="fa-solid fa-clipboard-list w-6 text-center"></i> <span class="sidebar-text ml-3">Shift Board</span>
-                </a>
-            <?php else: ?>
-                <!-- Sidebar Sections -->
-                <div class="mt-4 space-y-6">
-                    
-                    <!-- HR & PERSONNEL -->
-                    <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HR & PERSONNEL</span></div>
-                        <div class="space-y-1">
-                            <a href="dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Dashboard">
-                                <i class="fa-solid fa-chart-pie w-5 text-center"></i> <span class="sidebar-text ml-2">Dashboard</span>
-                            </a>
-                            <a href="shift_board" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'shift_board.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Shift Board">
-                                <i class="fa-solid fa-clipboard-list w-5 text-center"></i> <span class="sidebar-text ml-2">Shift Board</span>
-                            </a>
-                            <a href="applications" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'applications.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Applications">
-                                <i class="fa-solid fa-user-plus w-5 text-center"></i> <span class="sidebar-text ml-2">Applications</span>
-                            </a>
-                            <a href="employees" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'employees.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Employees">
-                                <i class="fa-solid fa-users w-5 text-center"></i> <span class="sidebar-text ml-2">Employees</span>
-                            </a>
-                            <a href="attendance" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'attendance.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Attendance">
-                                <i class="fa-solid fa-clock w-5 text-center"></i> <span class="sidebar-text ml-2">Attendance</span>
-                            </a>
-                            <a href="leave" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'leave.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Leave & Shifts">
-                                <i class="fa-solid fa-calendar-alt w-5 text-center"></i> <span class="sidebar-text ml-2">Leave & Shifts</span>
-                            </a>
-                            <a href="payroll" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'payroll.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Payroll">
-                                <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Payroll</span>
-                            </a>
-                        </div>
-                    </div>
-
-                    <?php if (in_array($role, [ROLE_SUPER_ADMIN, ROLE_BRANCH_MANAGER])): ?>
-                    <!-- STORE OPERATIONS -->
-                    <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">STORE OPERATIONS</span></div>
-                        <div class="space-y-1">
-                            <a href="pos_dashboard" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'pos_dashboard.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="POS Dashboard">
-                                <i class="fa-solid fa-cash-register w-5 text-center"></i> <span class="sidebar-text ml-2">POS Dashboard</span>
-                            </a>
-                            <a href="menu_list" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'menu_list.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Menu List">
-                                <i class="fa-solid fa-list-ul w-5 text-center"></i> <span class="sidebar-text ml-2">Menu List</span>
-                            </a>
-                            <a href="inventory" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'inventory.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Inventory">
-                                <i class="fa-solid fa-box-open w-5 text-center"></i> <span class="sidebar-text ml-2">Inventory</span>
-                            </a>
-                            <?php
-                                $term_branch_id = $_SESSION['user']['branch_id'] ?? 1;
-                                $term_params = in_array($_SESSION['user']['role'], [ROLE_SUPER_ADMIN]) ? "?mode=test&branch_id={$term_branch_id}" : "?branch_id={$term_branch_id}";
-                            ?>
-                            <a href="../cafe_pos/cashier<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors mt-2 border-t border-espresso-900 pt-2" title="Cashier Terminal">
-                                <i class="fa-solid fa-desktop w-5 text-center"></i> <span class="sidebar-text ml-2">Cashier Terminal <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
-                            </a>
-                            <a href="../cafe_pos/kiosk<?= $term_params ?>" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="Kiosk Mode">
-                                <i class="fa-solid fa-tablet-screen-button w-5 text-center"></i> <span class="sidebar-text ml-2">Kiosk Mode <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
-                            </a>
-                            <a href="procurement" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'procurement.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Procurement">
-                                <i class="fa-solid fa-truck-loading w-5 text-center"></i> <span class="sidebar-text ml-2">Procurement</span>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <!-- FINANCE & ACCOUNTING -->
-                    <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE & ACCOUNTING</span></div>
-                        <div class="space-y-1">
-                            <a href="finance_budgeting" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_budgeting.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="P&L Dashboard">
-                                <i class="fa-solid fa-chart-line w-5 text-center"></i> <span class="sidebar-text ml-2">P&L Dashboard</span>
-                            </a>
-                            <a href="finance_reports" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'finance_reports.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Inventory Write-Offs">
-                                <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Inventory Write-Offs</span>
-                            </a>
-                        </div>
-                    </div>
-
-                    <?php if (in_array($role, ['Super Admin', 'Admin'])): ?>
-                    <!-- SYSTEM ADMIN -->
-                    <div>
-                        <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">SYSTEM ADMIN</span></div>
-                        <div class="space-y-1">
-                            <a href="system_accounts" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'system_accounts.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="System Accounts">
-                                <i class="fa-solid fa-server w-5 text-center"></i> <span class="sidebar-text ml-2">System Accounts</span>
-                            </a>
-                            <a href="account_management" class="flex items-center px-4 py-2 <?= basename($_SERVER['PHP_SELF']) == 'account_management.php' ? 'text-espresso-950 font-bold bg-amber-500 rounded-lg shadow-sm' : 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors' ?>" title="Account Management">
-                                <i class="fa-solid fa-user-shield w-5 text-center"></i> <span class="sidebar-text ml-2">Account Management</span>
-                            </a>
-                        </div>
-                    </div>
-                    <?php endif; ?>
+                return 'text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors';
+            }
+        }
+        ?>
+        <nav class="flex-1 px-4 py-6 space-y-6 overflow-y-auto">
+            <!-- Group 1: PERSONAL (Always visible to ALL logged-in users) -->
+            <div>
+                <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">PERSONAL</span></div>
+                <div class="space-y-1">
+                    <a href="ess.php" class="flex items-center px-4 py-2 <?= nav_active('ess.php', $currentScript) ?>" title="My Dashboard">
+                        <i class="fa-solid fa-gauge-high w-5 text-center"></i> <span class="sidebar-text ml-2">My Dashboard</span>
+                    </a>
+                    <a href="ess.php#payslips" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="My Payslips">
+                        <i class="fa-solid fa-receipt w-5 text-center"></i> <span class="sidebar-text ml-2">My Payslips</span>
+                    </a>
+                    <a href="ess.php#leave" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="My Leave">
+                        <i class="fa-solid fa-calendar-check w-5 text-center"></i> <span class="sidebar-text ml-2">My Leave</span>
+                    </a>
+                    <a href="ess.php#schedule" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="My Schedule">
+                        <i class="fa-solid fa-calendar-days w-5 text-center"></i> <span class="sidebar-text ml-2">My Schedule</span>
+                    </a>
                 </div>
+            </div>
+
+            <!-- Group 2: HR & PERSONNEL (Show if $role is 'Central HR', 'Branch HR', 'HR', 'Branch Manager', 'Admin', 'Super Admin') -->
+            <?php if (in_array($role, ['Central HR', 'Branch HR', 'HR', 'Branch Manager', 'Admin', 'Super Admin'])): ?>
+            <div>
+                <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">HR & PERSONNEL</span></div>
+                <div class="space-y-1">
+                    <a href="dashboard.php" class="flex items-center px-4 py-2 <?= nav_active('dashboard.php', $currentScript) ?>" title="HR Dashboard">
+                        <i class="fa-solid fa-chart-pie w-5 text-center"></i> <span class="sidebar-text ml-2">HR Dashboard</span>
+                    </a>
+                    <a href="employees.php" class="flex items-center px-4 py-2 <?= nav_active('employees.php', $currentScript) ?>" title="Employees">
+                        <i class="fa-solid fa-users w-5 text-center"></i> <span class="sidebar-text ml-2">Employees</span>
+                    </a>
+                    <a href="attendance.php" class="flex items-center px-4 py-2 <?= nav_active('attendance.php', $currentScript) ?>" title="Attendance">
+                        <i class="fa-solid fa-clock w-5 text-center"></i> <span class="sidebar-text ml-2">Attendance</span>
+                    </a>
+                    <a href="leave.php" class="flex items-center px-4 py-2 <?= nav_active('leave.php', $currentScript) ?>" title="Leave Approvals">
+                        <i class="fa-solid fa-calendar-alt w-5 text-center"></i> <span class="sidebar-text ml-2">Leave Approvals</span>
+                    </a>
+                    <a href="payroll.php" class="flex items-center px-4 py-2 <?= nav_active('payroll.php', $currentScript) ?>" title="Payroll">
+                        <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i> <span class="sidebar-text ml-2">Payroll</span>
+                    </a>
+                    <a href="shift_board.php" class="flex items-center px-4 py-2 <?= nav_active('shift_board.php', $currentScript) ?>" title="Shift Board">
+                        <i class="fa-solid fa-clipboard-list w-5 text-center"></i> <span class="sidebar-text ml-2">Shift Board</span>
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Group 3: FINANCE & ACCOUNTING (Show if $role is 'Global Accountant', 'Branch Accountant', 'Branch Manager', 'Admin', 'Super Admin') -->
+            <?php if (in_array($role, ['Global Accountant', 'Branch Accountant', 'Branch Manager', 'Admin', 'Super Admin'])): ?>
+            <div>
+                <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">FINANCE & ACCOUNTING</span></div>
+                <div class="space-y-1">
+                    <a href="finance_budgeting.php" class="flex items-center px-4 py-2 <?= nav_active('finance_budgeting.php', $currentScript) ?>" title="Financial Dashboard">
+                        <i class="fa-solid fa-chart-line w-5 text-center"></i> <span class="sidebar-text ml-2">Financial Dashboard</span>
+                    </a>
+                    <a href="finance_reports.php" class="flex items-center px-4 py-2 <?= nav_active('finance_reports.php', $currentScript) ?>" title="Financial Reports">
+                        <i class="fa-solid fa-file-contract w-5 text-center"></i> <span class="sidebar-text ml-2">Financial Reports</span>
+                    </a>
+                    <a href="settlement_reports.php" class="flex items-center px-4 py-2 <?= nav_active('settlement_reports.php', $currentScript) ?>" title="Settlement Reports">
+                        <i class="fa-solid fa-scale-balanced w-5 text-center"></i> <span class="sidebar-text ml-2">Settlement Reports</span>
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Group 4: STORE OPERATIONS (Show if $role is 'Branch Manager', 'Admin', 'Super Admin', 'Cashier', 'Head Barista', 'Barista') -->
+            <?php if (in_array($role, ['Branch Manager', 'Admin', 'Super Admin', 'Cashier', 'Head Barista', 'Barista'])): ?>
+            <div>
+                <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">STORE OPERATIONS</span></div>
+                <div class="space-y-1">
+                    <a href="pos_dashboard.php" class="flex items-center px-4 py-2 <?= nav_active('pos_dashboard.php', $currentScript) ?>" title="POS Dashboard">
+                        <i class="fa-solid fa-cash-register w-5 text-center"></i> <span class="sidebar-text ml-2">POS Dashboard</span>
+                    </a>
+                    <a href="inventory.php" class="flex items-center px-4 py-2 <?= nav_active('inventory.php', $currentScript) ?>" title="Inventory">
+                        <i class="fa-solid fa-box-open w-5 text-center"></i> <span class="sidebar-text ml-2">Inventory</span>
+                    </a>
+                    <a href="procurement.php" class="flex items-center px-4 py-2 <?= nav_active('procurement.php', $currentScript) ?>" title="Procurement">
+                        <i class="fa-solid fa-truck-loading w-5 text-center"></i> <span class="sidebar-text ml-2">Procurement</span>
+                    </a>
+                    <a href="../cafe_pos/cashier.php" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors mt-2 border-t border-espresso-900 pt-2" title="Cashier Terminal">
+                        <i class="fa-solid fa-desktop w-5 text-center"></i> <span class="sidebar-text ml-2">Cashier Terminal <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
+                    </a>
+                    <a href="../cafe_pos/kiosk.php" target="_blank" class="flex items-center px-4 py-2 text-cream-100/70 hover:text-amber-300 hover:bg-espresso-900 rounded-lg transition-colors" title="Kiosk Mode">
+                        <i class="fa-solid fa-tablet-screen-button w-5 text-center"></i> <span class="sidebar-text ml-2">Kiosk Mode <i class="fa-solid fa-external-link-alt text-[10px] ml-1"></i></span>
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- SYSTEM ADMIN (Super Admin & Admin only) -->
+            <?php if (in_array($role, ['Super Admin', 'Admin'])): ?>
+            <div>
+                <div class="text-[11px] font-bold text-amber-500/80 uppercase tracking-wider mb-2 px-4"><span class="sidebar-text">SYSTEM ADMIN</span></div>
+                <div class="space-y-1">
+                    <a href="system_accounts.php" class="flex items-center px-4 py-2 <?= nav_active('system_accounts.php', $currentScript) ?>" title="System Accounts">
+                        <i class="fa-solid fa-server w-5 text-center"></i> <span class="sidebar-text ml-2">System Accounts</span>
+                    </a>
+                    <a href="account_management.php" class="flex items-center px-4 py-2 <?= nav_active('account_management.php', $currentScript) ?>" title="Account Management">
+                        <i class="fa-solid fa-user-shield w-5 text-center"></i> <span class="sidebar-text ml-2">Account Management</span>
+                    </a>
+                </div>
+            </div>
             <?php endif; ?>
         </nav>
         
