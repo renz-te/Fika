@@ -202,6 +202,10 @@ if ($isBM) {
     $allRoles = array_values(array_filter($allRoles, fn($r) => (int)$r['id'] === 7 || strtoupper($r['name']) === 'STAFF'));
 }
 
+// Fetch active branches for user account modals
+$branchesStmt = $pdo->query("SELECT id, name FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY name ASC");
+$allBranches = $branchesStmt ? $branchesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
 // Fetch user accounts joined with employee details scoped by branch
 [$branchClause, $branchParams] = Rbac::branch_scope('u');
 $accountsStmt = $pdo->prepare("
@@ -352,6 +356,7 @@ $csrfToken = Csrf::getToken();
                                                 "name" => $fullName,
                                                 "username" => $acc["username"],
                                                 "role_id" => $acc["role_id"],
+                                                "branch_id" => $acc["branch_id"],
                                                 "position" => $pos,
                                                 "is_active" => $isAccActive
                                             ]) ?>)'
@@ -414,6 +419,26 @@ $csrfToken = Csrf::getToken();
                     <p class="text-[11px] text-slate-400 mt-1">
                         <?= $isBM ? 'Branch Managers can only assign STAFF role.' : 'Controls login authorization, portal routes, and action permissions.' ?>
                     </p>
+                </div>
+
+                <!-- Assigned Branch -->
+                <div>
+                    <label for="modalBranchId" class="block text-xs font-bold uppercase text-slate-600 mb-1">Assigned Branch</label>
+                    <?php if ($isBM): ?>
+                        <input type="hidden" name="branch_id" id="modalBranchId" value="<?= $bmBranchId ?>">
+                        <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-store text-amber-600 text-xs"></i>
+                            <span>Branch #<?= $bmBranchId ?></span>
+                            <span class="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Enforced</span>
+                        </div>
+                    <?php else: ?>
+                        <select name="branch_id" id="modalBranchId" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <option value="">Global / Head Office (None)</option>
+                            <?php foreach ($allBranches as $b): ?>
+                                <option value="<?= (int)$b['id'] ?>"><?= e($b['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Reset Password -->
@@ -499,6 +524,26 @@ $csrfToken = Csrf::getToken();
                     </p>
                 </div>
 
+                <!-- Assigned Branch -->
+                <div>
+                    <label for="createBranchId" class="block text-xs font-bold uppercase text-slate-600 mb-1">Assigned Branch</label>
+                    <?php if ($isBM): ?>
+                        <input type="hidden" name="branch_id" id="createBranchId" value="<?= $bmBranchId ?>">
+                        <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 flex items-center gap-2">
+                            <i class="fa-solid fa-store text-amber-600 text-xs"></i>
+                            <span>Branch #<?= $bmBranchId ?></span>
+                            <span class="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Enforced</span>
+                        </div>
+                    <?php else: ?>
+                        <select name="branch_id" id="createBranchId" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <option value="">Global / Head Office (None)</option>
+                            <?php foreach ($allBranches as $b): ?>
+                                <option value="<?= (int)$b['id'] ?>"><?= e($b['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
+                </div>
+
                 <div class="flex justify-end gap-3 pt-4 border-t border-slate-100">
                     <button type="button" onclick="closeCreateModal()" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 text-sm font-medium transition">
                         Cancel
@@ -518,6 +563,8 @@ $csrfToken = Csrf::getToken();
         document.getElementById('modalEmpPosDisplay').textContent = acc.position;
         document.getElementById('modalUsername').value = acc.username;
         document.getElementById('modalRoleId').value = acc.role_id;
+        const bEl = document.getElementById('modalBranchId');
+        if (bEl) bEl.value = acc.branch_id || '';
         document.getElementById('modalPassword').value = '';
         document.getElementById('modalIsActive').checked = acc.is_active;
 

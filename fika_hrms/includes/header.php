@@ -46,7 +46,8 @@ $canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
 $canDevices = Rbac::can('devices.view');
 $canSettings = Rbac::can('settings.manage');
-$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices || $canSettings);
+$canBranches = Rbac::can('branches.view');
+$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices || $canSettings || $canBranches);
 
 $currentDir = basename(dirname($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? ''));
 $url = function(string $targetModule, string $file) use ($currentDir): string {
@@ -188,6 +189,12 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <a href="<?= $url('fika_hrms', 'fika_hrms_users.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_users.php') ?>">
             <i class="fa-solid fa-user-shield w-5 text-center text-purple-400"></i>
             <span>Account Management</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($canBranches): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_branches.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_branches.php') ?>">
+            <i class="fa-solid fa-store w-5 text-center text-amber-500"></i>
+            <span>Branch Management</span>
         </a>
         <?php endif; ?>
         <?php if ($canSettings): ?>

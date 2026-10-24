@@ -148,8 +148,8 @@ $totalDevices = count($devices);
 $activeDevices = count(array_filter($devices, fn($d) => strtolower($d['status'] ?? '') === 'active'));
 $branchesLinked = count(array_unique(array_filter(array_column($devices, 'branch_name'))));
 
-// Fetch branches for admin enrollment modal
-$branchesStmt = $pdo->query("SELECT id, name FROM branches ORDER BY id ASC");
+// Fetch active branches for admin enrollment modal
+$branchesStmt = $pdo->query("SELECT id, name FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY name ASC");
 $allBranches = $branchesStmt ? $branchesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
 // Branch name for BM
