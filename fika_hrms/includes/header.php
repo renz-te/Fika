@@ -65,7 +65,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 };
 ?>
 <!-- Sidebar Navigation -->
-<aside class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20 h-screen sticky top-0 overflow-y-auto">
+<aside id="appSidebar" class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20 h-screen sticky top-0 overflow-y-auto transition-all duration-300 ease-in-out">
     <!-- Brand Header -->
     <div class="h-16 flex items-center px-6 border-b border-slate-800 gap-3">
         <div class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
@@ -217,3 +217,111 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         </a>
     </div>
 </aside>
+
+<!-- Sidebar Floating Toggle Button -->
+<button id="sidebarToggle" 
+        type="button" 
+        aria-label="Toggle navigation sidebar" 
+        aria-expanded="true"
+        title="Collapse sidebar"
+        class="fixed top-3.5 z-40 w-9 h-9 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white shadow-md hover:shadow-lg border border-slate-700/70 backdrop-blur-md flex items-center justify-center transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer group">
+    <i id="sidebarToggleIcon" class="fa-solid fa-xmark text-sm transition-transform duration-200 group-hover:scale-110"></i>
+</button>
+
+<style>
+    /* Collapsible Sidebar Styles */
+    #appSidebar {
+        transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #appSidebar.sidebar-collapsed,
+    #appSidebar.-ml-64 {
+        margin-left: -16rem !important;
+    }
+    #sidebarToggle {
+        left: 16.75rem; /* When sidebar is expanded: 268px, 12px to the right of 256px sidebar */
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s, color 0.2s, box-shadow 0.2s;
+    }
+    #sidebarToggle.collapsed {
+        left: 0.875rem; /* When sidebar is collapsed: 14px from left screen edge */
+    }
+    @media (max-width: 640px) {
+        #sidebarToggle {
+            left: 16.5rem;
+        }
+        #sidebarToggle.collapsed {
+            left: 0.75rem;
+        }
+    }
+    /* Ensure page top headers have comfortable breathing room for the floating toggle button */
+    .min-w-0 > header > div:first-child {
+        padding-left: 4.5rem !important;
+    }
+    body {
+        overflow-x: hidden;
+    }
+</style>
+
+<script>
+(function() {
+    var storageKey = 'fika_sidebar_collapsed';
+    var sidebar = document.getElementById('appSidebar');
+    var toggleBtn = document.getElementById('sidebarToggle');
+    var toggleIcon = document.getElementById('sidebarToggleIcon');
+
+    function applyState(collapsed) {
+        if (!sidebar || !toggleBtn) return;
+        
+        if (collapsed) {
+            sidebar.classList.add('-ml-64', 'sidebar-collapsed');
+            toggleBtn.classList.add('collapsed');
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.setAttribute('title', 'Expand sidebar');
+            if (toggleIcon) {
+                toggleIcon.className = 'fa-solid fa-bars text-sm transition-transform duration-200 group-hover:scale-110';
+            }
+        } else {
+            sidebar.classList.remove('-ml-64', 'sidebar-collapsed');
+            toggleBtn.classList.remove('collapsed');
+            toggleBtn.setAttribute('aria-expanded', 'true');
+            toggleBtn.setAttribute('title', 'Collapse sidebar');
+            if (toggleIcon) {
+                toggleIcon.className = 'fa-solid fa-xmark text-sm transition-transform duration-200 group-hover:scale-110';
+            }
+        }
+    }
+
+    // Immediate check to prevent flash of uncollapsed sidebar
+    var savedState = false;
+    try {
+        savedState = localStorage.getItem(storageKey) === 'true';
+    } catch (e) {}
+
+    if (savedState) {
+        applyState(true);
+    }
+
+    function initToggle() {
+        sidebar = document.getElementById('appSidebar');
+        toggleBtn = document.getElementById('sidebarToggle');
+        toggleIcon = document.getElementById('sidebarToggleIcon');
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var isCurrentlyCollapsed = sidebar && (sidebar.classList.contains('-ml-64') || sidebar.classList.contains('sidebar-collapsed'));
+                var newState = !isCurrentlyCollapsed;
+                applyState(newState);
+                try {
+                    localStorage.setItem(storageKey, newState ? 'true' : 'false');
+                } catch (err) {}
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initToggle);
+    } else {
+        initToggle();
+    }
+})();
+</script>
