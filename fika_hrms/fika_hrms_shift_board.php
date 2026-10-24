@@ -73,6 +73,28 @@ foreach ($rawShifts as $s) {
     }
 }
 
+// Fetch approved leaves overlapping this week from leave_requests
+$leaveStmt = $pdo->prepare("
+    SELECT lr.*, lt.name as type_name, lt.is_paid
+    FROM leave_requests lr
+    JOIN employees e ON lr.employee_id = e.id
+    LEFT JOIN leave_types lt ON lr.type = lt.code
+    WHERE e.branch_id = ? AND lr.status = 'APPROVED'
+      AND (lr.date_from <= ? AND lr.date_to >= ?)
+");
+$leaveStmt->execute([$selectedBranchId, $dateTo, $dateFrom]);
+$rawLeaves = $leaveStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$gridLeaves = [];
+foreach ($rawLeaves as $l) {
+    $curL = new DateTime(max($l['date_from'], $dateFrom));
+    $endL = new DateTime(min($l['date_to'], $dateTo));
+    while ($curL <= $endL) {
+        $gridLeaves[$l['employee_id']][$curL->format('Y-m-d')][] = $l;
+        $curL->modify('+1 day');
+    }
+}
+
 $csrfToken = Csrf::getToken();
 $pageTitle = "Roster & Scheduler";
 ?>
@@ -207,10 +229,36 @@ $pageTitle = "Roster & Scheduler";
                                         <?php foreach ($weekDays as $day): 
                                             $dateStr = $day['date'];
                                             $cellShifts = $gridShifts[$emp['id']][$dateStr] ?? [];
+                                            $cellLeaves = $gridLeaves[$emp['id']][$dateStr] ?? [];
+                                            $isOnLeave = !empty($cellLeaves);
                                             $isToday = ($dateStr === date('Y-m-d'));
                                         ?>
-                                            <td class="p-2 align-top border-r border-slate-100 <?= $isToday ? 'bg-indigo-50/20' : '' ?> relative group">
+                                            <td class="p-2 align-top border-r border-slate-100 <?= $isToday ? 'bg-indigo-50/20' : ($isOnLeave ? 'bg-amber-50/15' : '') ?> relative group">
                                                 <div class="min-h-[64px] flex flex-col justify-center space-y-1.5">
+                                                    <?php if ($isOnLeave): ?>
+                                                        <?php foreach ($cellLeaves as $lv): ?>
+                                                            <div class="p-2 rounded-xl bg-amber-50 border border-amber-300/80 text-amber-900 text-left shadow-xs">
+                                                                <div class="flex items-center justify-between">
+                                                                    <span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-700">
+                                                                        <i class="fa-solid fa-plane-departure text-[9px]"></i>
+                                                                        ON LEAVE
+                                                                    </span>
+                                                                    <?php if (!empty($lv['is_paid'])): ?>
+                                                                        <span class="text-[9px] font-bold text-amber-600 uppercase">Paid</span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                                <div class="text-[10px] font-bold text-amber-950 mt-1 truncate" title="<?= e($lv['type_name'] ?? 'Approved Leave') ?>">
+                                                                    <?= e($lv['type_name'] ?? 'Approved Leave') ?>
+                                                                </div>
+                                                                <?php if (!empty($lv['reason'])): ?>
+                                                                    <div class="text-[9px] text-amber-800/80 mt-0.5 truncate italic" title="<?= e($lv['reason']) ?>">
+                                                                        "<?= e($lv['reason']) ?>"
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        <?php endforeach; ?>
+                                                    <?php endif; ?>
+
                                                     <?php if (!empty($cellShifts)): ?>
                                                         <?php foreach ($cellShifts as $sh): 
                                                             $isDraft = ($sh['status'] === 'DRAFT');
@@ -244,7 +292,7 @@ $pageTitle = "Roster & Scheduler";
                                                                 <?php endif; ?>
                                                             </div>
                                                         <?php endforeach; ?>
-                                                    <?php else: ?>
+                                                    <?php elseif (!$isOnLeave): ?>
                                                         <?php if ($canManage): ?>
                                                             <button type="button" onclick="openAssignModal(<?= $emp['id'] ?>, '<?= e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) ?>', '<?= $dateStr ?>', null)" class="w-full h-10 border border-dashed border-slate-200 hover:border-indigo-400 rounded-xl text-slate-300 hover:text-indigo-600 flex items-center justify-center text-xs transition">
                                                                 <i class="fa-solid fa-plus"></i>

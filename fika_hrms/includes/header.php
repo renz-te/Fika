@@ -39,12 +39,13 @@ $canInv = Rbac::can('inventory.manage') || Rbac::can('inventory.view');
 $canProc = Rbac::can('procurement.view');
 $canFin = Rbac::can('finance.view');
 $canHR = Rbac::can('hr.employee.view');
+$canLeave = Rbac::can('hr.leave.view');
 $canPayroll = Rbac::can('payroll.view');
 $canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
 $canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
 $canDevices = Rbac::can('devices.view');
-$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices);
+$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices);
 
 $currentDir = basename(dirname($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? ''));
 $url = function(string $targetModule, string $file) use ($currentDir): string {
@@ -115,6 +116,10 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <i class="fa-solid fa-address-book w-5 text-center text-amber-500"></i>
             <span>Employees</span>
         </a>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_applications.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_applications.php', ['fika_hrms_interview_workspace.php', 'fika_hrms_applicants.php']) ?>">
+            <i class="fa-solid fa-id-card-clip w-5 text-center text-teal-400"></i>
+            <span>Applicants / ATS</span>
+        </a>
         <?php endif; ?>
         <?php if ($canPayroll): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_payroll.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_payroll.php') ?>">
@@ -132,6 +137,12 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <a href="<?= $url('fika_hrms', 'fika_hrms_attendance.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_attendance.php') ?>">
             <i class="fa-solid fa-clock w-5 text-center text-emerald-400"></i>
             <span>Attendance</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($canLeave): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_leave.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_leave.php') ?>">
+            <i class="fa-solid fa-plane-departure w-5 text-center text-blue-400"></i>
+            <span>Leave Management</span>
         </a>
         <?php endif; ?>
         <?php endif; ?>
