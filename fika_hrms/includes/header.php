@@ -33,12 +33,22 @@ $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER
 $isStaffOrHB = $isHB || $isStaff;
 
 $canPosDash = Rbac::can('pos.void_order') || Rbac::can('pos.menu.manage');
-$canInv = Rbac::can('inventory.manage');
+$canInv = Rbac::can('inventory.manage') || Rbac::can('inventory.view');
 $canProc = Rbac::can('procurement.view');
 $canFin = Rbac::can('finance.view');
 $canHR = Rbac::can('hr.employee.view');
+$canPayroll = Rbac::can('payroll.view');
+$canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
+$canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
-$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canUsers);
+$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canPayroll || $canShift || $canAttendance || $canUsers);
+
+$currentPage = basename($_SERVER['PHP_SELF'] ?? '');
+$navActive = function(string $page) use ($currentPage): string {
+    return ($currentPage === $page) 
+        ? 'bg-amber-600 text-white shadow-sm' 
+        : 'text-slate-300 hover:text-white hover:bg-slate-800 transition';
+};
 ?>
 <!-- Sidebar Navigation -->
 <aside class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20">
@@ -82,45 +92,59 @@ $showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $
         <?php if ($showMgmt): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">Management Suite</div>
         <?php if ($canHR): ?>
-        <a href="fika_hrms_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="fika_hrms_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_dashboard.php') ?>">
             <i class="fa-solid fa-users w-5 text-center text-amber-400"></i>
-            <span>HR Dashboard</span>
+            <span>HRMS Dashboard</span>
         </a>
-        <a href="fika_hrms_employees.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="fika_hrms_employees.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_employees.php') ?>">
             <i class="fa-solid fa-address-book w-5 text-center text-amber-500"></i>
             <span>Employees</span>
         </a>
-        <a href="fika_hrms_attendance.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <?php endif; ?>
+        <?php if ($canPayroll): ?>
+        <a href="fika_hrms_payroll.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_payroll.php') ?>">
+            <i class="fa-solid fa-file-invoice-dollar w-5 text-center text-emerald-400"></i>
+            <span>Payroll</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($canShift): ?>
+        <a href="fika_hrms_shift_board.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_shift_board.php') ?>">
+            <i class="fa-solid fa-calendar-days w-5 text-center text-purple-400"></i>
+            <span>Shift Board</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($canAttendance): ?>
+        <a href="fika_hrms_attendance.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_attendance.php') ?>">
             <i class="fa-solid fa-clock w-5 text-center text-emerald-400"></i>
             <span>Attendance</span>
         </a>
         <?php endif; ?>
         <?php if ($canPosDash): ?>
-        <a href="pos_dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="pos_dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('pos_dashboard') ?>">
             <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
             <span>POS Dashboard</span>
         </a>
         <?php endif; ?>
+        <?php if ($canFin): ?>
+        <a href="/fika_finance/fika_finance_reports.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_reports.php') ?>">
+            <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
+            <span>Finance</span>
+        </a>
+        <?php endif; ?>
         <?php if ($canInv): ?>
-        <a href="inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('inventory') ?>">
             <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
             <span>Inventory</span>
         </a>
         <?php endif; ?>
         <?php if ($canProc): ?>
-        <a href="procurement" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="procurement" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('procurement') ?>">
             <i class="fa-solid fa-truck-ramp-box w-5 text-center text-emerald-400"></i>
             <span>Procurement</span>
         </a>
         <?php endif; ?>
-        <?php if ($canFin): ?>
-        <a href="/fika_finance/fika_finance_reports.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
-            <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
-            <span>Financial Reports</span>
-        </a>
-        <?php endif; ?>
         <?php if ($canUsers): ?>
-        <a href="fika_hrms_users.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+        <a href="fika_hrms_users.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_users.php') ?>">
             <i class="fa-solid fa-user-shield w-5 text-center text-purple-400"></i>
             <span>Account Management</span>
         </a>

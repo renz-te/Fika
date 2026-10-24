@@ -35,25 +35,17 @@ $bStmt = $pdo->prepare($bSql);
 $bStmt->execute($bScopeParams);
 $branches = $bStmt->fetchAll();
 
-// Helper to mask or decrypt
-function display_sensitive(?string $encryptedValue, bool $canViewSensitive): string {
-    if (empty($encryptedValue)) return '';
-    
+// Helper to decrypt PII for editing or fallback to raw value
+function get_form_pii(?string $encryptedValue): string {
+    if ($encryptedValue === null || $encryptedValue === '') {
+        return '';
+    }
     try {
         $decrypted = Crypto::decrypt($encryptedValue);
-    } catch (Exception $e) {
-        return '****[ERR]';
+        return $decrypted !== null ? $decrypted : $encryptedValue;
+    } catch (\Throwable $e) {
+        return $encryptedValue;
     }
-    
-    if ($canViewSensitive) {
-        return $decrypted;
-    }
-    
-    if (strlen($decrypted) <= 4) {
-        return '****';
-    }
-    
-    return '****' . substr($decrypted, -4);
 }
 
 ?>
@@ -153,24 +145,24 @@ function display_sensitive(?string $encryptedValue, bool $canViewSensitive): str
                 <h3 class="text-lg font-medium text-gray-900 mb-4 border-b pb-2">Sensitive Information (Encrypted)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Bank Account</label>
-                        <input type="text" name="bank_no" value="<?= e(display_sensitive($employee['bank_no_enc'] ?? null, $canViewSensitive)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <label class="block text-sm font-medium text-gray-700">Bank Account Number</label>
+                        <input type="text" name="bank_account_no" value="<?= e(get_form_pii($employee['bank_no_enc'] ?? null)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">TIN</label>
-                        <input type="text" name="tin" value="<?= e(display_sensitive($employee['tin_enc'] ?? null, $canViewSensitive)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <input type="text" name="tin" value="<?= e(get_form_pii($employee['tin_enc'] ?? null)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">SSS</label>
-                        <input type="text" name="sss" value="<?= e(display_sensitive($employee['sss_no_enc'] ?? null, $canViewSensitive)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <label class="block text-sm font-medium text-gray-700">SSS Number</label>
+                        <input type="text" name="sss_no" value="<?= e(get_form_pii($employee['sss_no_enc'] ?? null)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">PhilHealth</label>
-                        <input type="text" name="philhealth" value="<?= e(display_sensitive($employee['philhealth_no_enc'] ?? null, $canViewSensitive)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <label class="block text-sm font-medium text-gray-700">PhilHealth Number</label>
+                        <input type="text" name="philhealth_no" value="<?= e(get_form_pii($employee['philhealth_no_enc'] ?? null)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Pag-IBIG</label>
-                        <input type="text" name="pagibig" value="<?= e(display_sensitive($employee['pagibig_no_enc'] ?? null, $canViewSensitive)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                        <label class="block text-sm font-medium text-gray-700">Pag-IBIG Number</label>
+                        <input type="text" name="pagibig_no" value="<?= e(get_form_pii($employee['pagibig_no_enc'] ?? null)) ?>" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
                     </div>
                 </div>
 

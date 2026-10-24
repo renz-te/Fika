@@ -115,29 +115,32 @@ $nextWeek = $nextWeekObj->format('Y-\WW');
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="csrf-token" content="<?= e($csrfToken) ?>">
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen">
+<body class="bg-slate-100 text-slate-800 min-h-screen flex">
 
-    <!-- Top Navigation -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
-                    <i class="fa-solid fa-calendar-days text-base"></i>
+    <?php require_once __DIR__ . '/includes/header.php'; ?>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <!-- Top Navigation -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
+                        <i class="fa-solid fa-calendar-days text-base"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg text-slate-900 leading-tight">Branch Shift Board</h1>
+                        <p class="text-xs text-slate-500">Weekly scheduling, shift drafting, and peer swap approvals</p>
+                    </div>
                 </div>
-                <div>
-                    <h1 class="font-bold text-lg text-slate-900 leading-tight">Branch Shift Board</h1>
-                    <p class="text-xs text-slate-500">Weekly scheduling, shift drafting, and peer swap approvals</p>
+                <div class="flex items-center space-x-4">
+                    <a href="fika_hrms_dashboard.php" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-left text-xs"></i> Back to Dashboard
+                    </a>
                 </div>
             </div>
-            <div class="flex items-center space-x-4">
-                <a href="fika_hrms_dashboard.php" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrow-left text-xs"></i> Back to Dashboard
-                </a>
-            </div>
-        </div>
-    </header>
+        </header>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
         
         <!-- Action & Filter Bar -->
         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-wrap justify-between items-center gap-4">
@@ -317,6 +320,7 @@ $nextWeek = $nextWeekObj->format('Y-\WW');
             </div>
         </div>
 
+    </div>
     </div>
 
     <!-- CREATE SHIFT MODAL -->

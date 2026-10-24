@@ -13,6 +13,7 @@ if ($id > 0) {
 }
 
 $employeeCode = trim($_POST['employee_code'] ?? '');
+$email = trim($_POST['email'] ?? '');
 $firstName = trim($_POST['first_name'] ?? '');
 $lastName = trim($_POST['last_name'] ?? '');
 $branchId = (int) ($_POST['branch_id'] ?? 0);
@@ -25,11 +26,20 @@ $basicSalaryRaw = trim($_POST['basic_salary'] ?? '0');
 $staffClass = trim($_POST['staff_class'] ?? 'CREW');
 $pin = trim($_POST['pin'] ?? '');
 
-$bankNo = trim($_POST['bank_no'] ?? '');
-$tin = trim($_POST['tin'] ?? '');
-$sss = trim($_POST['sss'] ?? '');
-$philhealth = trim($_POST['philhealth'] ?? '');
-$pagibig = trim($_POST['pagibig'] ?? '');
+$bankNoSubmitted = array_key_exists('bank_account_no', $_POST) || array_key_exists('bank_no', $_POST);
+$bankNo = $bankNoSubmitted ? trim($_POST['bank_account_no'] ?? $_POST['bank_no'] ?? '') : null;
+
+$tinSubmitted = array_key_exists('tin', $_POST);
+$tin = $tinSubmitted ? trim($_POST['tin'] ?? '') : null;
+
+$sssSubmitted = array_key_exists('sss_no', $_POST) || array_key_exists('sss', $_POST);
+$sss = $sssSubmitted ? trim($_POST['sss_no'] ?? $_POST['sss'] ?? '') : null;
+
+$philhealthSubmitted = array_key_exists('philhealth_no', $_POST) || array_key_exists('philhealth', $_POST);
+$philhealth = $philhealthSubmitted ? trim($_POST['philhealth_no'] ?? $_POST['philhealth'] ?? '') : null;
+
+$pagibigSubmitted = array_key_exists('pagibig_no', $_POST) || array_key_exists('pagibig', $_POST);
+$pagibig = $pagibigSubmitted ? trim($_POST['pagibig_no'] ?? $_POST['pagibig'] ?? '') : null;
 
 // Validation
 $errors = [];
@@ -82,30 +92,69 @@ try {
     $params = [];
     $auditChanges = [];
     
-    $checkSensitive = function($fieldName, $dbField, $newValue) use (&$updateFields, &$params, &$auditChanges, $existing) {
-        if ($newValue === '' || str_contains($newValue, '****')) {
-            // Keep existing (do not add to update list)
+    $handleSensitive = function(string $fieldName, string $dbField, ?string $newValue, bool $wasSubmitted) use (&$updateFields, &$params, &$auditChanges, $existing, $id) {
+        if (!$wasSubmitted) {
             return;
         }
-        $encValue = Crypto::encrypt($newValue);
-        if (!$existing || $existing[$dbField] !== $encValue) {
-            $updateFields[] = "`$dbField` = ?";
-            $params[] = $encValue;
-            $auditChanges[] = $fieldName; // Only log the name
+        
+        // Masked value safeguard: do not overwrite actual data with asterisks
+        if ($newValue !== null && str_contains($newValue, '****')) {
+            return;
+        }
+
+        if ($id > 0) {
+            // UPDATE: Check existing value
+            $existingEnc = $existing[$dbField] ?? null;
+            $existingPlain = null;
+            if (!empty($existingEnc)) {
+                try {
+                    $existingPlain = Crypto::decrypt($existingEnc) ?? $existingEnc;
+                } catch (\Throwable $t) {
+                    $existingPlain = $existingEnc;
+                }
+            }
+
+            if ($newValue === '' || $newValue === null) {
+                // Submitted as empty -> store NULL
+                if ($existingEnc !== null && $existingEnc !== '') {
+                    $updateFields[] = "`$dbField` = ?";
+                    $params[] = null;
+                    $auditChanges[] = "$fieldName (cleared)";
+                }
+            } else {
+                // Submitted with value -> encrypt if changed
+                if ($existingPlain !== $newValue) {
+                    $encValue = Crypto::encrypt($newValue);
+                    $updateFields[] = "`$dbField` = ?";
+                    $params[] = $encValue;
+                    $auditChanges[] = $fieldName;
+                }
+            }
+        } else {
+            // INSERT
+            if ($newValue !== '' && $newValue !== null) {
+                $encValue = Crypto::encrypt($newValue);
+                $updateFields[] = "`$dbField` = ?";
+                $params[] = $encValue;
+            } else {
+                $updateFields[] = "`$dbField` = ?";
+                $params[] = null;
+            }
         }
     };
     
-    $checkSensitive('Bank Account', 'bank_no_enc', $bankNo);
-    $checkSensitive('TIN', 'tin_enc', $tin);
-    $checkSensitive('SSS', 'sss_no_enc', $sss);
-    $checkSensitive('PhilHealth', 'philhealth_no_enc', $philhealth);
-    $checkSensitive('PagIBIG', 'pagibig_no_enc', $pagibig);
+    $handleSensitive('Bank Account', 'bank_no_enc', $bankNo, $bankNoSubmitted);
+    $handleSensitive('TIN', 'tin_enc', $tin, $tinSubmitted);
+    $handleSensitive('SSS', 'sss_no_enc', $sss, $sssSubmitted);
+    $handleSensitive('PhilHealth', 'philhealth_no_enc', $philhealth, $philhealthSubmitted);
+    $handleSensitive('Pag-IBIG', 'pagibig_no_enc', $pagibig, $pagibigSubmitted);
     
     // Standard Fields
     $standardMap = [
         'employee_code' => ['Code', $employeeCode],
         'first_name' => ['First Name', $firstName],
         'last_name' => ['Last Name', $lastName],
+        'email' => ['Email', $email ?: ($existing['email'] ?? (strtolower($employeeCode) . '@fika.local'))],
         'branch_id' => ['Branch', $branchId],
         'position' => ['Position', $position],
         'department' => ['Department', $department],
