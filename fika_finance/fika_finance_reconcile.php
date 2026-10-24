@@ -156,7 +156,7 @@ $activeTab = trim($_GET['tab'] ?? 'paid_without_payment');
             <div onclick="switchReconTab('paid_without_payment')" class="cursor-pointer bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:border-amber-400 transition-all">
                 <div class="flex justify-between items-start">
                     <span class="text-xs font-semibold uppercase text-gray-500">Paid Without Payment</span>
-                    <span class="text-lg">⚠️</span>
+                    <span class="text-lg"><i class="fa-solid fa-triangle-exclamation text-amber-500"></i></span>
                 </div>
                 <div id="countMissingPayment" class="text-2xl font-bold text-amber-600 mt-2">0</div>
                 <span class="text-[11px] text-gray-400 mt-1 block">PAID digital order with no payment record</span>
@@ -165,7 +165,7 @@ $activeTab = trim($_GET['tab'] ?? 'paid_without_payment');
             <div onclick="switchReconTab('payment_without_order')" class="cursor-pointer bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:border-red-400 transition-all">
                 <div class="flex justify-between items-start">
                     <span class="text-xs font-semibold uppercase text-gray-500">Payment Without Paid Order</span>
-                    <span class="text-lg">❌</span>
+                    <span class="text-lg"><i class="fa-solid fa-circle-xmark text-red-500"></i></span>
                 </div>
                 <div id="countUnpaidOrder" class="text-2xl font-bold text-red-600 mt-2">0</div>
                 <span class="text-[11px] text-gray-400 mt-1 block">Payment is paid but order is still UNPAID</span>
@@ -174,7 +174,7 @@ $activeTab = trim($_GET['tab'] ?? 'paid_without_payment');
             <div onclick="switchReconTab('amount_mismatch')" class="cursor-pointer bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:border-purple-400 transition-all">
                 <div class="flex justify-between items-start">
                     <span class="text-xs font-semibold uppercase text-gray-500">Amount Mismatch</span>
-                    <span class="text-lg">⚡</span>
+                    <span class="text-lg"><i class="fa-solid fa-bolt text-purple-500"></i></span>
                 </div>
                 <div id="countMismatch" class="text-2xl font-bold text-purple-600 mt-2">0</div>
                 <span class="text-[11px] text-gray-400 mt-1 block">Gross payment amount ≠ Order total</span>
@@ -347,7 +347,7 @@ $activeTab = trim($_GET['tab'] ?? 'paid_without_payment');
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="8" class="p-12 text-center text-gray-400">
-                            <div class="text-3xl mb-2">🎉</div>
+                            <div class="text-3xl mb-2 text-emerald-500"><i class="fa-solid fa-circle-check"></i></div>
                             <div class="font-semibold text-gray-700">Zero Anomalies Detected</div>
                             <div class="text-xs text-gray-400 mt-1">All digital transactions for this period are fully balanced.</div>
                         </td>

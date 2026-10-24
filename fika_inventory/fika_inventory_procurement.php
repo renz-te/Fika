@@ -191,7 +191,7 @@ $inventoryItems = $invStmt->fetchAll();
         <?php if ($canApprove): ?>
         <section id="sectionApprovals" class="hidden space-y-4">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5">
-                <span class="text-base">⚖️</span>
+                <span class="text-base"><i class="fa-solid fa-scale-balanced text-amber-600"></i></span>
                 <div>
                     <span class="font-bold">Maker-Checker Compliance:</span> As an Approver/Accountant, you can review and approve purchase orders submitted by Branch Managers. You cannot approve purchase orders that you created yourself.
                 </div>

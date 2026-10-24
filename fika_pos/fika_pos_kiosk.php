@@ -264,7 +264,7 @@ foreach ($products as $p) {
             </div>
 
             <div id="paid-badge" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 space-y-1">
-                <div class="font-black text-lg text-emerald-700">✓ PAYMENT RECEIVED!</div>
+                <div class="font-black text-lg text-emerald-700"><i class="fa-solid fa-circle-check mr-1.5"></i> PAYMENT RECEIVED!</div>
                 <p class="text-xs text-emerald-600">Your order has been sent to the kitchen and is now being prepared.</p>
             </div>
 

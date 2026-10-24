@@ -177,7 +177,7 @@ $thresholdPesos = $thresholdCents / 100;
 
             <!-- Auto-Approval Notice -->
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 flex items-start gap-3">
-                <span class="text-base">⚡</span>
+                <span class="text-base"><i class="fa-solid fa-bolt text-blue-600"></i></span>
                 <div>
                     <strong>Threshold Rules:</strong> Minor expenses of <strong>₱<?= number_format($thresholdPesos, 2) ?></strong> or less are <strong>automatically approved</strong> upon entry. Expenses exceeding ₱<?= number_format($thresholdPesos, 2) ?> require approval from the Branch Accountant (with Maker-Checker enforcement).
                 </div>
@@ -230,7 +230,7 @@ $thresholdPesos = $thresholdCents / 100;
         <?php if ($canApproveExpense): ?>
         <section id="sectionApprovals" class="hidden space-y-4">
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 flex items-start gap-2.5">
-                <span class="text-base">⚖️</span>
+                <span class="text-base"><i class="fa-solid fa-scale-balanced text-amber-600"></i></span>
                 <div>
                     <span class="font-bold">Maker-Checker Policy:</span> Branch Managers and Staff submit expenses. Branch Accountants review and approve expenses exceeding ₱<?= number_format($thresholdPesos, 2) ?>. You cannot approve an expense that you submitted.
                 </div>
@@ -453,9 +453,9 @@ $thresholdPesos = $thresholdCents / 100;
             const num = parseFloat(val || 0);
             const notice = document.getElementById('expThresholdNotice');
             if (num > approvalThresholdPesos) {
-                notice.innerHTML = `<span class="text-amber-600 font-semibold">⚠️ Exceeds ₱${approvalThresholdPesos.toFixed(2)}: Will be held in DRAFT queue for Accountant approval.</span>`;
+                notice.innerHTML = `<span class="text-amber-600 font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Exceeds ₱${approvalThresholdPesos.toFixed(2)}: Will be held in DRAFT queue for Accountant approval.</span>`;
             } else {
-                notice.innerHTML = `<span class="text-emerald-600 font-semibold">⚡ <= ₱${approvalThresholdPesos.toFixed(2)}: Will be automatically approved upon saving.</span>`;
+                notice.innerHTML = `<span class="text-emerald-600 font-semibold"><i class="fa-solid fa-bolt mr-1"></i> <= ₱${approvalThresholdPesos.toFixed(2)}: Will be automatically approved upon saving.</span>`;
             }
         }
 

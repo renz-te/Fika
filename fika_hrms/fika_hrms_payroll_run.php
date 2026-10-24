@@ -107,7 +107,7 @@ foreach ($items as $it) {
         
         <?php if ($hasMismatch): ?>
             <div class="mb-4 p-4 bg-red-100 text-red-800 rounded-lg shadow font-bold border border-red-300">
-                ⚠️ MATH MISMATCH DETECTED: The sum of items does not equal the net pay. This run must not be approved!
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i> MATH MISMATCH DETECTED: The sum of items does not equal the net pay. This run must not be approved!
                 <ul class="list-disc pl-5 mt-2 font-normal text-sm">
                     <?php foreach ($mismatchLogs as $log): ?>
                         <li><?= e($log) ?></li>

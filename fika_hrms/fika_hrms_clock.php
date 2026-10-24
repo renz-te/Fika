@@ -46,7 +46,7 @@ require __DIR__ . '/../app/bootstrap.php';
 
         <!-- Right Side: Input -->
         <div class="w-1/2 p-12 flex flex-col justify-center bg-gray-50 relative">
-            <button onclick="openSetup()" class="absolute top-4 right-4 text-gray-300 hover:text-gray-500">⚙️</button>
+            <button onclick="openSetup()" class="absolute top-4 right-4 text-gray-300 hover:text-gray-500"><i class="fa-solid fa-gear"></i></button>
             
             <div id="messageBox" class="hidden w-full p-4 mb-6 rounded-lg font-bold text-center text-lg"></div>
 

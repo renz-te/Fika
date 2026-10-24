@@ -1,54 +1,46 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+class_exists('Output');
 
 Auth::requireLogin();
 Rbac::require_permission('inventory.view');
 
 $user = Auth::user();
-global $pdo;
-
-// Fetch branches for branch switcher (Admin) or single branch
-$stmtBranches = $pdo->query("SELECT id, name FROM branches ORDER BY id ASC");
-$allBranches = $stmtBranches->fetchAll();
-
-$userBranchId = $user['branch_id'] ?? null;
-if ($userBranchId !== null) {
-    $currentBranchId = (int)$userBranchId;
-} else {
-    $currentBranchId = isset($_GET['branch_id']) ? (int)$_GET['branch_id'] : (int)($allBranches[0]['id'] ?? 1);
-}
-
-// Fetch branch name
-$branchName = 'Branch ' . $currentBranchId;
-foreach ($allBranches as $b) {
-    if ((int)$b['id'] === $currentBranchId) {
-        $branchName = $b['name'];
-        break;
-    }
-}
-
 $canAdjust = Rbac::can('inventory.adjust');
 $canApprove = Rbac::can('inventory.approve');
+
+global $pdo;
+
+$user_role_id = $user['role_id'] ?? null;
+$user_branch_id = $user['branch_id'] ?? null;
+$branches_list = [];
+
+if ($user_branch_id === null) {
+    $branches_list = $pdo->query("SELECT id, name FROM branches WHERE deleted_at IS NULL ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $selectedBranchId = (int)($_GET['branch_id'] ?? ($branches_list[0]['id'] ?? 1));
+} else {
+    $selectedBranchId = (int)$user_branch_id;
+    $bStmt = $pdo->prepare("SELECT id, name FROM branches WHERE id = ?");
+    $bStmt->execute([$selectedBranchId]);
+    $branches_list = $bStmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 $csrfToken = Csrf::getToken();
+$pageTitle = 'Inventory Management · Stock Ledger';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Stock & Adjustments - Fika</title>
+    <title>Inventory Management - Fika</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <meta name="csrf-token" content="<?= e($csrfToken) ?>">
-    <style>
-        .tab-btn.active {
-            border-bottom: 2px solid #2563eb;
-            color: #2563eb;
-            font-weight: 600;
-        }
-    </style>
+    <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
 </head>
-<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
+<body class="bg-slate-100 text-slate-800 min-h-screen flex">
 
     <?php require_once __DIR__ . '/../fika_hrms/includes/header.php'; ?>
 
@@ -56,736 +48,556 @@ $csrfToken = Csrf::getToken();
         <!-- Module Header & Sub-Nav -->
         <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xl shadow-sm">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
                         <i class="fa-solid fa-boxes-stacked text-base"></i>
                     </div>
                     <div>
-                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">Stock Ledger & Adjustments</span>
-                        <span class="text-[10px] uppercase font-bold text-blue-700 tracking-wider">Inventory Counts & Maker-Checker</span>
+                        <h1 class="font-bold text-lg text-slate-900 leading-tight">Inventory Management</h1>
+                        <p class="text-xs text-slate-500">Manage raw materials, stock levels, and audit adjustments</p>
                     </div>
                 </div>
 
-                <nav class="flex items-center gap-6 text-sm font-semibold text-slate-600">
-                    <a href="fika_inventory_dashboard.php" class="hover:text-slate-900 transition-colors py-5">Dashboard</a>
-                    <a href="fika_inventory_stock.php" class="text-blue-600 font-bold border-b-2 border-blue-600 py-5">Stock Ledger</a>
-                    <a href="fika_inventory_procurement.php" class="hover:text-slate-900 transition-colors py-5">Procurement</a>
-                    <a href="fika_inventory_recipes.php" class="hover:text-slate-900 transition-colors py-5">Recipe COGS</a>
-                </nav>
+                <div class="flex items-center gap-4">
+                    <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
+                        <a href="fika_inventory_dashboard.php" class="hover:text-slate-900 transition-colors py-5">Dashboard</a>
+                        <a href="fika_inventory_stock.php" class="text-blue-600 font-bold border-b-2 border-blue-600 py-5">Stock Ledger</a>
+                        <a href="fika_inventory_procurement.php" class="hover:text-slate-900 transition-colors py-5">Procurement</a>
+                        <a href="fika_inventory_recipes.php" class="hover:text-slate-900 transition-colors py-5">Recipe COGS</a>
+                    </nav>
+
+                    <?php if ($canAdjust): ?>
+                        <button type="button" onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-plus text-xs"></i> Add Item
+                        </button>
+                    <?php endif; ?>
+                </div>
             </div>
         </header>
 
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
 
-    <!-- Main Content Container -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <!-- Toast / Alerts -->
-        <div id="alertBox" class="hidden mb-6 p-4 rounded-lg text-sm border shadow-sm transition-all" role="alert"></div>
-
-        <!-- Metric Stat Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <div class="text-xs font-semibold uppercase tracking-wider text-gray-500">Total Items</div>
-                    <div id="statTotalItems" class="text-2xl font-bold text-gray-900 mt-1">--</div>
-                </div>
-                <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold text-lg">
-                    📦
-                </div>
-            </div>
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <div class="text-xs font-semibold uppercase tracking-wider text-gray-500">Low Stock Alerts</div>
-                    <div id="statLowStock" class="text-2xl font-bold text-amber-600 mt-1">--</div>
-                </div>
-                <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold text-lg">
-                    ⚠️
-                </div>
-            </div>
-            <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <div class="text-xs font-semibold uppercase tracking-wider text-gray-500">Pending Approvals</div>
-                    <div id="statPendingApprovals" class="text-2xl font-bold text-purple-600 mt-1">--</div>
-                </div>
-                <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center font-bold text-lg">
-                    ⏳
-                </div>
-            </div>
-        </div>
-
-        <!-- Navigation Tabs & Actions -->
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-            <div class="flex flex-wrap justify-between items-center border-b border-gray-200 px-6 pt-2 bg-gray-50/50">
-                <nav class="flex space-x-8 -mb-px" aria-label="Tabs">
-                    <button type="button" onclick="switchTab('stock')" id="tabBtnStock" class="tab-btn active py-4 px-1 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
-                        Live Stock Ledger
+            <!-- Branch Scoping & Tabs Bar -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-wrap justify-between items-center gap-4">
+                <div class="flex items-center space-x-6">
+                    <button type="button" onclick="switchTab('inventory')" id="tab-inventory" class="font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1.5 inline-flex items-center gap-2">
+                        <i class="fa-solid fa-warehouse"></i> Inventory Stock
                     </button>
-                    <button type="button" onclick="switchTab('pending')" id="tabBtnPending" class="tab-btn py-4 px-1 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 inline-flex items-center">
-                        Pending Approvals
-                        <span id="pendingBadge" class="hidden ml-2 px-2 py-0.5 text-xs font-bold bg-purple-100 text-purple-800 rounded-full">0</span>
+                    <button type="button" onclick="switchTab('approvals')" id="tab-approvals" class="font-semibold text-sm text-slate-500 hover:text-slate-800 border-b-2 border-transparent pb-1.5 transition inline-flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check"></i> Pending Approvals
+                        <span id="pending-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white leading-none">0</span>
                     </button>
-                </nav>
+                </div>
 
-                <div class="py-2 flex items-center space-x-3">
-                    <?php if ($canAdjust): ?>
-                        <button type="button" onclick="openItemModal()" class="inline-flex items-center px-3.5 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            + Add New Item
-                        </button>
+                <div class="flex items-center gap-3">
+                    <?php if ($user_branch_id === null && count($branches_list) > 1): ?>
+                        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider"><i class="fa-solid fa-location-dot text-blue-500 mr-1"></i> Branch:</label>
+                        <select id="global-branch-selector" onchange="handleBranchChange()" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white shadow-xs">
+                            <?php foreach ($branches_list as $branch): ?>
+                                <option value="<?= $branch['id'] ?>" <?= ($branch['id'] == $selectedBranchId) ? 'selected' : '' ?>><?= e($branch['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php else: ?>
+                        <input type="hidden" id="global-branch-selector" value="<?= $selectedBranchId ?>">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
+                            <i class="fa-solid fa-location-dot text-blue-500"></i> <?= e($branches_list[0]['name'] ?? 'Main Branch') ?>
+                        </span>
                     <?php endif; ?>
-                    <button type="button" onclick="loadAllData()" class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
-                        🔄 Refresh
-                    </button>
                 </div>
             </div>
 
-            <!-- Tab 1: Live Stock Table -->
-            <div id="tabPanelStock" class="p-6">
-                <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
-                    <div class="relative w-full sm:w-72">
-                        <input type="text" id="searchInput" oninput="filterItems()" placeholder="Search item or unit..." class="w-full text-sm border border-gray-300 rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <!-- Tab 1: Inventory Stock Table -->
+            <div id="view-inventory">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-4 border-b border-slate-200 bg-slate-50/70 flex justify-between items-center">
+                        <div class="relative w-72">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+                            <input type="text" id="search-input" oninput="filterInventory()" placeholder="Filter items by name..." class="pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs w-full focus:ring-2 focus:ring-blue-500 bg-white shadow-xs">
+                        </div>
+                        <span class="text-xs text-slate-500 font-medium" id="item-counter">Loading...</span>
                     </div>
-                    <div class="flex items-center space-x-2">
-                        <label class="text-xs text-gray-600 font-medium">Filter:</label>
-                        <select id="stockFilter" onchange="filterItems()" class="text-xs border border-gray-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="all">All Items</option>
-                            <option value="low">Low Stock Only</option>
-                            <option value="healthy">Adequate Stock</option>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 uppercase tracking-wider text-xs border-b border-slate-200">
+                                    <th class="py-3.5 px-6 font-bold">Item Name</th>
+                                    <th class="py-3.5 px-6 font-bold">Base Unit</th>
+                                    <th class="py-3.5 px-6 font-bold">Unit Cost</th>
+                                    <th class="py-3.5 px-6 font-bold">Stock Level</th>
+                                    <th class="py-3.5 px-6 font-bold">Status</th>
+                                    <th class="py-3.5 px-6 font-bold text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-list" class="divide-y divide-slate-100">
+                                <tr><td colspan="6" class="p-8 text-center text-slate-400">Loading inventory items...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Pending Approvals Table -->
+            <div id="view-approvals" class="hidden">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-4 border-b border-slate-200 bg-slate-50/70">
+                        <h3 class="font-bold text-slate-800 text-sm">Pending Stock Adjustments (Maker-Checker Queue)</h3>
+                        <p class="text-xs text-slate-500">Adjustments exceeding approval thresholds awaiting verification.</p>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 uppercase tracking-wider text-xs border-b border-slate-200">
+                                    <th class="py-3.5 px-6 font-bold">Date</th>
+                                    <th class="py-3.5 px-6 font-bold">Item Name</th>
+                                    <th class="py-3.5 px-6 font-bold">Quantity</th>
+                                    <th class="py-3.5 px-6 font-bold">Requested By</th>
+                                    <th class="py-3.5 px-6 font-bold">Reason</th>
+                                    <th class="py-3.5 px-6 font-bold text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="approvals-list" class="divide-y divide-slate-100">
+                                <tr><td colspan="6" class="p-8 text-center text-slate-400">Loading pending adjustments...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Add / Edit Inventory Item Modal -->
+    <div id="inv-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-base text-slate-800 flex items-center gap-2" id="modal-title">
+                    <i class="fa-solid fa-box text-blue-600"></i> Add Inventory Item
+                </h3>
+                <button type="button" onclick="closeModal('inv-modal')" class="text-slate-400 hover:text-rose-600 transition p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form id="inv-form" onsubmit="handleItemSave(event)" class="p-6 space-y-4">
+                <input type="hidden" id="inv-id" value="">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Item Name *</label>
+                    <input type="text" id="inv-name" required placeholder="e.g. Espresso Beans, Whole Milk" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 shadow-xs">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Base Unit *</label>
+                        <select id="inv-unit" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 bg-white shadow-xs">
+                            <option value="pcs">pcs</option>
+                            <option value="g">g</option>
+                            <option value="kg">kg</option>
+                            <option value="ml">ml</option>
+                            <option value="L">L</option>
+                            <option value="shots">shots</option>
+                            <option value="pumps">pumps</option>
                         </select>
                     </div>
-                </div>
-
-                <div class="overflow-x-auto border border-gray-200 rounded-lg">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50 text-gray-600 font-semibold text-xs uppercase tracking-wider">
-                            <tr>
-                                <th class="px-5 py-3.5 text-left">Item Name</th>
-                                <th class="px-4 py-3.5 text-left">Unit</th>
-                                <th class="px-4 py-3.5 text-right">Unit Cost</th>
-                                <th class="px-4 py-3.5 text-right">Current Stock</th>
-                                <th class="px-4 py-3.5 text-center">Status</th>
-                                <th class="px-5 py-3.5 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="stockTableBody" class="divide-y divide-gray-200 bg-white">
-                            <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-gray-500">Loading live stock data...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Tab 2: Pending Approvals (Maker-Checker) -->
-            <div id="tabPanelPending" class="p-6 hidden">
-                <div class="bg-blue-50/60 border border-blue-200 rounded-lg p-4 mb-5 text-sm text-blue-900 flex items-start space-x-3">
-                    <div class="text-lg">ℹ️</div>
                     <div>
-                        <div class="font-semibold">Maker-Checker Policy Enforcement</div>
-                        <div class="text-xs text-blue-800 mt-0.5">
-                            Adjustments with total financial impact exceeding ₱500.00 require secondary approval by an authorized checker (Branch Admin or Admin). The submitting maker cannot approve their own submission.
-                        </div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Unit Cost (₱) *</label>
+                        <input type="number" min="0" step="0.01" id="inv-unit-cost" required placeholder="0.00" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 shadow-xs">
                     </div>
                 </div>
-
-                <div class="overflow-x-auto border border-gray-200 rounded-lg">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50 text-gray-600 font-semibold text-xs uppercase tracking-wider">
-                            <tr>
-                                <th class="px-4 py-3.5 text-left">Date Submitted</th>
-                                <th class="px-4 py-3.5 text-left">Item</th>
-                                <th class="px-4 py-3.5 text-right">Qty</th>
-                                <th class="px-4 py-3.5 text-right">Unit Cost</th>
-                                <th class="px-4 py-3.5 text-right">Total Impact</th>
-                                <th class="px-4 py-3.5 text-left">Reason / Remarks</th>
-                                <th class="px-4 py-3.5 text-left">Maker</th>
-                                <th class="px-4 py-3.5 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pendingTableBody" class="divide-y divide-gray-200 bg-white">
-                            <tr>
-                                <td colspan="8" class="px-6 py-8 text-center text-gray-500">Loading pending adjustments...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Modal: Stock Adjustment -->
-    <div id="adjustModal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden transform transition-all">
-            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h3 class="text-lg font-bold text-gray-900">Adjust Inventory Stock</h3>
-                <button type="button" onclick="closeAdjustModal()" class="text-gray-400 hover:text-gray-600 font-bold text-xl">&times;</button>
-            </div>
-            <form id="adjustForm" onsubmit="handleAdjustSubmit(event)" class="p-6 space-y-4">
-                <input type="hidden" id="adjInventoryId" name="inventory_id">
-                
-                <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase">Item</label>
-                    <div id="adjItemDisplay" class="text-base font-semibold text-gray-900 mt-1">--</div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <p class="text-[11px] text-slate-500"><i class="fa-solid fa-circle-info mr-1 text-blue-500"></i>Use base units (e.g. grams, ml, pcs) and input the cost per single unit.</p>
+                <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <div class="text-xs text-gray-500 font-medium">Current Stock</div>
-                        <div id="adjCurrentStockDisplay" class="text-base font-bold text-gray-800">0.00</div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Current Stock</label>
+                        <input type="number" step="0.01" id="inv-stock" readonly class="w-full border border-slate-200 bg-slate-50 text-slate-500 rounded-xl px-3 py-2 text-xs font-mono cursor-not-allowed">
                     </div>
                     <div>
-                        <div class="text-xs text-gray-500 font-medium">Unit Cost</div>
-                        <div id="adjUnitCostDisplay" class="text-base font-bold text-gray-800">₱0.00</div>
+                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Low Stock Alert</label>
+                        <input type="number" min="0" step="0.01" id="inv-low-stock" value="10.00" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 shadow-xs">
                     </div>
                 </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 uppercase">Adjustment Quantity</label>
-                    <p class="text-xs text-gray-500 mb-1.5">Enter positive for addition/restock, negative for deduction/spoilage.</p>
-                    <input type="number" step="0.01" id="adjQuantity" name="quantity" required oninput="calcAdjustmentImpact()" class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-
-                <!-- Live Impact Calculator -->
-                <div id="adjImpactBox" class="p-3 rounded-lg border text-xs space-y-1 bg-gray-50 border-gray-200">
-                    <div class="flex justify-between font-semibold text-gray-700">
-                        <span>New Resulting Stock:</span>
-                        <span id="adjNewStock">0.00</span>
-                    </div>
-                    <div class="flex justify-between font-semibold text-gray-700">
-                        <span>Financial Value:</span>
-                        <span id="adjTotalImpact">₱0.00</span>
-                    </div>
-                    <div id="adjThresholdWarning" class="text-xs font-medium pt-1 text-gray-500">
-                        Adjustments over ₱500.00 require Maker-Checker approval.
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 uppercase">Reason / Justification <span class="text-red-500">*</span></label>
-                    <textarea id="adjReason" name="reason" rows="2.5" required placeholder="e.g. Broken bag during restocking, weekly audit discrepancy" class="w-full text-sm border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                </div>
-
-                <div class="pt-2 flex justify-end space-x-3">
-                    <button type="button" onclick="closeAdjustModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" id="adjSubmitBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">Submit Adjustment</button>
+                <div class="pt-3 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('inv-modal')" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition">Save Item</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Modal: Add / Edit Item -->
-    <div id="itemModal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl max-w-md w-full shadow-2xl border border-gray-200 overflow-hidden transform transition-all">
-            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h3 id="itemModalTitle" class="text-lg font-bold text-gray-900">Add Inventory Item</h3>
-                <button type="button" onclick="closeItemModal()" class="text-gray-400 hover:text-gray-600 font-bold text-xl">&times;</button>
+    <!-- Manual Stock Adjustment Modal -->
+    <div id="adj-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-base text-slate-800 flex items-center gap-2" id="adj-modal-title">
+                    <i class="fa-solid fa-sliders text-amber-600"></i> Manual Stock Adjustment
+                </h3>
+                <button type="button" onclick="closeModal('adj-modal')" class="text-slate-400 hover:text-rose-600 transition p-1">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
             </div>
-            <form id="itemForm" onsubmit="handleItemSubmit(event)" class="p-6 space-y-4">
-                <input type="hidden" id="itemId" name="id" value="0">
-                
-                <div>
-                    <label class="block text-xs font-semibold text-gray-700 uppercase">Item Name <span class="text-red-500">*</span></label>
-                    <input type="text" id="itemName" name="item_name" required placeholder="e.g. Arabica Coffee Beans" class="mt-1 w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
+            <form id="adj-form" onsubmit="handleAdjustmentSubmit(event)" class="p-6 space-y-4">
+                <input type="hidden" id="adj-id" value="">
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-700 uppercase">Unit <span class="text-red-500">*</span></label>
-                        <input type="text" id="itemUnit" name="unit" required placeholder="e.g. kg, pcs, liters" class="mt-1 w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-700 uppercase">Unit Cost (₱) <span class="text-red-500">*</span></label>
-                        <input type="number" step="0.01" min="0" id="itemUnitCost" name="unit_cost" required placeholder="0.00" class="mt-1 w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div class="text-xs text-slate-500">Selected Item:</div>
+                    <div id="adj-item-name" class="font-bold text-slate-900 text-sm">Item Name</div>
+                    <div class="text-xs text-slate-500 mt-1 font-mono">Current Stock: <span id="adj-current-stock" class="font-bold text-slate-800">0.00</span></div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-gray-700 uppercase">Low Stock Threshold</label>
-                    <p class="text-xs text-gray-500 mb-1">When stock drops to or below this level, a warning badge is shown.</p>
-                    <input type="number" step="0.01" min="0" id="itemLowThreshold" name="low_stock_threshold" value="10.00" class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Adjustment Type *</label>
+                    <select id="adj-type" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 bg-white shadow-xs">
+                        <option value="Spoilage">Spoilage / Expired (Deduct)</option>
+                        <option value="Spill">Spill / Breakage (Deduct)</option>
+                        <option value="Staff Meal">Staff Meal (Deduct)</option>
+                        <option value="Stock Correction">Stock Count Correction</option>
+                    </select>
                 </div>
 
-                <div class="pt-2 flex justify-end space-x-3">
-                    <button type="button" onclick="closeItemModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button type="submit" id="itemSubmitBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">Save Item</button>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Quantity <span id="adj-unit-label"></span> *</label>
+                    <div class="flex shadow-xs">
+                        <input type="number" step="0.01" id="adj-qty" required placeholder="Enter adjustment (+ or -)" class="flex-1 border border-slate-300 rounded-l-xl px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500">
+                        <span id="adj-unit-suffix" class="inline-flex items-center px-3 rounded-r-xl border border-l-0 border-slate-300 bg-slate-50 text-slate-500 text-xs font-bold">unit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">For spoilage/spills, enter a negative number (e.g. -500) to deduct from stock.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Remarks / Justification *</label>
+                    <textarea id="adj-remarks" rows="2" required class="w-full border border-slate-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-blue-500 shadow-xs" placeholder="Reason for inventory variance..."></textarea>
+                </div>
+
+                <div class="pt-3 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('adj-modal')" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition">Submit Adjustment</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- JavaScript Application Logic -->
     <script>
-        const CURRENT_BRANCH_ID = <?= (int)$currentBranchId ?>;
-        const CURRENT_USER_ID = <?= (int)$user['id'] ?>;
-        const CAN_ADJUST = <?= $canAdjust ? 'true' : 'false' ?>;
-        const CAN_APPROVE = <?= $canApprove ? 'true' : 'false' ?>;
-        const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        const API_URL = 'api/fika_inventory_adjust.php';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    let inventoryItems = [];
+    const canApproveUser = <?= $canApprove ? 'true' : 'false' ?>;
 
-        let itemsData = [];
-        let pendingData = [];
-        let activeAdjustItem = null;
+    function closeModal(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+        }
+    }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadAllData();
+    function openModal(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+        }
+    }
+
+    function switchTab(tab) {
+        const tabInv = document.getElementById('tab-inventory');
+        const tabApp = document.getElementById('tab-approvals');
+        const viewInv = document.getElementById('view-inventory');
+        const viewApp = document.getElementById('view-approvals');
+
+        if (tab === 'inventory') {
+            tabInv.className = "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1.5 inline-flex items-center gap-2";
+            tabApp.className = "font-semibold text-sm text-slate-500 hover:text-slate-800 border-b-2 border-transparent pb-1.5 transition inline-flex items-center gap-2";
+            viewInv.classList.remove('hidden');
+            viewApp.classList.add('hidden');
+        } else {
+            tabApp.className = "font-bold text-sm text-blue-600 border-b-2 border-blue-600 pb-1.5 inline-flex items-center gap-2";
+            tabInv.className = "font-semibold text-sm text-slate-500 hover:text-slate-800 border-b-2 border-transparent pb-1.5 transition inline-flex items-center gap-2";
+            viewInv.classList.add('hidden');
+            viewApp.classList.remove('hidden');
+            fetchApprovals();
+        }
+    }
+
+    function handleBranchChange() {
+        fetchInventory();
+        fetchApprovals();
+    }
+
+    async function fetchInventory() {
+        const branchSelector = document.getElementById('global-branch-selector');
+        const branchId = branchSelector ? branchSelector.value : 1;
+        try {
+            const res = await fetch(`api/fika_inventory_adjust.php?action=list&branch_id=${branchId}`);
+            const data = await res.json();
+            if (data.success) {
+                inventoryItems = data.data;
+                renderInventory(inventoryItems);
+            }
+        } catch (err) {
+            console.error('Failed to load inventory items:', err);
+        }
+    }
+
+    function renderInventory(items) {
+        const list = document.getElementById('inventory-list');
+        const counter = document.getElementById('item-counter');
+        list.innerHTML = '';
+        counter.innerText = `Showing ${items.length} item(s)`;
+
+        if (!items || items.length === 0) {
+            list.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">No inventory items found.</td></tr>`;
+            return;
+        }
+
+        items.forEach(item => {
+            const isLow = (item.current_stock <= item.low_stock_threshold);
+            const statusClass = isLow ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+            const statusText = isLow ? 'Low Stock Alert' : 'In Stock';
+
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50/70 transition-colors';
+            tr.innerHTML = `
+                <td class="py-4 px-6 font-bold text-slate-900">${escapeHtml(item.item_name)}</td>
+                <td class="py-4 px-6 font-mono text-xs font-semibold text-slate-600">${escapeHtml(item.unit)}</td>
+                <td class="py-4 px-6 font-mono text-xs font-semibold text-slate-700">₱${parseFloat(item.unit_cost).toFixed(2)}</td>
+                <td class="py-4 px-6">
+                    <span class="font-mono text-xs font-bold ${isLow ? 'text-rose-600' : 'text-slate-900'}">${parseFloat(item.current_stock).toFixed(2)}</span>
+                    <span class="text-[11px] text-slate-400 ml-1">/ alert: ${parseFloat(item.low_stock_threshold).toFixed(2)}</span>
+                </td>
+                <td class="py-4 px-6">
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusClass}">
+                        ${statusText}
+                    </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center gap-2">
+                        <button type="button" onclick="openAdjustModal(${item.id})" class="text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
+                            <i class="fa-solid fa-sliders text-[11px]"></i> Adjust
+                        </button>
+                        <button type="button" onclick="openEditModal(${item.id})" class="text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
+                            <i class="fa-solid fa-pen text-[11px]"></i> Edit
+                        </button>
+                    </div>
+                </td>
+            `;
+            list.appendChild(tr);
         });
+    }
 
-        function changeBranch(branchId) {
-            window.location.href = `fika_inventory_stock.php?branch_id=${branchId}`;
-        }
+    function filterInventory() {
+        const q = (document.getElementById('search-input').value || '').toLowerCase().trim();
+        const filtered = inventoryItems.filter(i => (i.item_name || '').toLowerCase().includes(q));
+        renderInventory(filtered);
+    }
 
-        function switchTab(tab) {
-            const stockTab = document.getElementById('tabPanelStock');
-            const pendingTab = document.getElementById('tabPanelPending');
-            const btnStock = document.getElementById('tabBtnStock');
-            const btnPending = document.getElementById('tabBtnPending');
-
-            if (tab === 'stock') {
-                stockTab.classList.remove('hidden');
-                pendingTab.classList.add('hidden');
-                btnStock.classList.add('active');
-                btnPending.classList.remove('active');
-            } else {
-                stockTab.classList.add('hidden');
-                pendingTab.classList.remove('hidden');
-                btnStock.classList.remove('active');
-                btnPending.classList.add('active');
-            }
-        }
-
-        function showAlert(msg, isError = false) {
-            const box = document.getElementById('alertBox');
-            box.className = isError 
-                ? 'mb-6 p-4 rounded-lg text-sm border shadow-sm transition-all bg-red-50 text-red-800 border-red-200'
-                : 'mb-6 p-4 rounded-lg text-sm border shadow-sm transition-all bg-green-50 text-green-800 border-green-200';
-            box.innerHTML = (isError ? '<strong>Error:</strong> ' : '<strong>Success:</strong> ') + escapeHtml(msg);
-            box.classList.remove('hidden');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function hideAlert() {
-            document.getElementById('alertBox').classList.add('hidden');
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            return String(text)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-        }
-
-        async function loadAllData() {
-            await Promise.all([fetchStockList(), fetchPendingList()]);
-        }
-
-        async function fetchStockList() {
-            try {
-                const res = await fetch(`${API_URL}?action=list&branch_id=${CURRENT_BRANCH_ID}`, {
-                    headers: { 'Accept': 'application/json' }
-                });
-                const data = await res.json();
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || 'Failed to fetch inventory stock.', true);
-                    return;
+    async function fetchApprovals() {
+        const branchSelector = document.getElementById('global-branch-selector');
+        const branchId = branchSelector ? branchSelector.value : 1;
+        try {
+            const res = await fetch(`api/fika_inventory_adjust.php?action=pending_list&branch_id=${branchId}`);
+            const data = await res.json();
+            if (data.success) {
+                renderApprovals(data.data);
+                const badge = document.getElementById('pending-badge');
+                if (data.data.length > 0) {
+                    badge.innerText = data.data.length;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
                 }
-                itemsData = data.data || [];
-                renderStockTable(itemsData);
-                updateStats();
-            } catch (err) {
-                showAlert('Network error fetching stock: ' + err.message, true);
             }
+        } catch (err) {
+            console.error('Failed to load pending approvals:', err);
+        }
+    }
+
+    function renderApprovals(listData) {
+        const list = document.getElementById('approvals-list');
+        list.innerHTML = '';
+
+        if (!listData || listData.length === 0) {
+            list.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">No pending adjustments awaiting approval.</td></tr>`;
+            return;
         }
 
-        async function fetchPendingList() {
-            try {
-                const res = await fetch(`${API_URL}?action=pending_list&branch_id=${CURRENT_BRANCH_ID}`, {
-                    headers: { 'Accept': 'application/json' }
-                });
-                const data = await res.json();
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || 'Failed to fetch pending adjustments.', true);
-                    return;
-                }
-                pendingData = data.data || [];
-                renderPendingTable(pendingData);
-                updateStats();
-            } catch (err) {
-                showAlert('Network error fetching pending approvals: ' + err.message, true);
-            }
-        }
+        listData.forEach(adj => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 transition-colors';
+            tr.innerHTML = `
+                <td class="py-4 px-6 text-xs text-slate-600 font-mono">${escapeHtml(adj.created_at)}</td>
+                <td class="py-4 px-6 font-bold text-slate-900">${escapeHtml(adj.item_name)}</td>
+                <td class="py-4 px-6 font-mono text-xs font-bold ${adj.quantity < 0 ? 'text-rose-600' : 'text-emerald-600'}">
+                    ${parseFloat(adj.quantity).toFixed(2)} ${escapeHtml(adj.unit)}
+                </td>
+                <td class="py-4 px-6 text-xs text-slate-700 font-medium">${escapeHtml(adj.maker_username || 'Staff')}</td>
+                <td class="py-4 px-6 text-xs text-slate-600">${escapeHtml(adj.reason || 'None')}</td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    ${canApproveUser ? `
+                        <button type="button" onclick="decideApproval(${adj.id}, 'approve')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded-lg text-xs mr-1 shadow-xs transition">
+                            <i class="fa-solid fa-check mr-1"></i> Approve
+                        </button>
+                        <button type="button" onclick="decideApproval(${adj.id}, 'reject')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 px-3 rounded-lg text-xs shadow-xs transition">
+                            <i class="fa-solid fa-xmark mr-1"></i> Reject
+                        </button>
+                    ` : '<span class="text-xs text-slate-400 italic">Pending Maker-Checker</span>'}
+                </td>
+            `;
+            list.appendChild(tr);
+        });
+    }
 
-        function updateStats() {
-            document.getElementById('statTotalItems').textContent = itemsData.length;
-            const lowCount = itemsData.filter(i => i.is_low_stock).length;
-            document.getElementById('statLowStock').textContent = lowCount;
-            document.getElementById('statPendingApprovals').textContent = pendingData.length;
+    function openAddModal() {
+        document.getElementById('modal-title').innerHTML = '<i class="fa-solid fa-box text-blue-600"></i> Add Inventory Item';
+        document.getElementById('inv-id').value = '';
+        document.getElementById('inv-name').value = '';
+        document.getElementById('inv-unit').value = 'pcs';
+        document.getElementById('inv-unit-cost').value = '';
+        document.getElementById('inv-stock').value = '0.00';
+        document.getElementById('inv-low-stock').value = '10.00';
+        openModal('inv-modal');
+    }
 
-            const badge = document.getElementById('pendingBadge');
-            if (pendingData.length > 0) {
-                badge.textContent = pendingData.length;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
-        }
+    function openEditModal(id) {
+        const item = inventoryItems.find(i => i.id == id);
+        if (!item) return;
 
-        function filterItems() {
-            const query = (document.getElementById('searchInput').value || '').toLowerCase();
-            const filter = document.getElementById('stockFilter').value;
+        document.getElementById('modal-title').innerHTML = '<i class="fa-solid fa-pen-to-square text-blue-600"></i> Edit Inventory Item';
+        document.getElementById('inv-id').value = item.id;
+        document.getElementById('inv-name').value = item.item_name;
+        document.getElementById('inv-unit').value = item.unit;
+        document.getElementById('inv-unit-cost').value = parseFloat(item.unit_cost).toFixed(2);
+        document.getElementById('inv-stock').value = parseFloat(item.current_stock).toFixed(2);
+        document.getElementById('inv-low-stock').value = parseFloat(item.low_stock_threshold).toFixed(2);
+        openModal('inv-modal');
+    }
 
-            const filtered = itemsData.filter(item => {
-                const matchesQuery = item.item_name.toLowerCase().includes(query) || (item.unit && item.unit.toLowerCase().includes(query));
-                if (!matchesQuery) return false;
+    function openAdjustModal(id) {
+        const item = inventoryItems.find(i => i.id == id);
+        if (!item) return;
 
-                if (filter === 'low') return item.is_low_stock;
-                if (filter === 'healthy') return !item.is_low_stock;
-                return true;
+        document.getElementById('adj-id').value = item.id;
+        document.getElementById('adj-item-name').innerText = item.item_name;
+        document.getElementById('adj-current-stock').innerText = `${parseFloat(item.current_stock).toFixed(2)} ${item.unit}`;
+        document.getElementById('adj-unit-suffix').innerText = item.unit;
+        document.getElementById('adj-unit-label').innerText = `(${item.unit})`;
+        document.getElementById('adj-qty').value = '';
+        document.getElementById('adj-remarks').value = '';
+        openModal('adj-modal');
+    }
+
+    async function handleItemSave(e) {
+        e.preventDefault();
+        const branchSelector = document.getElementById('global-branch-selector');
+        const branchId = branchSelector ? branchSelector.value : 1;
+
+        const payload = {
+            action: 'item_save',
+            id: document.getElementById('inv-id').value,
+            item_name: document.getElementById('inv-name').value,
+            unit: document.getElementById('inv-unit').value,
+            unit_cost: document.getElementById('inv-unit-cost').value,
+            low_stock_threshold: document.getElementById('inv-low-stock').value,
+            branch_id: branchId,
+            csrf_token: csrfToken
+        };
+
+        try {
+            const res = await fetch('api/fika_inventory_adjust.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify(payload)
             });
-
-            renderStockTable(filtered);
-        }
-
-        function renderStockTable(items) {
-            const tbody = document.getElementById('stockTableBody');
-            if (!items || items.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">No inventory items found for this branch.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = items.map(item => {
-                const stock = parseFloat(item.current_stock || 0);
-                const threshold = parseFloat(item.low_stock_threshold || 10);
-                const unitCost = parseFloat(item.unit_cost || 0);
-                const isLow = item.is_low_stock;
-
-                const statusBadge = isLow
-                    ? `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
-                         ⚠️ Low Stock (≤ ${threshold.toFixed(2)})
-                       </span>`
-                    : `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                         ✓ In Stock
-                       </span>`;
-
-                return `
-                    <tr class="hover:bg-gray-50/80 transition-colors">
-                        <td class="px-5 py-3.5 font-medium text-gray-900">${escapeHtml(item.item_name)}</td>
-                        <td class="px-4 py-3.5 text-gray-600">${escapeHtml(item.unit)}</td>
-                        <td class="px-4 py-3.5 text-right font-mono text-gray-800">₱${unitCost.toFixed(2)}</td>
-                        <td class="px-4 py-3.5 text-right font-mono font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}">${stock.toFixed(2)}</td>
-                        <td class="px-4 py-3.5 text-center">${statusBadge}</td>
-                        <td class="px-5 py-3.5 text-right space-x-2">
-                            ${CAN_ADJUST ? `
-                                <button type="button" onclick="openAdjustModal(${item.id})" class="inline-flex items-center px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-semibold">
-                                    Adjust
-                                </button>
-                                <button type="button" onclick="editItem(${item.id})" class="inline-flex items-center px-2.5 py-1 bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200 rounded text-xs font-medium">
-                                    Edit
-                                </button>
-                                <button type="button" onclick="deactivateItem(${item.id}, '${escapeHtml(item.item_name)}')" class="inline-flex items-center px-2 py-1 text-red-600 hover:text-red-800 text-xs">
-                                    Deactivate
-                                </button>
-                            ` : `<span class="text-xs text-gray-400">View only</span>`}
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        function renderPendingTable(adjustments) {
-            const tbody = document.getElementById('pendingTableBody');
-            if (!adjustments || adjustments.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-gray-500">No pending adjustments awaiting approval.</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = adjustments.map(adj => {
-                const qty = parseFloat(adj.quantity);
-                const totalCost = (adj.total_cost_cents / 100).toFixed(2);
-                const unitCost = parseFloat(adj.unit_cost_snapshot || 0).toFixed(2);
-                const isMaker = (parseInt(adj.created_by) === CURRENT_USER_ID);
-
-                let actionButtons = '';
-                if (CAN_APPROVE) {
-                    if (isMaker) {
-                        actionButtons = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600 font-medium">Your Submission (Pending)</span>`;
-                    } else {
-                        actionButtons = `
-                            <div class="inline-flex items-center space-x-2">
-                                <button type="button" onclick="handlePendingAction(${adj.id}, 'approve')" class="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold shadow-sm">
-                                    Approve
-                                </button>
-                                <button type="button" onclick="handlePendingAction(${adj.id}, 'reject')" class="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold shadow-sm">
-                                    Reject
-                                </button>
-                            </div>
-                        `;
-                    }
-                } else {
-                    actionButtons = `<span class="text-xs text-gray-400">Pending Checker</span>`;
-                }
-
-                return `
-                    <tr class="hover:bg-gray-50/80 transition-colors">
-                        <td class="px-4 py-3.5 text-xs text-gray-600">${escapeHtml(adj.created_at)}</td>
-                        <td class="px-4 py-3.5 font-medium text-gray-900">${escapeHtml(adj.item_name)} (${escapeHtml(adj.unit)})</td>
-                        <td class="px-4 py-3.5 text-right font-mono font-bold ${qty > 0 ? 'text-green-600' : 'text-red-600'}">
-                            ${qty > 0 ? '+' : ''}${qty.toFixed(2)}
-                        </td>
-                        <td class="px-4 py-3.5 text-right font-mono text-gray-700">₱${unitCost}</td>
-                        <td class="px-4 py-3.5 text-right font-mono font-bold text-gray-900">₱${totalCost}</td>
-                        <td class="px-4 py-3.5 text-xs text-gray-700 max-w-xs truncate" title="${escapeHtml(adj.reason)}">${escapeHtml(adj.reason)}</td>
-                        <td class="px-4 py-3.5 text-xs text-gray-600 font-medium">${escapeHtml(adj.maker_username || 'User #' + adj.created_by)}</td>
-                        <td class="px-4 py-3.5 text-center">${actionButtons}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // Adjust Modal Handling
-        function openAdjustModal(itemId) {
-            hideAlert();
-            const item = itemsData.find(i => i.id === itemId);
-            if (!item) return;
-
-            activeAdjustItem = item;
-            document.getElementById('adjInventoryId').value = item.id;
-            document.getElementById('adjItemDisplay').textContent = `${item.item_name} (${item.unit})`;
-            document.getElementById('adjCurrentStockDisplay').textContent = parseFloat(item.current_stock || 0).toFixed(2);
-            document.getElementById('adjUnitCostDisplay').textContent = `₱${parseFloat(item.unit_cost || 0).toFixed(2)}`;
-            document.getElementById('adjQuantity').value = '';
-            document.getElementById('adjReason').value = '';
-            
-            calcAdjustmentImpact();
-            document.getElementById('adjustModal').classList.remove('hidden');
-        }
-
-        function closeAdjustModal() {
-            document.getElementById('adjustModal').classList.add('hidden');
-            activeAdjustItem = null;
-        }
-
-        function calcAdjustmentImpact() {
-            if (!activeAdjustItem) return;
-            const currentStock = parseFloat(activeAdjustItem.current_stock || 0);
-            const unitCost = parseFloat(activeAdjustItem.unit_cost || 0);
-            const qty = parseFloat(document.getElementById('adjQuantity').value || 0);
-            const newStock = currentStock + qty;
-
-            const totalImpactPesos = Math.abs(qty) * unitCost;
-
-            document.getElementById('adjNewStock').textContent = newStock.toFixed(2);
-            document.getElementById('adjTotalImpact').textContent = `₱${totalImpactPesos.toFixed(2)}`;
-
-            const warnElem = document.getElementById('adjThresholdWarning');
-            const impactBox = document.getElementById('adjImpactBox');
-
-            if (totalImpactPesos > 500) {
-                warnElem.innerHTML = `⚠️ <strong>Exceeds ₱500.00 threshold:</strong> Will be queued as <strong>PENDING</strong> for Checker approval.`;
-                warnElem.className = 'text-xs font-semibold pt-1 text-purple-700';
-                impactBox.className = 'p-3 rounded-lg border text-xs space-y-1 bg-purple-50 border-purple-200';
+            const json = await res.json();
+            if (res.ok && json.success) {
+                closeModal('inv-modal');
+                fetchInventory();
             } else {
-                warnElem.innerHTML = `✓ Within ₱500.00 threshold: Will be auto-approved immediately.`;
-                warnElem.className = 'text-xs font-medium pt-1 text-green-700';
-                impactBox.className = 'p-3 rounded-lg border text-xs space-y-1 bg-green-50 border-green-200';
+                alert(json.error || 'Failed to save item.');
             }
+        } catch (err) {
+            alert('Network error: ' + err.message);
+        }
+    }
+
+    async function handleAdjustmentSubmit(e) {
+        e.preventDefault();
+        const branchSelector = document.getElementById('global-branch-selector');
+        const branchId = branchSelector ? branchSelector.value : 1;
+        const adjType = document.getElementById('adj-type').value;
+        let qty = parseFloat(document.getElementById('adj-qty').value);
+
+        if (isNaN(qty) || qty === 0) {
+            alert('Please enter a valid non-zero adjustment quantity.');
+            return;
         }
 
-        async function handleAdjustSubmit(e) {
-            e.preventDefault();
-            hideAlert();
+        const remarks = document.getElementById('adj-remarks').value.trim();
+        const fullReason = `[${adjType}] ${remarks}`;
 
-            const btn = document.getElementById('adjSubmitBtn');
-            btn.disabled = true;
-            btn.textContent = 'Submitting...';
+        const payload = {
+            action: 'submit',
+            branch_id: branchId,
+            inventory_id: document.getElementById('adj-id').value,
+            quantity: qty,
+            reason: fullReason,
+            csrf_token: csrfToken
+        };
 
-            const payload = {
-                action: 'submit',
-                branch_id: CURRENT_BRANCH_ID,
-                inventory_id: parseInt(document.getElementById('adjInventoryId').value),
-                quantity: parseFloat(document.getElementById('adjQuantity').value),
-                reason: document.getElementById('adjReason').value.trim()
-            };
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || 'Failed to submit adjustment.', true);
-                    return;
+        try {
+            const res = await fetch('api/fika_inventory_adjust.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                closeModal('adj-modal');
+                fetchInventory();
+                fetchApprovals();
+                if (json.status === 'PENDING') {
+                    alert('Adjustment submitted! Because of high value, it is placed in the Maker-Checker Pending Approvals queue.');
                 }
-
-                closeAdjustModal();
-                if (data.status === 'PENDING') {
-                    showAlert(`Adjustment #${data.adjustment_id} exceeds threshold and has been submitted for Checker approval.`);
-                    switchTab('pending');
-                } else {
-                    showAlert(`Adjustment #${data.adjustment_id} auto-approved. New stock: ${data.new_stock}`);
-                }
-
-                await loadAllData();
-            } catch (err) {
-                showAlert('Network error: ' + err.message, true);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Submit Adjustment';
+            } else {
+                alert(json.error || 'Failed to submit adjustment.');
             }
+        } catch (err) {
+            alert('Network error: ' + err.message);
         }
+    }
 
-        // Pending Maker-Checker Approve / Reject
-        async function handlePendingAction(adjId, action) {
-            if (!confirm(`Are you sure you want to ${action.toUpperCase()} adjustment #${adjId}?`)) {
-                return;
+    async function decideApproval(adjId, decision) {
+        if (!confirm(`Are you sure you want to ${decision} this stock adjustment?`)) return;
+
+        try {
+            const res = await fetch('api/fika_inventory_adjust.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({
+                    action: decision,
+                    adjustment_id: adjId,
+                    csrf_token: csrfToken
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                fetchInventory();
+                fetchApprovals();
+            } else {
+                alert(json.error || `Failed to ${decision} adjustment.`);
             }
-            hideAlert();
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        action: action,
-                        adjustment_id: adjId
-                    })
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || `Failed to ${action} adjustment.`, true);
-                    return;
-                }
-
-                showAlert(`Adjustment #${adjId} successfully ${data.status}.`);
-                await loadAllData();
-            } catch (err) {
-                showAlert(`Error processing ${action}: ` + err.message, true);
-            }
+        } catch (err) {
+            alert('Network error: ' + err.message);
         }
+    }
 
-        // Item Add / Edit Modal Handling
-        function openItemModal() {
-            hideAlert();
-            document.getElementById('itemModalTitle').textContent = 'Add Inventory Item';
-            document.getElementById('itemId').value = '0';
-            document.getElementById('itemName').value = '';
-            document.getElementById('itemUnit').value = '';
-            document.getElementById('itemUnitCost').value = '';
-            document.getElementById('itemLowThreshold').value = '10.00';
-            document.getElementById('itemModal').classList.remove('hidden');
-        }
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.innerText = str;
+        return div.innerHTML;
+    }
 
-        function editItem(itemId) {
-            hideAlert();
-            const item = itemsData.find(i => i.id === itemId);
-            if (!item) return;
-
-            document.getElementById('itemModalTitle').textContent = 'Edit Inventory Item';
-            document.getElementById('itemId').value = item.id;
-            document.getElementById('itemName').value = item.item_name;
-            document.getElementById('itemUnit').value = item.unit;
-            document.getElementById('itemUnitCost').value = parseFloat(item.unit_cost || 0).toFixed(2);
-            document.getElementById('itemLowThreshold').value = parseFloat(item.low_stock_threshold || 10).toFixed(2);
-            document.getElementById('itemModal').classList.remove('hidden');
-        }
-
-        function closeItemModal() {
-            document.getElementById('itemModal').classList.add('hidden');
-        }
-
-        async function handleItemSubmit(e) {
-            e.preventDefault();
-            hideAlert();
-
-            const btn = document.getElementById('itemSubmitBtn');
-            btn.disabled = true;
-            btn.textContent = 'Saving...';
-
-            const payload = {
-                action: 'item_save',
-                id: parseInt(document.getElementById('itemId').value),
-                branch_id: CURRENT_BRANCH_ID,
-                item_name: document.getElementById('itemName').value.trim(),
-                unit: document.getElementById('itemUnit').value.trim(),
-                unit_cost: parseFloat(document.getElementById('itemUnitCost').value),
-                low_stock_threshold: parseFloat(document.getElementById('itemLowThreshold').value)
-            };
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || 'Failed to save item.', true);
-                    return;
-                }
-
-                closeItemModal();
-                showAlert('Item successfully saved.');
-                await fetchStockList();
-            } catch (err) {
-                showAlert('Network error saving item: ' + err.message, true);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Save Item';
-            }
-        }
-
-        async function deactivateItem(itemId, itemName) {
-            if (!confirm(`Are you sure you want to deactivate "${itemName}"? It will no longer appear in stock lists.`)) {
-                return;
-            }
-            hideAlert();
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        action: 'item_deactivate',
-                        id: itemId
-                    })
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    showAlert(data.error || 'Failed to deactivate item.', true);
-                    return;
-                }
-
-                showAlert(`Item "${itemName}" deactivated.`);
-                await fetchStockList();
-            } catch (err) {
-                showAlert('Network error: ' + err.message, true);
-            }
-        }
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchInventory();
+        fetchApprovals();
+    });
     </script>
-    </div>
-    </div>
 </body>
 </html>

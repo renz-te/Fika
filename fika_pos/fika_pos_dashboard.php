@@ -329,7 +329,7 @@ $csrfToken = Csrf::getToken();
                             </div>
                             <a href="fika_pos_receipt.php?order_id=<?= (int)$pord['id'] ?>" target="_blank"
                                class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-sm transition inline-flex items-center space-x-1.5 active:scale-95">
-                                <span>🖨️ Print Receipt</span>
+                                <span><i class="fa-solid fa-print mr-1"></i> Print Receipt</span>
                             </a>
                         </div>
                     </div>
@@ -412,11 +412,11 @@ $csrfToken = Csrf::getToken();
             </div>
 
             <div id="digital-paid-banner" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 space-y-3">
-                <div class="font-black text-lg text-emerald-700">✓ PAYMENT CONFIRMED!</div>
+                <div class="font-black text-lg text-emerald-700"><i class="fa-solid fa-circle-check mr-1.5"></i> PAYMENT CONFIRMED!</div>
                 <p class="text-xs text-emerald-600">The order has been marked as PAID via PayMongo.</p>
                 <button onclick="printReceiptForOrder(selectedOrderId)"
                         class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition text-xs shadow-sm">
-                    🖨️ Print Thermal Receipt
+                    <i class="fa-solid fa-print mr-1.5"></i> Print Thermal Receipt
                 </button>
             </div>
 

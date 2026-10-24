@@ -363,7 +363,7 @@ $netMarginPct = $pnlNetRevCents > 0 ? round(($pnlNetProfitCents / $pnlNetRevCent
                     <input type="hidden" name="branch_id" value="<?= (int)$selectedBranchId ?>">
                 <?php endif; ?>
                 <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition-colors">
-                    <span>📥 Export to CSV</span>
+                    <span><i class="fa-solid fa-file-arrow-down mr-1.5"></i> Export to CSV</span>
                 </button>
             </form>
         </div>

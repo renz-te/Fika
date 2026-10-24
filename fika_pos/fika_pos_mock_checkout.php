@@ -146,14 +146,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['authorize_mock_paymen
         </div>
 
         <?php if ($message): ?>
-            <div class="p-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 text-sm font-semibold rounded-2xl">
-                ✓ <?= e($message) ?>
+            <div class="p-4 bg-emerald-950/80 border border-emerald-500 text-emerald-300 text-sm font-semibold rounded-2xl flex items-center gap-2">
+                <i class="fa-solid fa-circle-check"></i> <?= e($message) ?>
             </div>
         <?php endif; ?>
 
         <?php if ($error): ?>
-            <div class="p-4 bg-rose-950/80 border border-rose-500 text-rose-300 text-sm font-semibold rounded-2xl">
-                ⚠ <?= e($error) ?>
+            <div class="p-4 bg-rose-950/80 border border-rose-500 text-rose-300 text-sm font-semibold rounded-2xl flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation"></i> <?= e($error) ?>
             </div>
         <?php endif; ?>
 
