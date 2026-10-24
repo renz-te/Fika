@@ -45,7 +45,8 @@ $canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
 $canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
 $canDevices = Rbac::can('devices.view');
-$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices);
+$canSettings = Rbac::can('settings.manage');
+$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices || $canSettings);
 
 $currentDir = basename(dirname($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? ''));
 $url = function(string $targetModule, string $file) use ($currentDir): string {
@@ -79,7 +80,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
     <!-- Navigation Links -->
     <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         <!-- Personal Section (Always visible) -->
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">Personal</div>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">PERSONAL</div>
         <a href="<?= $url('fika_hrms', 'fika_hrms_ess.php') ?>#dashboard" id="sideNav-dashboard" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
             <i class="fa-solid fa-chart-pie w-5 text-center text-amber-500"></i>
             <span>My Dashboard</span>
@@ -104,9 +105,9 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <!-- Management Sections (Hidden from regular STAFF and Head Baristas) -->
         <?php if ($showMgmt): ?>
 
-        <!-- 1. HRMS Group -->
-        <?php if ($canHR || $canPayroll || $canShift || $canAttendance): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">HRMS</div>
+        <!-- 1. HR MODULES Group -->
+        <?php if ($canHR || $canPayroll || $canShift || $canAttendance || $canLeave): ?>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">HR MODULES</div>
         <?php if ($canHR): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_dashboard.php') ?>">
             <i class="fa-solid fa-users w-5 text-center text-amber-400"></i>
@@ -149,7 +150,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 
         <!-- 2. OPERATIONS Group -->
         <?php if ($canPosDash): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">Operations</div>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">OPERATIONS</div>
         <a href="<?= $url('fika_pos', 'fika_pos_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_pos_dashboard.php') ?>">
             <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
             <span>POS Dashboard</span>
@@ -158,7 +159,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 
         <!-- 3. FINANCE Group -->
         <?php if ($canFin): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">Finance</div>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">FINANCE</div>
         <a href="<?= $url('fika_finance', 'fika_finance_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php', ['fika_finance_reports.php', 'fika_finance_budgets.php', 'fika_finance_reconcile.php']) ?>">
             <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
             <span>Finance</span>
@@ -167,16 +168,16 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 
         <!-- 4. INVENTORY Group -->
         <?php if ($canInv || $canProc): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">Inventory</div>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">INVENTORY</div>
         <a href="<?= $url('fika_inventory', 'fika_inventory_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_inventory_dashboard.php', ['fika_inventory_stock.php', 'fika_inventory_recipes.php', 'fika_inventory_procurement.php']) ?>">
             <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
             <span>Inventory</span>
         </a>
         <?php endif; ?>
 
-        <!-- 5. SYSTEM Group -->
-        <?php if ($canUsers || $canDevices): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">System</div>
+        <!-- 5. SYSTEM & SETTINGS Group -->
+        <?php if ($canUsers || $canDevices || $canSettings): ?>
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">SYSTEM &amp; SETTINGS</div>
         <?php if ($canDevices): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_devices.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_devices.php') ?>">
             <i class="fa-solid fa-tablet-screen-button w-5 text-center text-cyan-400"></i>
@@ -187,6 +188,12 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <a href="<?= $url('fika_hrms', 'fika_hrms_users.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_users.php') ?>">
             <i class="fa-solid fa-user-shield w-5 text-center text-purple-400"></i>
             <span>Account Management</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($canSettings): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_settings.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_settings.php') ?>">
+            <i class="fa-solid fa-gear w-5 text-center text-slate-400"></i>
+            <span>Settings</span>
         </a>
         <?php endif; ?>
         <?php endif; ?>
