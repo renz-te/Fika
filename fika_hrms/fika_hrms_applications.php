@@ -288,14 +288,12 @@ $pipelineRanks = [
 
             <!-- TAB 1: KANBAN BOARD -->
             <?php if ($tab === 'kanban'): ?>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1 items-start">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 flex-1 items-start">
                 <?php
                 $stageConfigs = [
                     'New' => ['title' => 'New / Applied', 'color' => 'slate', 'badge' => 'bg-slate-100 text-slate-700 border-slate-300'],
                     'Initial Interview' => ['title' => 'Initial Interview', 'color' => 'blue', 'badge' => 'bg-blue-50 text-blue-700 border-blue-200'],
-                    'Final Interview' => ['title' => 'Final Interview', 'color' => 'purple', 'badge' => 'bg-purple-50 text-purple-700 border-purple-200'],
-                    'Hireable' => ['title' => 'Hireable / Shortlisted', 'color' => 'emerald', 'badge' => 'bg-emerald-50 text-emerald-700 border-emerald-200'],
-                    'Rejected' => ['title' => 'Rejected / AWOL', 'color' => 'rose', 'badge' => 'bg-rose-50 text-rose-700 border-rose-200']
+                    'Final Interview' => ['title' => 'Final Interview', 'color' => 'purple', 'badge' => 'bg-purple-50 text-purple-700 border-purple-200']
                 ];
                 foreach ($stageConfigs as $stageKey => $cfg): 
                     $stageApps = $kanbanStages[$stageKey] ?? [];
