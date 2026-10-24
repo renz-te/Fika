@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/core/Output.php';
 
 Auth::requireLogin();
 Rbac::require_permission('users.view');
@@ -80,31 +81,12 @@ $csrfToken = Csrf::getToken();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="csrf-token" content="<?= e($csrfToken) ?>">
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body class="bg-slate-100 text-slate-800 min-h-screen flex">
 
-    <!-- Top Header -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a href="fika_hrms_dashboard.php" class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="fa-solid fa-user-shield text-sm"></i>
-                    </div>
-                    <div>
-                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">FIKA HRMS</span>
-                        <span class="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Account Management</span>
-                    </div>
-                </a>
-            </div>
-            <div class="flex items-center gap-4 text-xs font-semibold text-slate-600">
-                <a href="fika_hrms_dashboard.php" class="hover:text-amber-600 transition flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrow-left text-[10px]"></i> Dashboard
-                </a>
-            </div>
-        </div>
-    </header>
+    <?php require_once __DIR__ . '/includes/header.php'; ?>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
         <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-black text-slate-900">User Accounts Directory</h1>
@@ -217,6 +199,7 @@ $csrfToken = Csrf::getToken();
             </div>
         </div>
     </main>
+    </div>
 
     <!-- Manage Account Modal -->
     <div id="manageModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">

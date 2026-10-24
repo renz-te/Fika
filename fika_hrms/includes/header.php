@@ -120,27 +120,21 @@ $navActive = function(string $page) use ($currentPage): string {
         </a>
         <?php endif; ?>
         <?php if ($canPosDash): ?>
-        <a href="pos_dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('pos_dashboard') ?>">
+        <a href="../fika_pos/fika_pos_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_pos_dashboard.php') ?>">
             <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
             <span>POS Dashboard</span>
         </a>
         <?php endif; ?>
         <?php if ($canFin): ?>
-        <a href="/fika_finance/fika_finance_reports.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_reports.php') ?>">
+        <a href="../fika_finance/fika_finance_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php') ?>">
             <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
             <span>Finance</span>
         </a>
         <?php endif; ?>
         <?php if ($canInv): ?>
-        <a href="inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('inventory') ?>">
+        <a href="../fika_inventory/fika_inventory_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_inventory_dashboard.php') ?>">
             <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
             <span>Inventory</span>
-        </a>
-        <?php endif; ?>
-        <?php if ($canProc): ?>
-        <a href="procurement" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('procurement') ?>">
-            <i class="fa-solid fa-truck-ramp-box w-5 text-center text-emerald-400"></i>
-            <span>Procurement</span>
         </a>
         <?php endif; ?>
         <?php if ($canUsers): ?>
