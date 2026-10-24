@@ -58,51 +58,13 @@ $currentUser = Auth::user();
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
 
-    <!-- Top Navigation Bar -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a href="fika_hrms_dashboard.php" class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="fa-solid fa-users text-sm"></i>
-                    </div>
-                    <div>
-                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">FIKA HRMS</span>
-                        <span class="text-[10px] uppercase font-bold text-amber-700 tracking-wider">Human Resources Portal</span>
-                    </div>
-                </a>
-            </div>
+    <?php require_once __DIR__ . '/includes/header.php'; ?>
 
-            <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
-                <a href="fika_hrms_dashboard.php" class="text-amber-600 font-bold border-b-2 border-amber-600 py-4">Dashboard</a>
-                <a href="fika_hrms_employees.php" class="hover:text-slate-900 transition-colors py-4">Employees</a>
-                <a href="fika_hrms_attendance.php" class="hover:text-slate-900 transition-colors py-4">Attendance</a>
-                <a href="fika_hrms_leave.php" class="hover:text-slate-900 transition-colors py-4 flex items-center gap-1.5">
-                    <span>Leaves</span>
-                    <?php if ($pendingLeaves > 0): ?>
-                        <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full"><?= $pendingLeaves ?></span>
-                    <?php endif; ?>
-                </a>
-                <a href="fika_hrms_payroll.php" class="hover:text-slate-900 transition-colors py-4">Payroll</a>
-                <a href="fika_hrms_shift_board.php" class="hover:text-slate-900 transition-colors py-4">Shift Board</a>
-            </nav>
-
-            <div class="flex items-center gap-3">
-                <div class="text-right hidden sm:block">
-                    <p class="text-xs font-bold text-slate-900"><?= e($currentUser['username'] ?? 'Staff') ?></p>
-                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Active Session</p>
-                </div>
-                <a href="../login.php?logout=1" class="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Logout">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                </a>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <!-- Main Container -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         <!-- Welcome Banner & Date Header -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -291,12 +253,13 @@ $currentUser = Auth::user();
             <?php endif; ?>
         </div>
 
-    </main>
+        </main>
 
-    <!-- Footer -->
-    <footer class="mt-auto bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
-        &copy; <?= date('Y') ?> Fika Café &middot; Human Resources Management Suite
-    </footer>
+        <!-- Footer -->
+        <footer class="mt-auto bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+            &copy; <?= date('Y') ?> Fika Café &middot; Human Resources Management Suite
+        </footer>
+    </div>
 
 </body>
 </html>
