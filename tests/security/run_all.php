@@ -94,9 +94,10 @@ function cleanupFixtures(): void {
         $pdo->exec("DELETE FROM payroll_runs WHERE id >= 990000 OR processed_by >= 990000");
         $pdo->exec("DELETE FROM users WHERE id >= 990000");
         $pdo->exec("DELETE FROM employees WHERE id >= 990000");
+        $pdo->exec("DELETE FROM devices WHERE device_token LIKE 'DEV-UNAUTH-%' OR device_name LIKE '%Unauthorized Terminal%'");
 
         // Cleanup audit test logs
-        $pdo->exec("DELETE FROM audit_logs WHERE details LIKE '%ORD-SEC-%' OR details LIKE '%99000%'");
+        $pdo->exec("DELETE FROM audit_logs WHERE details LIKE '%ORD-SEC-%' OR details LIKE '%99000%' OR details LIKE '%SECURITY_%'");
 
         $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
     } catch (Throwable $e) {
@@ -698,9 +699,99 @@ if (empty($leakedEndpoints)) {
     echo "[FAIL] Trap 10: Exception details leaked in responses:\n" . implode("\n", $leakedEndpoints) . "\n";
 }
 
+// ====================================================================
+// RBAC NEGATIVE TESTS: Branch Manager Scope & Escalation Guard
+// ====================================================================
+$rbacPassed = 0;
+$totalRbac = 3;
+
+$bmUserId = 990010;
+$bmEmpId = 990010;
+$b2UserId = 990020;
+$b2EmpId = 990020;
+
+$pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
+$pdo->exec("INSERT INTO branches (id, name) VALUES (1, 'Main Branch') ON DUPLICATE KEY UPDATE name='Main Branch'");
+$pdo->exec("INSERT INTO branches (id, name) VALUES (2, 'Second Branch') ON DUPLICATE KEY UPDATE name='Second Branch'");
+
+$pdo->exec("INSERT INTO employees (id, employee_code, first_name, last_name, email, branch_id) 
+            VALUES ($bmEmpId, 'EMP990010', 'BM', 'BranchOne', 'bm1@example.com', 1) 
+            ON DUPLICATE KEY UPDATE first_name='BM', branch_id=1");
+$pdo->exec("INSERT INTO users (id, username, password, email, role_id, employee_id, branch_id) 
+            VALUES ($bmUserId, 'test_bm_1', 'hash', 'bm1@example.com', 6, $bmEmpId, 1) 
+            ON DUPLICATE KEY UPDATE role_id=6, branch_id=1");
+
+$pdo->exec("INSERT INTO employees (id, employee_code, first_name, last_name, email, branch_id) 
+            VALUES ($b2EmpId, 'EMP990020', 'Staff', 'BranchTwo', 'staff2@example.com', 2) 
+            ON DUPLICATE KEY UPDATE first_name='Staff', branch_id=2");
+$pdo->exec("INSERT INTO users (id, username, password, email, role_id, employee_id, branch_id) 
+            VALUES ($b2UserId, 'user_branch_2', 'hash', 'staff2@example.com', 7, $b2EmpId, 2) 
+            ON DUPLICATE KEY UPDATE role_id=7, branch_id=2");
+$pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+
+$bmSess = createAuthSession([
+    'id' => $bmUserId,
+    'username' => 'test_bm_1',
+    'role_id' => 6,
+    'role_name' => 'BM',
+    'employee_id' => $bmEmpId,
+    'branch_id' => 1
+]);
+
+// RBAC Test 1: BM tries to create a user with ADMIN role -> Should fail (403 or rejected)
+$payloadCreateAdmin = [
+    'action' => 'create_account',
+    'username' => 'malicious_admin_' . bin2hex(random_bytes(3)),
+    'password' => 'Pass1234!',
+    'role_id' => 1, // ADMIN role
+    'branch_id' => 1,
+    'csrf_token' => $bmSess['csrf']
+];
+$resCreateAdmin = sendAuthPost($baseUrl . '/fika_hrms/fika_hrms_users.php', $payloadCreateAdmin, $bmSess);
+if ($resCreateAdmin['code'] === 403) {
+    echo "[PASS] RBAC Test 1: BM cannot create user with ADMIN role (403 Forbidden)\n";
+    $rbacPassed++;
+} else {
+    echo "[FAIL] RBAC Test 1: BM creating user with ADMIN role did not return 403 (got {$resCreateAdmin['code']})\n";
+}
+
+// RBAC Test 2: BM (Branch 1) tries to view a user from Branch 2 -> Should return 403 or empty
+$resViewB2 = httpReq($baseUrl . '/fika_hrms/fika_hrms_users.php?id=' . $b2UserId, 'GET', null, [
+    'Accept: application/json'
+], $bmSess['cookie']);
+
+$resListB1 = httpReq($baseUrl . '/fika_hrms/fika_hrms_users.php', 'GET', null, [], $bmSess['cookie']);
+$b2AbsentFromList = !str_contains((string)$resListB1['body'], 'user_branch_2');
+
+if ($resViewB2['code'] === 403 || ($resViewB2['code'] === 200 && empty($resViewB2['json']['user']) && $b2AbsentFromList)) {
+    echo "[PASS] RBAC Test 2: BM (Branch 1) cannot view user from Branch 2 (403 Forbidden or empty)\n";
+    $rbacPassed++;
+} else {
+    echo "[FAIL] RBAC Test 2: BM viewing Branch 2 user did not return 403/empty (got {$resViewB2['code']})\n";
+}
+
+// RBAC Test 3: BM (Branch 1) tries to enroll a device for Branch 2 -> Should fail (403)
+$payloadEnrollB2 = [
+    'action' => 'enroll_device',
+    'device_name' => 'Unauthorized Terminal B2',
+    'mac_address' => '00:11:22:33:44:55',
+    'device_token' => 'DEV-UNAUTH-' . bin2hex(random_bytes(4)),
+    'branch_id' => 2, // Mismatch with BM Branch 1!
+    'status' => 'Active',
+    'csrf_token' => $bmSess['csrf']
+];
+$resEnrollB2 = sendAuthPost($baseUrl . '/fika_hrms/fika_hrms_devices.php', $payloadEnrollB2, $bmSess);
+if ($resEnrollB2['code'] === 403) {
+    echo "[PASS] RBAC Test 3: BM (Branch 1) cannot enroll device for Branch 2 (403 Forbidden)\n";
+    $rbacPassed++;
+} else {
+    echo "[FAIL] RBAC Test 3: BM enrolling device for Branch 2 did not return 403 (got {$resEnrollB2['code']})\n";
+}
+
 echo "\n====================================================================\n";
 echo "SECURITY REGRESSION: {$trapsPassed}/{$totalTraps} TRAPS PASSED\n";
-$exitCode = ($trapsPassed === $totalTraps) ? 0 : 1;
+echo "RBAC SCOPE REGRESSION: {$rbacPassed}/{$totalRbac} TESTS PASSED\n";
+$exitCode = ($trapsPassed === $totalTraps && $rbacPassed === $totalRbac) ? 0 : 1;
 echo "Exit Code: {$exitCode}\n";
 echo "====================================================================\n";
 

@@ -22,6 +22,13 @@ class Csrf {
     }
 
     /**
+     * Alias for verify
+     */
+    public static function validate(?string $token): bool {
+        return self::verify($token);
+    }
+
+    /**
      * Terminate execution if a valid CSRF token is not provided in a POST request
      */
     public static function requireValid(): void {
