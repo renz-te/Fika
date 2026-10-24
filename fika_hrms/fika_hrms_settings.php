@@ -7,18 +7,60 @@ Rbac::require_permission('settings.manage');
 
 global $pdo;
 
+$currentUser = Auth::user();
+$currentRoleId = (int)($currentUser['role_id'] ?? 0);
+
+// Determine scope based on user role
+// ADMIN (Role 1) & GA (Role 3): $branchId = null, title = 'Global Settings'
+// BM (Role 6): $branchId = session branch_id, title = 'Branch Settings (' . $branchName . ')'
+$branchId = null;
+$pageScopeTitle = 'Global Settings';
+$branchName = '';
+
+if ($currentRoleId === 6) {
+    $branchId = (int)($currentUser['branch_id'] ?? 0);
+    $bStmt = $pdo->prepare("SELECT name FROM branches WHERE id = ?");
+    $bStmt->execute([$branchId]);
+    $branchName = (string)($bStmt->fetchColumn() ?: "Branch #{$branchId}");
+    $pageScopeTitle = 'Branch Settings (' . $branchName . ')';
+} elseif ($currentRoleId === 1 || $currentRoleId === 3) {
+    $branchId = null;
+    $pageScopeTitle = 'Global Settings';
+} else {
+    $branchId = !empty($currentUser['branch_id']) ? (int)$currentUser['branch_id'] : null;
+    $pageScopeTitle = $branchId ? 'Branch Settings' : 'Global Settings';
+}
+
+// Fallback Logic (Global -> Branch):
+// 1. Load global baseline settings (branch_id IS NULL)
 $settings = [];
 try {
-    $stmt = $pdo->query("SELECT setting_key, setting_value FROM settings");
-    if ($stmt) {
-        while ($row = $stmt->fetch()) {
+    $stmtGlobal = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE branch_id IS NULL");
+    if ($stmtGlobal) {
+        while ($row = $stmtGlobal->fetch()) {
             $settings[$row['setting_key']] = $row['setting_value'];
         }
     }
 } catch (Throwable $e) {
-    // Non-fatal fallback
+    // Non-fatal
 }
 
+// 2. If branch-scoped, override with branch-specific settings if present
+if ($branchId !== null) {
+    try {
+        $stmtBranch = $pdo->prepare("SELECT setting_key, setting_value FROM settings WHERE branch_id = ?");
+        $stmtBranch->execute([$branchId]);
+        if ($stmtBranch) {
+            while ($row = $stmtBranch->fetch()) {
+                $settings[$row['setting_key']] = $row['setting_value'];
+            }
+        }
+    } catch (Throwable $e) {
+        // Non-fatal
+    }
+}
+
+// 3. Load leave types (applicable globally)
 $leaveTypes = [];
 try {
     $leaveStmt = $pdo->query("SELECT * FROM leave_types ORDER BY code ASC");
@@ -28,14 +70,14 @@ try {
 }
 
 $csrfToken = Csrf::getToken();
-$pageTitle = 'Global Settings';
+$pageTitle = $pageScopeTitle;
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global System Settings &middot; Fika HRMS</title>
+    <title><?= e($pageScopeTitle) ?> &middot; Fika HRMS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -55,14 +97,16 @@ $pageTitle = 'Global Settings';
                         <i class="fa-solid fa-gear text-base text-amber-500"></i>
                     </div>
                     <div>
-                        <h1 class="font-bold text-lg text-slate-900 leading-tight">System &amp; HR Settings</h1>
-                        <p class="text-xs text-slate-500">Manage timekeeping rules, statutory policies, leave allowances, and receipt branding</p>
+                        <h1 class="font-bold text-lg text-slate-900 leading-tight"><?= e($pageScopeTitle) ?></h1>
+                        <p class="text-xs text-slate-500">
+                            <?= $branchId === null ? 'System-wide operational parameters &amp; defaults' : 'Branch-specific override configuration for ' . e($branchName) ?>
+                        </p>
                     </div>
                 </div>
 
-                <div class="inline-flex items-center gap-2 px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600">
-                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
-                    <span>Admin Configuration</span>
+                <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold border <?= $branchId === null ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-indigo-50 text-indigo-800 border-indigo-200' ?>">
+                    <i class="fa-solid <?= $branchId === null ? 'fa-globe' : 'fa-store' ?>"></i>
+                    <span><?= $branchId === null ? 'Global HQ Scope' : 'Branch Scope' ?></span>
                 </div>
             </div>
         </header>
@@ -71,6 +115,15 @@ $pageTitle = 'Global Settings';
         <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
             
             <div id="alertBox" class="hidden p-4 rounded-xl text-sm font-bold border transition"></div>
+
+            <?php if ($branchId !== null): ?>
+            <div class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-900 text-xs flex items-center gap-3">
+                <i class="fa-solid fa-circle-info text-indigo-600 text-base flex-shrink-0"></i>
+                <div>
+                    <span class="font-bold">Branch Inheritance Active:</span> Values shown below inherit from HQ Global Settings by default. Modifying and saving here creates a branch-specific override for <strong><?= e($branchName) ?></strong>.
+                </div>
+            </div>
+            <?php endif; ?>
 
             <form id="settingsForm" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
@@ -86,7 +139,7 @@ $pageTitle = 'Global Settings';
                             Late Grace Period (minutes) *
                         </label>
                         <p class="text-xs text-slate-500 mb-2.5">
-                            Within this grace period, employee check-ins are not marked as late. Beyond it, attendance is flagged as late against scheduled shift start.
+                            Within this grace period, employee check-ins are not marked as late. Beyond it, attendance is counted late against scheduled start time.
                         </p>
                         <div class="flex items-center gap-3">
                             <input type="number" name="late_grace_minutes" value="<?= e($settings['late_grace_minutes'] ?? 15) ?>" min="0" max="180" required 
@@ -147,6 +200,10 @@ $pageTitle = 'Global Settings';
                         <span class="text-xs text-slate-500 font-semibold"><?= count($leaveTypes) ?> leave type(s) configured</span>
                     </div>
 
+                    <?php if ($branchId !== null): ?>
+                        <p class="text-xs text-slate-500 mb-3 italic">Leave allocations are defined centrally at HQ level and apply across all branches.</p>
+                    <?php endif; ?>
+
                     <div class="overflow-x-auto rounded-xl border border-slate-200">
                         <table class="w-full text-left divide-y divide-slate-200 text-xs">
                             <thead class="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
@@ -169,23 +226,20 @@ $pageTitle = 'Global Settings';
                                         <tr class="hover:bg-slate-50/60 transition">
                                             <td class="px-4 py-3 font-mono font-bold text-slate-900"><?= e($l['code']) ?></td>
                                             <td class="px-4 py-3">
-                                                <input type="text" name="leave_types[<?= e($l['code']) ?>][name]" value="<?= e($l['name']) ?>" required 
-                                                       class="block w-full rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                <input type="text" name="leave_types[<?= e($l['code']) ?>][name]" value="<?= e($l['name']) ?>" required <?= $branchId !== null ? 'readonly class="block w-full rounded-lg border border-slate-200 bg-slate-50 p-1.5 text-xs font-semibold text-slate-600"' : 'class="block w-full rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"' ?>>
                                             </td>
                                             <td class="px-4 py-3 text-center">
-                                                <input type="checkbox" name="leave_types[<?= e($l['code']) ?>][is_paid]" value="1" <?= $l['is_paid'] ? 'checked' : '' ?> 
+                                                <input type="checkbox" name="leave_types[<?= e($l['code']) ?>][is_paid]" value="1" <?= $l['is_paid'] ? 'checked' : '' ?> <?= $branchId !== null ? 'disabled' : '' ?> 
                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
                                             </td>
                                             <td class="px-4 py-3 text-center">
-                                                <input type="number" step="0.5" name="leave_types[<?= e($l['code']) ?>][annual_days]" value="<?= e($l['annual_days']) ?>" min="0" required 
-                                                       class="block w-24 mx-auto rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs text-center font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                <input type="number" step="0.5" name="leave_types[<?= e($l['code']) ?>][annual_days]" value="<?= e($l['annual_days']) ?>" min="0" required <?= $branchId !== null ? 'readonly class="block w-24 mx-auto rounded-lg border border-slate-200 bg-slate-50 p-1.5 text-xs text-center font-bold text-slate-600"' : 'class="block w-24 mx-auto rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs text-center font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"' ?>>
                                             </td>
                                             <td class="px-4 py-3 text-center">
-                                                <input type="number" name="leave_types[<?= e($l['code']) ?>][min_service_months]" value="<?= e($l['min_service_months']) ?>" min="0" required 
-                                                       class="block w-24 mx-auto rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs text-center font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                <input type="number" name="leave_types[<?= e($l['code']) ?>][min_service_months]" value="<?= e($l['min_service_months']) ?>" min="0" required <?= $branchId !== null ? 'readonly class="block w-24 mx-auto rounded-lg border border-slate-200 bg-slate-50 p-1.5 text-xs text-center font-bold text-slate-600"' : 'class="block w-24 mx-auto rounded-lg border border-slate-300 shadow-2xs p-1.5 text-xs text-center font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"' ?>>
                                             </td>
                                             <td class="px-4 py-3 text-center">
-                                                <input type="checkbox" name="leave_types[<?= e($l['code']) ?>][statutory]" value="1" <?= $l['statutory'] ? 'checked' : '' ?> 
+                                                <input type="checkbox" name="leave_types[<?= e($l['code']) ?>][statutory]" value="1" <?= $l['statutory'] ? 'checked' : '' ?> <?= $branchId !== null ? 'disabled' : '' ?> 
                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
                                             </td>
                                         </tr>
@@ -200,7 +254,9 @@ $pageTitle = 'Global Settings';
                 <div class="bg-white shadow-xs rounded-2xl border border-slate-200 p-6">
                     <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
                         <i class="fa-solid fa-receipt text-amber-600 text-base"></i>
-                        <h2 class="text-base font-bold text-slate-900">Thermal Receipt Header &amp; BIR Compliance</h2>
+                        <h2 class="text-base font-bold text-slate-900">
+                            Thermal Receipt Header &amp; BIR Compliance <?= $branchId !== null ? 'for ' . e($branchName) : '(Global Defaults)' ?>
+                        </h2>
                     </div>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
@@ -250,7 +306,7 @@ $pageTitle = 'Global Settings';
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="submit" id="btnSaveSettings" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-2">
                         <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Save System Settings</span>
+                        <span>Save <?= $branchId === null ? 'Global Settings' : 'Branch Settings' ?></span>
                     </button>
                 </div>
             </form>
@@ -322,7 +378,7 @@ $pageTitle = 'Global Settings';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save System Settings';
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save <?= $branchId === null ? 'Global Settings' : 'Branch Settings' ?>';
             }
         });
     </script>
