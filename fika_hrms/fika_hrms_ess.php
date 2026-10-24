@@ -60,6 +60,15 @@ if (!empty($bankDecrypted)) {
     $maskedBank = 'Not Set';
 }
 
+$empPos = (string)($employee['position'] ?? '');
+$isHB = (stripos($empPos, 'Head Barista') !== false) || ((int)($_SESSION['user']['role_id'] ?? 0) === 5);
+$userRoleName = '';
+if (!empty($_SESSION['user']['role_id'])) {
+    $rStmt = $pdo->prepare("SELECT name FROM roles WHERE id = ?");
+    $rStmt->execute([$_SESSION['user']['role_id']]);
+    $userRoleName = strtoupper(trim((string)$rStmt->fetchColumn()));
+}
+
 // 2. Fetch Released Payslips Only
 $slipStmt = $pdo->prepare("
     SELECT pi.id, pi.basic_pay, pi.overtime_pay, pi.bonus_pay, pi.gross_pay, pi.net_pay,
@@ -160,61 +169,164 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="csrf-token" content="<?= e($csrfToken) ?>">
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen">
+<body class="bg-slate-50 text-slate-800 antialiased h-screen overflow-hidden flex">
 
-    <!-- Top Navigation -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
-                    F
+    <!-- Role-Based Sidebar Navigation -->
+    <aside class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20">
+        <!-- Brand Header -->
+        <div class="h-16 flex items-center px-6 border-b border-slate-800 gap-3">
+            <div class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                F
+            </div>
+            <div class="flex flex-col justify-center overflow-hidden">
+                <span class="text-base font-black text-white leading-none tracking-wide">FIKA</span>
+                <span class="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-0.5">Slow Hours</span>
+            </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            <!-- Personal Section (Always visible) -->
+            <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">Personal</div>
+            <a href="#dashboard" id="sideNav-dashboard" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-chart-pie w-5 text-center text-amber-500"></i>
+                <span>My Dashboard</span>
+            </a>
+            <a href="#payslips" id="sideNav-payslips" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-file-invoice-dollar w-5 text-center text-emerald-400"></i>
+                <span>My Payslips</span>
+                <?php if (count($myPayslips) > 0): ?>
+                    <span class="ml-auto bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-full"><?= count($myPayslips) ?></span>
+                <?php endif; ?>
+            </a>
+            <a href="#leave" id="sideNav-leave" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-plane-departure w-5 text-center text-blue-400"></i>
+                <span>My Leave</span>
+            </a>
+            <a href="#schedule" id="sideNav-schedule" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-calendar-check w-5 text-center text-purple-400"></i>
+                <span>My Schedule</span>
+                <?php if (count($myShifts) > 0): ?>
+                    <span class="ml-auto bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-full"><?= count($myShifts) ?></span>
+                <?php endif; ?>
+            </a>
+
+            <!-- POS Terminals (Visible to Head Baristas and staff with pos.access) -->
+            <?php if (Rbac::can('pos.access') || $isHB): ?>
+            <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">POS Terminals</div>
+            <a href="/cafe_pos/cashier.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-desktop w-5 text-center text-amber-400"></i>
+                <span>Cashier Terminal</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
+            </a>
+            <a href="/cafe_pos/kiosk.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-tablet-screen-button w-5 text-center text-indigo-400"></i>
+                <span>Kiosk Mode</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
+            </a>
+            <?php endif; ?>
+
+            <!-- Management Suite (Strictly hidden from regular STAFF and Head Baristas) -->
+            <?php 
+            $isStaffOrHB = $isHB || in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER'], true);
+            $canPosDash = Rbac::can('pos.void_order') || Rbac::can('pos.menu.manage');
+            $canInv = Rbac::can('inventory.manage');
+            $canProc = Rbac::can('procurement.view');
+            $canFin = Rbac::can('finance.view');
+            $canHR = Rbac::can('hr.employee.view');
+            $canUsers = Rbac::can('users.view');
+            $showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canUsers);
+            ?>
+            <?php if ($showMgmt): ?>
+            <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">Management Suite</div>
+            <?php if ($canHR): ?>
+            <a href="fika_hrms_dashboard.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-users w-5 text-center text-amber-400"></i>
+                <span>HR Dashboard</span>
+            </a>
+            <a href="fika_hrms_employees.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-address-book w-5 text-center text-amber-500"></i>
+                <span>Employees</span>
+            </a>
+            <a href="fika_hrms_attendance.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-clock w-5 text-center text-emerald-400"></i>
+                <span>Attendance</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($canPosDash): ?>
+            <a href="pos_dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
+                <span>POS Dashboard</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($canInv): ?>
+            <a href="inventory" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
+                <span>Inventory</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($canProc): ?>
+            <a href="procurement" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-truck-ramp-box w-5 text-center text-emerald-400"></i>
+                <span>Procurement</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($canFin): ?>
+            <a href="/fika_finance/fika_finance_reports.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
+                <span>Financial Reports</span>
+            </a>
+            <?php endif; ?>
+            <?php if ($canUsers): ?>
+            <a href="fika_hrms_users.php" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-user-shield w-5 text-center text-purple-400"></i>
+                <span>Account Management</span>
+            </a>
+            <?php endif; ?>
+            <?php endif; ?>
+        </nav>
+
+        <!-- User Profile Footer -->
+        <div class="p-4 border-t border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2.5 overflow-hidden">
+                <div class="w-8 h-8 rounded-lg bg-amber-600/30 text-amber-400 font-bold flex items-center justify-center text-xs flex-shrink-0 border border-amber-500/20">
+                    <?= strtoupper(substr($employee['first_name'], 0, 1) . substr($employee['last_name'], 0, 1)) ?>
                 </div>
-                <div>
-                    <h1 class="font-bold text-lg text-slate-900 leading-tight">Employee Self-Service</h1>
-                    <p class="text-xs text-slate-500">Welcome, <?= e($employee['first_name'] . ' ' . $employee['last_name']) ?> (<?= e($employee['employee_code']) ?>)</p>
+                <div class="overflow-hidden">
+                    <p class="text-xs font-bold text-white truncate"><?= e($employee['first_name'] . ' ' . $employee['last_name']) ?></p>
+                    <p class="text-[10px] text-slate-400 truncate"><?= e($employee['position'] ?? 'Staff') ?></p>
                 </div>
             </div>
-            <div class="flex items-center space-x-4">
-                <a href="fika_hrms_dashboard.php" class="text-sm font-medium text-slate-600 hover:text-indigo-600 transition flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrow-left text-xs"></i> Back to Dashboard
-                </a>
-                <span class="text-slate-300">|</span>
+            <a href="../login.php?logout=1" class="text-slate-400 hover:text-red-400 p-1.5 rounded transition" title="Logout">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden">
+        <!-- Top Navbar -->
+        <header class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0 z-10 shadow-sm">
+            <div class="flex items-center gap-3">
+                <h1 class="font-extrabold text-lg text-slate-900" id="pageSectionTitle">My Dashboard</h1>
+                <span class="text-xs text-slate-400 hidden sm:inline">&bull;</span>
+                <span class="text-xs text-slate-500 hidden sm:inline"><?= e($employee['branch_name'] ?? 'Main Branch') ?></span>
+            </div>
+            <div class="flex items-center space-x-3">
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     <i class="fa-solid fa-circle text-[6px] mr-1.5 animate-pulse"></i> <?= e($employee['status']) ?>
                 </span>
+                <span class="text-xs font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                    <?= e($employee['employee_code']) ?>
+                </span>
             </div>
-        </div>
-    </header>
+        </header>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- Tab Navigation Bar -->
-        <div class="flex border-b border-slate-200 mb-6 space-x-1 sm:space-x-4">
-            <button onclick="switchTab('profile')" id="tabBtn-profile" class="tab-btn px-4 py-3 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2">
-                <i class="fa-solid fa-user"></i> My Profile
-            </button>
-            <button onclick="switchTab('payslips')" id="tabBtn-payslips" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-file-invoice-dollar"></i> My Payslips
-                <?php if (count($myPayslips) > 0): ?>
-                    <span class="ml-1.5 bg-slate-200 text-slate-700 text-xs px-2 py-0.5 rounded-full"><?= count($myPayslips) ?></span>
-                <?php endif; ?>
-            </button>
-            <button onclick="switchTab('attendance')" id="tabBtn-attendance" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-clock"></i> Attendance
-            </button>
-            <button onclick="switchTab('leave')" id="tabBtn-leave" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-plane-departure"></i> Leave & Time Off
-            </button>
-            <button onclick="switchTab('schedule')" id="tabBtn-schedule" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-calendar-check"></i> My Schedule
-                <?php if (count($myShifts) > 0): ?>
-                    <span class="ml-1.5 bg-slate-200 text-slate-700 text-xs px-2 py-0.5 rounded-full"><?= count($myShifts) ?></span>
-                <?php endif; ?>
-            </button>
-        </div>
-
-        <!-- Global Notifications -->
-        <div id="toastAlert" class="hidden mb-6 p-4 rounded-xl shadow-sm text-sm font-medium transition-all"></div>
+        <!-- Main Scrolling Pane -->
+        <main class="flex-1 overflow-y-auto p-6 md:p-8">
+            <div class="max-w-7xl mx-auto">
+                <!-- Global Notifications -->
+                <div id="toastAlert" class="hidden mb-6 p-4 rounded-xl shadow-sm text-sm font-medium transition-all"></div>
 
         <!-- 1. PROFILE TAB -->
         <div id="tabContent-profile" class="tab-content">
@@ -722,10 +834,9 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
                     </div>
                 <?php endif; ?>
             </div>
-
         </div>
-
-    </div>
+    </main>
+</div>
 
     <!-- CHANGE PASSWORD MODAL -->
     <div id="passwordModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
@@ -806,20 +917,57 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         function switchTab(tab) {
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('border-indigo-600', 'text-indigo-600');
-                btn.classList.add('border-transparent', 'text-slate-500');
-            });
+            window.location.hash = (tab === 'profile') ? '#dashboard' : '#' + tab;
+        }
+
+        function applyHashRoute() {
+            let hash = window.location.hash.replace('#', '').toLowerCase();
+            if (!hash || hash === 'dashboard') {
+                hash = 'profile';
+            }
+
+            const validTabs = ['profile', 'payslips', 'attendance', 'leave', 'schedule'];
+            if (!validTabs.includes(hash)) {
+                hash = 'profile';
+            }
+
+            // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
 
-            const activeBtn = document.getElementById('tabBtn-' + tab);
-            const activeContent = document.getElementById('tabContent-' + tab);
-            if (activeBtn && activeContent) {
-                activeBtn.classList.remove('border-transparent', 'text-slate-500');
-                activeBtn.classList.add('border-indigo-600', 'text-indigo-600');
+            // Show active tab content
+            const activeContent = document.getElementById('tabContent-' + hash);
+            if (activeContent) {
                 activeContent.classList.remove('hidden');
             }
+
+            // Update page header title
+            const titles = {
+                'profile': 'My Dashboard',
+                'payslips': 'My Payslips',
+                'attendance': 'Attendance Record',
+                'leave': 'Leave & Time Off',
+                'schedule': 'My Schedule'
+            };
+            const titleEl = document.getElementById('pageSectionTitle');
+            if (titleEl && titles[hash]) {
+                titleEl.textContent = titles[hash];
+            }
+
+            // Update active state in sidebar
+            document.querySelectorAll('.side-nav-item').forEach(el => {
+                el.classList.remove('bg-amber-600', 'text-white', 'shadow-sm');
+                el.classList.add('text-slate-300');
+            });
+            const activeSideKey = (hash === 'profile') ? 'dashboard' : hash;
+            const activeNav = document.getElementById('sideNav-' + activeSideKey);
+            if (activeNav) {
+                activeNav.classList.remove('text-slate-300');
+                activeNav.classList.add('bg-amber-600', 'text-white', 'shadow-sm');
+            }
         }
+
+        window.addEventListener('hashchange', applyHashRoute);
+        window.addEventListener('DOMContentLoaded', applyHashRoute);
 
         function showAlert(msg, isSuccess = true) {
             const el = document.getElementById('toastAlert');

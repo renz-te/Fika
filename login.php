@@ -3,25 +3,14 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 global $pdo;
 
-function get_role_redirect_url(int $roleId, PDO $pdo): string {
-    $stmt = $pdo->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
-    $stmt->execute([$roleId]);
-    $roleName = $stmt->fetchColumn();
-
-    if ($roleName === 'STAFF') {
-        return 'fika_hrms/fika_hrms_ess.php';
-    } elseif (in_array($roleName, ['GA', 'BA'], true)) {
-        return 'fika_finance/fika_finance_reports.php';
-    } else {
-        // ADMIN, BM, CHR, BHR or default
-        return 'fika_hrms/fika_hrms_dashboard.php';
-    }
+function get_role_redirect_url(int $roleId, PDO $pdo, ?int $employeeId = null): string {
+    return Auth::getRedirectUrl(['role_id' => $roleId, 'employee_id' => $employeeId]);
 }
 
 // If already logged in, redirect based on role
 if (Auth::check()) {
     $currentUser = Auth::user();
-    $target = get_role_redirect_url((int)$currentUser['role_id'], $pdo);
+    $target = Auth::getRedirectUrl($currentUser);
     header("Location: {$target}");
     exit;
 }
@@ -38,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $success = Auth::attemptLogin($username, $password);
         if ($success) {
             $currentUser = Auth::user();
-            $target = get_role_redirect_url((int)$currentUser['role_id'], $pdo);
+            $target = Auth::getRedirectUrl($currentUser);
             header("Location: {$target}");
             exit;
         } else {

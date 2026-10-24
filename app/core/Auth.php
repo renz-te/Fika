@@ -86,4 +86,74 @@ class Auth {
     public static function user(): ?array {
         return $_SESSION['user'] ?? null;
     }
+
+    public static function getRedirectUrl(?array $user = null): string {
+        global $pdo;
+        if ($user === null) {
+            $user = self::user();
+        }
+        if (!$user) {
+            return 'login.php';
+        }
+
+        $roleId = (int)($user['role_id'] ?? 0);
+        $employeeId = $user['employee_id'] ?? null;
+
+        // If employee_id is not in user session, try resolving from users table
+        if (!$employeeId && !empty($user['id']) && $pdo) {
+            $uStmt = $pdo->prepare("SELECT employee_id, role_id FROM users WHERE id = ? LIMIT 1");
+            $uStmt->execute([$user['id']]);
+            $uRow = $uStmt->fetch();
+            if ($uRow) {
+                $employeeId = $uRow['employee_id'];
+                if (!$roleId) {
+                    $roleId = (int)$uRow['role_id'];
+                }
+            }
+        }
+
+        $roleName = '';
+        if ($roleId > 0 && $pdo) {
+            $stmt = $pdo->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
+            $stmt->execute([$roleId]);
+            $roleName = (string)$stmt->fetchColumn();
+        }
+
+        $position = '';
+        if ($employeeId && $pdo) {
+            $stmt = $pdo->prepare("SELECT position FROM employees WHERE id = ? LIMIT 1");
+            $stmt->execute([$employeeId]);
+            $position = (string)$stmt->fetchColumn();
+        }
+
+        $upperRole = strtoupper(trim($roleName));
+        $upperPos = strtoupper(trim($position));
+
+        // Admins & Branch Managers always go to HRMS management dashboard unless they are staff/baristas
+        if (in_array($upperRole, ['ADMIN', 'SUPER ADMIN', 'BM', 'BRANCH MANAGER', 'CHR', 'CENTRAL HR'], true)) {
+            if (!in_array($upperPos, ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true)) {
+                return 'fika_hrms/fika_hrms_dashboard.php';
+            }
+        }
+
+        // Financial roles
+        if (in_array($upperRole, ['GA', 'BA', 'GLOBAL ACCOUNTANT', 'BRANCH ACCOUNTANT'], true)) {
+            return 'fika_finance/fika_finance_reports.php';
+        }
+
+        // Staff / Barista / Head Barista / Cashier
+        $staffRoles = ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER', 'EMPLOYEE'];
+        $staffPositions = ['HEAD BARISTA', 'BARISTA', 'CASHIER', 'STAFF'];
+
+        if (
+            in_array($upperRole, $staffRoles, true) ||
+            in_array($upperPos, $staffPositions, true)
+        ) {
+            return 'fika_hrms/fika_hrms_ess.php';
+        }
+
+        // Default to dashboard for other admin/manager roles
+        return 'fika_hrms/fika_hrms_dashboard.php';
+    }
 }
+
