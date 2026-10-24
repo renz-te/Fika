@@ -73,21 +73,10 @@ $showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $
             <i class="fa-solid fa-calendar-check w-5 text-center text-purple-400"></i>
             <span>My Schedule</span>
         </a>
-
-        <!-- POS Terminals (Visible to Head Baristas and staff with pos.access) -->
-        <?php if (Rbac::can('pos.access') || $isHB): ?>
-        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">POS Terminals</div>
-        <a href="/cafe_pos/cashier.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
-            <i class="fa-solid fa-desktop w-5 text-center text-amber-400"></i>
-            <span>Cashier Terminal</span>
-            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
+        <a href="fika_hrms_ess.php#profile" id="sideNav-profile" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+            <i class="fa-solid fa-user-gear w-5 text-center text-amber-500"></i>
+            <span>My Profile</span>
         </a>
-        <a href="/cafe_pos/kiosk.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
-            <i class="fa-solid fa-tablet-screen-button w-5 text-center text-indigo-400"></i>
-            <span>Kiosk Mode</span>
-            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
-        </a>
-        <?php endif; ?>
 
         <!-- Management Suite (Strictly hidden from regular STAFF and Head Baristas) -->
         <?php if ($showMgmt): ?>

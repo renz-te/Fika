@@ -1,6 +1,12 @@
 <?php
 require_once __DIR__ . '/app/bootstrap.php';
 
+if (isset($_GET['logout'])) {
+    Auth::logout();
+    header("Location: /login.php");
+    exit;
+}
+
 global $pdo;
 
 function get_role_redirect_url(int $roleId, PDO $pdo, ?int $employeeId = null): string {

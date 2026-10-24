@@ -158,6 +158,45 @@ $openShiftsStmt = $pdo->prepare("
 $openShiftsStmt->execute([$empBranchId, $sessEmpId]);
 $availableOpenShifts = $openShiftsStmt->fetchAll();
 
+// 6. Today's Attendance for Clock In/Out KPI widget
+$todayDate = date('Y-m-d');
+$todayAttStmt = $pdo->prepare("
+    SELECT * FROM attendance_logs 
+    WHERE employee_id = ? AND work_date = ? 
+    ORDER BY id DESC LIMIT 1
+");
+$todayAttStmt->execute([$sessEmpId, $todayDate]);
+$todayLog = $todayAttStmt->fetch();
+
+$isCurrentlyClockedIn = ($todayLog && empty($todayLog['clock_out']));
+$isClockedOutToday = ($todayLog && !empty($todayLog['clock_out']));
+
+// 7. Next upcoming published shift for KPI card
+$nextShiftStmt = $pdo->prepare("
+    SELECT s.*, b.name as branch_name 
+    FROM shifts s
+    LEFT JOIN branches b ON s.branch_id = b.id
+    WHERE s.employee_id = ? 
+      AND s.status = 'PUBLISHED'
+      AND s.shift_date >= CURDATE()
+    ORDER BY s.shift_date ASC, s.start_time ASC 
+    LIMIT 1
+");
+$nextShiftStmt->execute([$sessEmpId]);
+$nextShift = $nextShiftStmt->fetch();
+
+// 8. Leave balance & pending counts for KPI card
+$pendingLeaveCount = 0;
+foreach ($myLeaves as $lv) {
+    if (strtoupper($lv['status'] ?? '') === 'PENDING') {
+        $pendingLeaveCount++;
+    }
+}
+$silDays = $sickLeaveBalance > 0 ? $sickLeaveBalance : 14;
+
+// 9. Latest released payslip for KPI card
+$latestPayslip = !empty($myPayslips) ? $myPayslips[0] : null;
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -210,21 +249,10 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
                     <span class="ml-auto bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-full"><?= count($myShifts) ?></span>
                 <?php endif; ?>
             </a>
-
-            <!-- POS Terminals (Visible to Head Baristas and staff with pos.access) -->
-            <?php if (Rbac::can('pos.access') || $isHB): ?>
-            <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">POS Terminals</div>
-            <a href="/cafe_pos/cashier.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
-                <i class="fa-solid fa-desktop w-5 text-center text-amber-400"></i>
-                <span>Cashier Terminal</span>
-                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
+            <a href="#profile" id="sideNav-profile" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
+                <i class="fa-solid fa-user-gear w-5 text-center text-amber-500"></i>
+                <span>My Profile</span>
             </a>
-            <a href="/cafe_pos/kiosk.php" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
-                <i class="fa-solid fa-tablet-screen-button w-5 text-center text-indigo-400"></i>
-                <span>Kiosk Mode</span>
-                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-auto text-slate-400"></i>
-            </a>
-            <?php endif; ?>
 
             <!-- Management Suite (Strictly hidden from regular STAFF and Head Baristas) -->
             <?php 
@@ -328,8 +356,312 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
                 <!-- Global Notifications -->
                 <div id="toastAlert" class="hidden mb-6 p-4 rounded-xl shadow-sm text-sm font-medium transition-all"></div>
 
-        <!-- 1. PROFILE TAB -->
-        <div id="tabContent-profile" class="tab-content">
+        <!-- 1. DASHBOARD TAB (KPI OVERVIEW) -->
+        <div id="tabContent-dashboard" class="tab-content">
+            <!-- Welcome Banner -->
+            <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950 rounded-2xl p-6 md:p-8 text-white shadow-sm border border-slate-800 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div class="flex items-center gap-4">
+                    <div class="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center text-2xl font-black shadow-inner flex-shrink-0">
+                        <?= strtoupper(substr($employee['first_name'], 0, 1) . substr($employee['last_name'], 0, 1)) ?>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Employee Self-Service</span>
+                            <span class="text-slate-500">&bull;</span>
+                            <span class="text-xs text-slate-300"><?= e($employee['branch_name'] ?? 'Main Branch') ?></span>
+                        </div>
+                        <h2 class="text-2xl font-black text-white mt-0.5">Welcome back, <?= e($employee['first_name']) ?>!</h2>
+                        <p class="text-xs text-slate-300 mt-1"><?= e($employee['position'] ?? 'Staff') ?> &bull; <?= e($employee['department'] ?? 'Operations') ?> (<?= e($employee['employee_code']) ?>)</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="#profile" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/10">
+                        <i class="fa-solid fa-user-pen"></i> Edit Profile
+                    </a>
+                    <a href="#schedule" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition shadow-sm">
+                        <i class="fa-solid fa-calendar-day"></i> View Schedule
+                    </a>
+                </div>
+            </div>
+
+            <!-- KPI Cards Grid (4 Visually Distinct Cards) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                
+                <!-- CARD 1: Clock In/Out / Today's Attendance Widget (Emerald / Teal Theme) -->
+                <div class="relative overflow-hidden rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-teal-50/50 p-6 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-full border border-emerald-200">
+                            Today's Shift
+                        </span>
+                        <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-base shadow-sm">
+                            <i class="fa-solid fa-fingerprint"></i>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <?php if ($isCurrentlyClockedIn): ?>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="relative flex h-3 w-3">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                </span>
+                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-700">Currently On Shift</span>
+                            </div>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">
+                                <?= date('h:i A', strtotime($todayLog['clock_in'])) ?>
+                            </p>
+                            <p class="text-xs text-slate-600 mt-1">Clocked in today. Remember to clock out at the terminal!</p>
+                        <?php elseif ($isClockedOutToday): ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Shift Completed</span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">Clocked Out</p>
+                            <p class="text-xs text-slate-600 mt-1">
+                                <?= date('h:i A', strtotime($todayLog['clock_in'])) ?> &ndash; <?= date('h:i A', strtotime($todayLog['clock_out'])) ?>
+                            </p>
+                        <?php else: ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-amber-700 mb-1">Ready for Duty</span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">Not Clocked In</p>
+                            <p class="text-xs text-slate-600 mt-1">No attendance punch recorded for today yet.</p>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-emerald-100 flex items-center justify-between text-xs">
+                        <span class="text-slate-500"><?= date('D, M j, Y') ?></span>
+                        <a href="#attendance" class="font-bold text-emerald-700 hover:text-emerald-900 transition flex items-center gap-1">
+                            Logs <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- CARD 2: Next Shift Card (Indigo / Purple Theme) -->
+                <div class="relative overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50 via-white to-purple-50/50 p-6 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-800 bg-indigo-100/80 px-2.5 py-1 rounded-full border border-indigo-200">
+                            Upcoming Shift
+                        </span>
+                        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-base shadow-sm">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </div>
+                    </div>
+
+                    <div>
+                        <?php if ($nextShift): ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-indigo-700 mb-1">
+                                <?= date('D, M j', strtotime($nextShift['shift_date'])) ?>
+                            </span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">
+                                <?= date('g:i A', strtotime($nextShift['start_time'])) ?>
+                            </p>
+                            <p class="text-xs text-slate-600 mt-1">
+                                Until <?= date('g:i A', strtotime($nextShift['end_time'])) ?> &bull; <?= e($nextShift['shift_type'] ?? 'Regular') ?>
+                            </p>
+                        <?php else: ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Roster Cleared</span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">No Shift</p>
+                            <p class="text-xs text-slate-600 mt-1">No upcoming published shifts on your schedule.</p>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-indigo-100 flex items-center justify-between text-xs">
+                        <span class="text-slate-500"><?= e($nextShift['branch_name'] ?? ($employee['branch_name'] ?? 'Main Branch')) ?></span>
+                        <a href="#schedule" class="font-bold text-indigo-700 hover:text-indigo-900 transition flex items-center gap-1">
+                            Schedule <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- CARD 3: Leave Balance Card (Sky / Cyan Theme) -->
+                <div class="relative overflow-hidden rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50 via-white to-cyan-50/50 p-6 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-sky-800 bg-sky-100/80 px-2.5 py-1 rounded-full border border-sky-200">
+                            Leave Balance
+                        </span>
+                        <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center text-base shadow-sm">
+                            <i class="fa-solid fa-plane-departure"></i>
+                        </div>
+                    </div>
+
+                    <div>
+                        <span class="inline-block text-xs font-bold uppercase tracking-wider text-sky-700 mb-1">Service Incentive (SIL)</span>
+                        <p class="text-2xl font-black text-slate-900 tracking-tight">
+                            <?= $silDays ?> <span class="text-sm font-bold text-slate-500">Days</span>
+                        </p>
+                        <p class="text-xs text-slate-600 mt-1">
+                            <?= $pendingLeaveCount > 0 ? $pendingLeaveCount . ' pending request(s) awaiting review' : 'Annual paid leave balance available' ?>
+                        </p>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-sky-100 flex items-center justify-between text-xs">
+                        <span class="text-slate-500"><?= $pendingLeaveCount > 0 ? 'Pending: ' . $pendingLeaveCount : 'Active balance' ?></span>
+                        <a href="#leave" class="font-bold text-sky-700 hover:text-sky-900 transition flex items-center gap-1">
+                            Request <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- CARD 4: Recent Payslip Card (Amber / Warm Gold Theme) -->
+                <div class="relative overflow-hidden rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-50/50 p-6 shadow-sm hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full border border-amber-200">
+                            Recent Payslip
+                        </span>
+                        <div class="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center text-base shadow-sm">
+                            <i class="fa-solid fa-file-invoice-dollar"></i>
+                        </div>
+                    </div>
+
+                    <div>
+                        <?php if ($latestPayslip): ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-amber-700 mb-1">
+                                Net Take-Home Pay
+                            </span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">
+                                ₱ <?= number_format($latestPayslip['net_pay'], 2) ?>
+                            </p>
+                            <p class="text-xs text-slate-600 mt-1">
+                                Period: <?= date('M d', strtotime($latestPayslip['period_start'])) ?> &ndash; <?= date('M d, Y', strtotime($latestPayslip['period_end'])) ?>
+                            </p>
+                        <?php else: ?>
+                            <span class="inline-block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Payroll Status</span>
+                            <p class="text-2xl font-black text-slate-900 tracking-tight">₱ 0.00</p>
+                            <p class="text-xs text-slate-600 mt-1">No released payslip records on file yet.</p>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between text-xs">
+                        <span class="text-slate-500"><?= $latestPayslip ? 'Released' : 'Pending' ?></span>
+                        <a href="#payslips" class="font-bold text-amber-700 hover:text-amber-900 transition flex items-center gap-1">
+                            View Slip <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Quick Overview & Actions Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left: Employment Summary Snapshot -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-600 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-id-badge text-amber-500"></i> Employment Snapshot
+                    </h3>
+                    <div class="space-y-3.5 text-xs">
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500">Employee ID</span>
+                            <span class="font-mono font-bold text-slate-800"><?= e($employee['employee_code']) ?></span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500">Assigned Branch</span>
+                            <span class="font-semibold text-slate-800"><?= e($employee['branch_name'] ?? 'HQ') ?></span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500">Department</span>
+                            <span class="font-semibold text-slate-800"><?= e($employee['department'] ?? 'Operations') ?></span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500">Position / Title</span>
+                            <span class="font-semibold text-slate-800"><?= e($employee['position'] ?? 'Staff') ?></span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500">Date Hired</span>
+                            <span class="font-semibold text-slate-800"><?= e($employee['date_hired'] ?? 'N/A') ?></span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5">
+                            <span class="text-slate-500">Current Status</span>
+                            <span class="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                <?= e($employee['status']) ?>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-5 pt-4 border-t border-slate-100">
+                        <a href="#profile" class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition">
+                            <i class="fa-solid fa-user-gear text-slate-500"></i> Manage Personal Profile
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right: Recent Attendance & Quick Shortcuts (2 cols) -->
+                <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i> Recent Attendance Punches
+                            </h3>
+                            <a href="#attendance" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition">
+                                View Full Month (<?= $daysPresent ?> days) &rarr;
+                            </a>
+                        </div>
+
+                        <?php if (empty($attendanceLogs)): ?>
+                            <div class="py-8 text-center text-slate-400">
+                                <i class="fa-regular fa-clock text-3xl mb-2 text-slate-300"></i>
+                                <p class="text-xs font-medium text-slate-600">No attendance punches recorded this month yet.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="space-y-2">
+                                <?php 
+                                $previewLogs = array_slice($computedLogs, 0, 4);
+                                foreach ($previewLogs as $item):
+                                    $l = $item['log'];
+                                    $c = $item['calc'];
+                                    $hrs = floor($c['worked_minutes'] / 60);
+                                    $mins = $c['worked_minutes'] % 60;
+                                ?>
+                                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100/80 transition text-xs">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-[11px]">
+                                                <?= date('d', strtotime($l['work_date'])) ?>
+                                            </div>
+                                            <div>
+                                                <p class="font-bold text-slate-800"><?= date('l, M d', strtotime($l['work_date'])) ?></p>
+                                                <p class="text-slate-500">
+                                                    In: <span class="font-medium text-emerald-700"><?= date('h:i A', strtotime($l['clock_in'])) ?></span>
+                                                    <?php if ($l['clock_out']): ?>
+                                                        &bull; Out: <span class="font-medium text-rose-700"><?= date('h:i A', strtotime($l['clock_out'])) ?></span>
+                                                    <?php else: ?>
+                                                        &bull; <span class="font-semibold text-emerald-600">Active Shift</span>
+                                                    <?php endif; ?>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <span class="font-mono font-bold text-slate-700"><?= "{$hrs}h {$mins}m" ?></span>
+                                            <?php if ($c['late_minutes'] > 0): ?>
+                                                <p class="text-[10px] text-rose-600 font-semibold"><?= $c['late_minutes'] ?>m late</p>
+                                            <?php else: ?>
+                                                <p class="text-[10px] text-emerald-600 font-medium">On time</p>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Quick Action Buttons -->
+                    <div class="mt-6 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button onclick="switchTab('payslips')" class="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-file-invoice text-emerald-600"></i>
+                            <span>Payslips</span>
+                        </button>
+                        <button onclick="switchTab('schedule')" class="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-calendar-alt text-purple-600"></i>
+                            <span>My Shifts</span>
+                        </button>
+                        <button onclick="openLeaveModal()" class="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-plane-departure text-blue-600"></i>
+                            <span>File Leave</span>
+                        </button>
+                        <button onclick="openPasswordModal()" class="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex flex-col items-center gap-1 transition">
+                            <i class="fa-solid fa-key text-amber-600"></i>
+                            <span>Password</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. PROFILE TAB -->
+        <div id="tabContent-profile" class="tab-content hidden">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 <!-- Left: Read-Only Info Card -->
@@ -917,18 +1249,18 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         function switchTab(tab) {
-            window.location.hash = (tab === 'profile') ? '#dashboard' : '#' + tab;
+            window.location.hash = '#' + tab;
         }
 
         function applyHashRoute() {
             let hash = window.location.hash.replace('#', '').toLowerCase();
-            if (!hash || hash === 'dashboard') {
-                hash = 'profile';
+            if (!hash) {
+                hash = 'dashboard';
             }
 
-            const validTabs = ['profile', 'payslips', 'attendance', 'leave', 'schedule'];
+            const validTabs = ['dashboard', 'profile', 'payslips', 'attendance', 'leave', 'schedule'];
             if (!validTabs.includes(hash)) {
-                hash = 'profile';
+                hash = 'dashboard';
             }
 
             // Hide all tab contents
@@ -942,7 +1274,8 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
 
             // Update page header title
             const titles = {
-                'profile': 'My Dashboard',
+                'dashboard': 'My Dashboard',
+                'profile': 'My Profile',
                 'payslips': 'My Payslips',
                 'attendance': 'Attendance Record',
                 'leave': 'Leave & Time Off',
@@ -958,8 +1291,7 @@ $availableOpenShifts = $openShiftsStmt->fetchAll();
                 el.classList.remove('bg-amber-600', 'text-white', 'shadow-sm');
                 el.classList.add('text-slate-300');
             });
-            const activeSideKey = (hash === 'profile') ? 'dashboard' : hash;
-            const activeNav = document.getElementById('sideNav-' + activeSideKey);
+            const activeNav = document.getElementById('sideNav-' + hash);
             if (activeNav) {
                 activeNav.classList.remove('text-slate-300');
                 activeNav.classList.add('bg-amber-600', 'text-white', 'shadow-sm');
