@@ -619,9 +619,11 @@ $thresholdPesos = $thresholdCents / 100;
                         <td class="p-3.5 text-right">
                             ${isCreator ? `
                                 <span class="text-xs text-gray-400 italic">Self-approval blocked</span>
-                            ` : `
+                            ` : userCanApprove ? `
                                 <button type="button" onclick="approveExpense(${e.id})" class="px-3 py-1 bg-emerald-600 text-white rounded text-xs font-semibold hover:bg-emerald-700">Approve</button>
                                 <button type="button" onclick="promptVoidExpense(${e.id})" class="px-2 py-1 text-red-600 hover:text-red-800 text-xs font-medium">Reject</button>
+                            ` : `
+                                <span class="text-xs text-gray-400 italic">Approval restricted</span>
                             `}
                         </td>
                     </tr>

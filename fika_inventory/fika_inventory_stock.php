@@ -278,6 +278,7 @@ $pageTitle = 'Inventory Management · Stock Ledger';
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     let inventoryItems = [];
     const canApproveUser = <?= $canApprove ? 'true' : 'false' ?>;
+    const canAdjustUser = <?= $canAdjust ? 'true' : 'false' ?>;
 
     function closeModal(id) {
         const el = document.getElementById(id);
@@ -368,12 +369,16 @@ $pageTitle = 'Inventory Management · Stock Ledger';
                 </td>
                 <td class="py-4 px-6 text-right whitespace-nowrap">
                     <div class="inline-flex items-center gap-2">
-                        <button type="button" onclick="openAdjustModal(${item.id})" class="text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
-                            <i class="fa-solid fa-sliders text-[11px]"></i> Adjust
-                        </button>
-                        <button type="button" onclick="openEditModal(${item.id})" class="text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
-                            <i class="fa-solid fa-pen text-[11px]"></i> Edit
-                        </button>
+                        ${canAdjustUser ? `
+                            <button type="button" onclick="openAdjustModal(${item.id})" class="text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
+                                <i class="fa-solid fa-sliders text-[11px]"></i> Adjust
+                            </button>
+                        ` : ''}
+                        ${canAdjustUser ? `
+                            <button type="button" onclick="openEditModal(${item.id})" class="text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1">
+                                <i class="fa-solid fa-pen text-[11px]"></i> Edit
+                            </button>
+                        ` : ''}
                     </div>
                 </td>
             `;

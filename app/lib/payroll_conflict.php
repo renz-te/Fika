@@ -34,44 +34,44 @@ function payroll_conflict(array $user, array $run, string $action): void {
     // Chain Rules
     if ($scope === 'BRANCH') {
         if ($action === 'GENERATE') {
-            if (!in_array($role, ['BHR', 'GA', 'ADMIN'])) {
-                throw new Exception("Only BHR (or GA/ADMIN fallback) can draft a BRANCH payroll.");
+            if (!in_array($role, ['BHR', 'GA', 'CHR'])) {
+                throw new Exception("Only BHR (or GA/CHR fallback) can draft a BRANCH payroll.");
             }
         } else if ($action === 'APPROVE') {
-            if (!in_array($role, ['BA', 'GA', 'ADMIN'])) {
-                throw new Exception("Only BA (or GA/ADMIN fallback) can approve a BRANCH payroll.");
+            if (!in_array($role, ['BA', 'GA'])) {
+                throw new Exception("Only BA (or GA fallback) can approve a BRANCH payroll.");
             }
         } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if (!in_array($role, ['BA', 'GA', 'ADMIN'])) {
-                throw new Exception("Only BA (or GA/ADMIN fallback) can {$action} a BRANCH payroll.");
+            if (!in_array($role, ['BA', 'GA'])) {
+                throw new Exception("Only BA (or GA fallback) can {$action} a BRANCH payroll.");
             }
         }
     } else if ($scope === 'OFFICIALS') {
         if ($action === 'GENERATE') {
-            if (!in_array($role, ['CHR', 'ADMIN'])) {
-                throw new Exception("Only CHR (or ADMIN fallback) can draft an OFFICIALS payroll.");
+            if (!in_array($role, ['CHR', 'GA'])) {
+                throw new Exception("Only CHR (or GA fallback) can draft an OFFICIALS payroll.");
             }
         } else if ($action === 'APPROVE') {
-            if (!in_array($role, ['GA', 'ADMIN'])) {
-                throw new Exception("Only GA (or ADMIN fallback) can approve an OFFICIALS payroll.");
+            if (!in_array($role, ['GA', 'BA'])) {
+                throw new Exception("Only GA (or BA fallback) can approve an OFFICIALS payroll.");
             }
         } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if (!in_array($role, ['GA', 'ADMIN'])) {
-                throw new Exception("Only GA (or ADMIN fallback) can {$action} an OFFICIALS payroll.");
+            if (!in_array($role, ['GA', 'BA'])) {
+                throw new Exception("Only GA (or BA fallback) can {$action} an OFFICIALS payroll.");
             }
         }
     } else if ($scope === 'HQ') {
         if ($action === 'GENERATE') {
-            if (!in_array($role, ['CHR', 'GA', 'ADMIN'])) {
-                throw new Exception("Only CHR/GA/ADMIN can draft an HQ payroll.");
+            if (!in_array($role, ['CHR', 'GA'])) {
+                throw new Exception("Only CHR or GA can draft an HQ payroll.");
             }
         } else if ($action === 'APPROVE') {
-            if ($role !== 'ADMIN') {
-                throw new Exception("Only ADMIN can approve an HQ payroll.");
+            if (!in_array($role, ['GA', 'BA'])) {
+                throw new Exception("Only GA or BA can approve an HQ payroll.");
             }
         } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if ($role !== 'ADMIN') {
-                throw new Exception("Only ADMIN can {$action} an HQ payroll.");
+            if (!in_array($role, ['GA', 'BA'])) {
+                throw new Exception("Only GA or BA can {$action} an HQ payroll.");
             }
         }
     }

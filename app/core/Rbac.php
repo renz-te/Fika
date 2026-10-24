@@ -26,24 +26,23 @@ class Rbac {
 
         if (!isset(self::$cache[$roleId])) {
             global $pdo;
-            $rStmt = $pdo->prepare("SELECT name FROM roles WHERE id = ?");
-            $rStmt->execute([$roleId]);
-            $roleName = strtoupper($rStmt->fetchColumn() ?: '');
-
             $stmt = $pdo->prepare("SELECT permission_name FROM role_permissions WHERE role_id = ?");
             $stmt->execute([$roleId]);
             
             self::$cache[$roleId] = [
-                'is_admin' => in_array($roleName, ['ADMIN', 'SUPER ADMIN']),
                 'permissions' => $stmt->fetchAll(PDO::FETCH_COLUMN)
             ];
         }
 
-        if (self::$cache[$roleId]['is_admin']) {
-            return true;
-        }
-
         return in_array($permission, self::$cache[$roleId]['permissions'], true);
+    }
+
+    /**
+     * Clear cached role permissions
+     */
+    public static function clearCache(): void {
+        self::$cache = [];
+        self::$knownPermissions = null;
     }
 
     /**
