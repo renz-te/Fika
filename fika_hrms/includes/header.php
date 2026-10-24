@@ -62,7 +62,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 };
 ?>
 <!-- Sidebar Navigation -->
-<aside class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20">
+<aside class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20 h-screen sticky top-0 overflow-y-auto">
     <!-- Brand Header -->
     <div class="h-16 flex items-center px-6 border-b border-slate-800 gap-3">
         <div class="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
@@ -124,7 +124,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php if ($canShift): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_shift_board.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_shift_board.php') ?>">
             <i class="fa-solid fa-calendar-days w-5 text-center text-purple-400"></i>
-            <span>Shift Board</span>
+            <span>Roster &amp; Scheduler</span>
         </a>
         <?php endif; ?>
         <?php if ($canAttendance): ?>
