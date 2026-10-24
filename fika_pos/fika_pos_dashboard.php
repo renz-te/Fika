@@ -1,11 +1,12 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/core/Output.php';
 
 Auth::requireLogin();
 Rbac::require_permission('pos.access');
 
 $user = Auth::user();
-$branchId = $user['branch_id'] ?? null;
+$branchId = $user['branch_id'] ?? 1;
 
 global $pdo;
 
@@ -84,44 +85,54 @@ $csrfToken = Csrf::getToken();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cashier Dashboard - Fika POS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
-    <!-- Meta Tokens -->
-    <input type="hidden" id="csrf-token" value="<?= e($csrfToken) ?>">
-    <input type="hidden" id="has-active-session" value="<?= $activeSession ? '1' : '0' ?>">
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
 
-    <!-- Top Navigation -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <div class="flex items-center space-x-3">
-                    <span class="text-2xl font-black tracking-tight text-amber-900">FIKA</span>
-                    <span class="text-xs px-2.5 py-1 rounded-md font-bold bg-amber-100 text-amber-900 uppercase tracking-wider">Cashier Dashboard</span>
-                </div>
-                <div class="flex items-center space-x-6 text-sm">
-                    <div class="text-right">
-                        <span class="font-bold text-slate-900 block"><?= e($user['username'] ?? 'Cashier') ?></span>
-                        <span class="text-xs text-slate-500">Branch #<?= e($branchId ?? 'HQ') ?></span>
+    <?php require_once __DIR__ . '/../fika_hrms/includes/header.php'; ?>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <!-- Meta Tokens -->
+        <input type="hidden" id="csrf-token" value="<?= e($csrfToken) ?>">
+        <input type="hidden" id="has-active-session" value="<?= $activeSession ? '1' : '0' ?>">
+
+        <!-- Top Navigation -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
+                            <i class="fa-solid fa-cash-register text-base"></i>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-lg text-slate-900 leading-tight">POS Cashier Dashboard</h1>
+                            <p class="text-xs text-slate-500">Live order queue, cash drawers, and terminal reconciliation</p>
+                        </div>
                     </div>
-                    <?php if ($activeSession): ?>
-                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
-                            Register Shift Open (#<?= e($activeSession['id']) ?>)
+                    <div class="flex items-center space-x-6 text-sm">
+                        <div class="text-right">
+                            <span class="font-bold text-slate-900 block"><?= e($user['username'] ?? 'Cashier') ?></span>
+                            <span class="text-xs text-slate-500">Branch #<?= e($branchId ?? 'HQ') ?></span>
                         </div>
-                    <?php else: ?>
-                        <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
-                            <span class="w-2 h-2 rounded-full bg-rose-500 mr-2"></span>
-                            Register Closed
-                        </div>
-                    <?php endif; ?>
+                        <?php if ($activeSession): ?>
+                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
+                                Register Shift Open (#<?= e($activeSession['id']) ?>)
+                            </div>
+                        <?php else: ?>
+                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+                                <span class="w-2 h-2 rounded-full bg-rose-500 mr-2"></span>
+                                Register Closed
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
-        </div>
-    </header>
+        </header>
 
-    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 flex-1 w-full space-y-6">
+        <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 flex-1 w-full space-y-6">
         
         <!-- Shift Warning if not open -->
         <?php if (!$activeSession): ?>
@@ -635,5 +646,6 @@ $csrfToken = Csrf::getToken();
             .catch(e => alert('Error opening register: ' + e.message));
         }
     </script>
+    </div>
 </body>
 </html>

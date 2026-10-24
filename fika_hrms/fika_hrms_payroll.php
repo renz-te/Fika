@@ -51,11 +51,19 @@ function can_perform_action($run, $action, $user, $pdo) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Payroll Runs - Fika HRMS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payroll Runs · Fika HRMS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans">
-    <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
+
+    <?php require_once __DIR__ . '/includes/header.php'; ?>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 w-full flex-1">
         
         <div class="flex justify-between items-center mb-8">
             <div>
@@ -63,7 +71,6 @@ function can_perform_action($run, $action, $user, $pdo) {
                 <p class="mt-2 text-sm text-gray-600">Manage and review payroll periods.</p>
             </div>
             <div class="text-right flex gap-3">
-                <a href="pos_dashboard.php" class="text-blue-600 hover:underline mt-2 inline-block">Back to Dashboard</a>
                 <?php if ($canGenerate): ?>
                     <button onclick="document.getElementById('generateModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
                         Generate New Run
@@ -313,5 +320,7 @@ function can_perform_action($run, $action, $user, $pdo) {
             }
         }
     </script>
+    </div>
+    </div>
 </body>
 </html>

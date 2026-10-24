@@ -54,38 +54,36 @@ $thresholdPesos = $thresholdCents / 100;
             pointer-events: none;
         }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
-    <!-- Navbar -->
-    <header class="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap justify-between items-center gap-4">
-            <div class="flex items-center space-x-3">
-                <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                    ₱
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold text-gray-900 leading-tight">Financial Budgets & Expenses</h1>
-                    <p class="text-xs text-gray-500">Operating Expenses, Monthly Budgets, Maker-Checker & Receipts</p>
-                </div>
-            </div>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
 
-            <div class="flex items-center space-x-4">
-                <a href="../fika_inventory/fika_inventory_procurement.php" class="text-xs font-semibold text-emerald-600 hover:text-emerald-800">
-                    ← Procurement POs
-                </a>
-                <a href="../fika_hrms/fika_hrms_dashboard.php" class="text-xs font-semibold text-emerald-600 hover:text-emerald-800">
-                    HRMS Dashboard
-                </a>
-                <div class="h-5 w-px bg-gray-200"></div>
-                <div class="text-xs text-right">
-                    <div class="font-semibold text-gray-900"><?= e($user['username'] ?? 'User #' . $user['id']) ?></div>
-                    <div class="text-gray-500">
-                        <?= e($user['role_name'] ?? 'Staff') ?> • Branch #<?= (int)($user['branch_id'] ?? 1) ?>
+    <?php require_once __DIR__ . '/../fika_hrms/includes/header.php'; ?>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <!-- Module Header & Sub-Nav -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xl shadow-sm">
+                        <i class="fa-solid fa-chart-line text-base"></i>
+                    </div>
+                    <div>
+                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">Budgets & Operating Expenses</span>
+                        <span class="text-[10px] uppercase font-bold text-emerald-700 tracking-wider">Disbursements & Maker-Checker</span>
                     </div>
                 </div>
+
+                <nav class="flex items-center gap-6 text-sm font-semibold text-slate-600">
+                    <a href="fika_finance_dashboard.php" class="hover:text-slate-900 transition-colors py-5">Dashboard</a>
+                    <a href="fika_finance_budgets.php" class="text-emerald-600 font-bold border-b-2 border-emerald-600 py-5">Budgets & Expenses</a>
+                    <a href="fika_finance_reconcile.php" class="hover:text-slate-900 transition-colors py-5">Reconciliation</a>
+                    <a href="fika_finance_reports.php" class="hover:text-slate-900 transition-colors py-5">Financial Reports</a>
+                </nav>
             </div>
-        </div>
-    </header>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1">
 
     <!-- Main Container -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -802,5 +800,7 @@ $thresholdPesos = $thresholdCents / 100;
             refreshAllData();
         });
     </script>
+    </div>
+    </div>
 </body>
 </html>

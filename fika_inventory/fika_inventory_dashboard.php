@@ -71,46 +71,37 @@ try {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex">
 
-    <!-- Top Navigation Bar -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a href="fika_inventory_dashboard.php" class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="fa-solid fa-boxes-stacked text-sm"></i>
+    <?php require_once __DIR__ . '/../fika_hrms/includes/header.php'; ?>
+
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <!-- Module Header & Sub-Nav -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xl shadow-sm">
+                        <i class="fa-solid fa-boxes-stacked text-base"></i>
                     </div>
                     <div>
-                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">FIKA INVENTORY</span>
-                        <span class="text-[10px] uppercase font-bold text-blue-700 tracking-wider">Raw Ingredients & Supply Chain</span>
+                        <span class="text-base font-extrabold text-slate-900 tracking-tight block leading-none">Inventory & Supply Chain</span>
+                        <span class="text-[10px] uppercase font-bold text-blue-700 tracking-wider">Raw Ingredients & Procurement</span>
                     </div>
-                </a>
-            </div>
-
-            <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
-                <a href="fika_inventory_dashboard.php" class="text-blue-600 font-bold border-b-2 border-blue-600 py-4">Dashboard</a>
-                <a href="fika_inventory_stock.php" class="hover:text-slate-900 transition-colors py-4">Stock Ledger</a>
-                <a href="fika_inventory_procurement.php" class="hover:text-slate-900 transition-colors py-4 flex items-center gap-1.5">
-                    <span>Procurement</span>
-                    <?php if ($pendingPOs > 0): ?>
-                        <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full"><?= $pendingPOs ?></span>
-                    <?php endif; ?>
-                </a>
-                <a href="fika_inventory_recipes.php" class="hover:text-slate-900 transition-colors py-4">Recipe COGS</a>
-            </nav>
-
-            <div class="flex items-center gap-3">
-                <div class="text-right hidden sm:block">
-                    <p class="text-xs font-bold text-slate-900"><?= e($currentUser['username'] ?? 'Inventory Manager') ?></p>
-                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Stock Control</p>
                 </div>
-                <a href="../login.php?logout=1" class="p-2 text-slate-400 hover:text-red-600 transition-colors" title="Logout">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                </a>
+
+                <nav class="flex items-center gap-6 text-sm font-semibold text-slate-600">
+                    <a href="fika_inventory_dashboard.php" class="text-blue-600 font-bold border-b-2 border-blue-600 py-5">Dashboard</a>
+                    <a href="fika_inventory_stock.php" class="hover:text-slate-900 transition-colors py-5">Stock Ledger</a>
+                    <a href="fika_inventory_procurement.php" class="hover:text-slate-900 transition-colors py-5 flex items-center gap-1.5">
+                        <span>Procurement</span>
+                        <?php if ($pendingPOs > 0): ?>
+                            <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full"><?= $pendingPOs ?></span>
+                        <?php endif; ?>
+                    </a>
+                    <a href="fika_inventory_recipes.php" class="hover:text-slate-900 transition-colors py-5">Recipe COGS</a>
+                </nav>
             </div>
-        </div>
-    </header>
+        </header>
 
     <!-- Main Container -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -319,6 +310,6 @@ try {
     <footer class="mt-auto bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
         &copy; <?= date('Y') ?> Fika Café &middot; Inventory & Supply Chain Management
     </footer>
-
+    </div>
 </body>
 </html>

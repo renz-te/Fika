@@ -93,7 +93,10 @@ spl_autoload_register(function ($class) {
     }
 });
 
-// 7. Ensure Session is Active
+// 7. Core Helpers & Output
+require_once APP_ROOT . '/app/core/Output.php';
+
+// 8. Ensure Session is Active
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
