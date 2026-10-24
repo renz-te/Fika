@@ -9,9 +9,31 @@ global $pdo;
 $canApprove = Rbac::can('hr.leave.approve');
 $canCreate = Rbac::can('hr.leave.manage');
 $currentUser = Auth::user();
+$userBranchId = $currentUser['branch_id'] ?? null;
+$userRole = (int)($currentUser['role_id'] ?? 0);
+$isAdminOrChr = in_array($userRole, [1, 2], true) || $userBranchId === null;
 
 // Branch scope
-[$scopeSql, $scopeParams] = Rbac::branch_scope('e');
+$branches = [];
+if ($isAdminOrChr) {
+    $branches = $pdo->query("SELECT id, name, address FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY name ASC, id ASC")->fetchAll();
+    if (isset($_GET['branch_id']) && is_numeric($_GET['branch_id'])) {
+        $selectedBranchId = (int)$_GET['branch_id'];
+    } else {
+        $defStmt = $pdo->query("
+            SELECT b.id FROM branches b 
+            WHERE b.status = 'Active' AND b.deleted_at IS NULL 
+            ORDER BY (SELECT COUNT(*) FROM employees e WHERE e.branch_id = b.id AND e.status = 'Active') DESC, b.id ASC 
+            LIMIT 1
+        ");
+        $selectedBranchId = (int)($defStmt ? $defStmt->fetchColumn() : ($branches[0]['id'] ?? 1));
+    }
+    $scopeSql = " AND e.branch_id = ?";
+    $scopeParams = [$selectedBranchId];
+} else {
+    $selectedBranchId = (int)$userBranchId;
+    [$scopeSql, $scopeParams] = Rbac::branch_scope('e');
+}
 
 // Current Month for Leave Calendar
 $currentYear = isset($_GET['year']) ? (int)$_GET['year'] : (int)date('Y');
@@ -137,16 +159,38 @@ $pageTitle = "Leave Management";
                 </div>
 
                 <div class="flex items-center gap-3">
+                    <?php if ($isAdminOrChr && count($branches) > 0): ?>
+                        <form method="GET" class="inline-flex items-center gap-2">
+                            <input type="hidden" name="tab" value="<?= e($activeTab) ?>">
+                            <input type="hidden" name="status" value="<?= e($statusFilter) ?>">
+                            <?php if ($activeTab === 'calendar'): ?>
+                                <input type="hidden" name="year" value="<?= $currentYear ?>">
+                                <input type="hidden" name="month" value="<?= $currentMonth ?>">
+                            <?php endif; ?>
+                            <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Branch:</label>
+                            <select name="branch_id" onchange="this.form.submit()" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-white shadow-xs">
+                                <?php foreach ($branches as $b): 
+                                    $bLabel = $b['name'];
+                                    if (!empty($b['address'])) {
+                                        $bLabel .= ' (' . $b['address'] . ')';
+                                    }
+                                ?>
+                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </form>
+                    <?php endif; ?>
+
                     <!-- Tab buttons -->
                     <div class="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200">
-                        <a href="?tab=requests&status=<?= urlencode($statusFilter) ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 <?= $activeTab === 'requests' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900' ?>">
+                        <a href="?tab=requests&status=<?= urlencode($statusFilter) ?>&branch_id=<?= $selectedBranchId ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 <?= $activeTab === 'requests' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900' ?>">
                             <i class="fa-solid fa-list-check"></i>
                             <span>Requests Queue</span>
                             <?php if ($pendingCount > 0): ?>
                                 <span class="bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black"><?= $pendingCount ?></span>
                             <?php endif; ?>
                         </a>
-                        <a href="?tab=calendar&year=<?= $currentYear ?>&month=<?= $currentMonth ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 <?= $activeTab === 'calendar' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900' ?>">
+                        <a href="?tab=calendar&year=<?= $currentYear ?>&month=<?= $currentMonth ?>&branch_id=<?= $selectedBranchId ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 <?= $activeTab === 'calendar' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900' ?>">
                             <i class="fa-solid fa-calendar-days"></i>
                             <span>Team Calendar</span>
                         </a>
@@ -221,7 +265,7 @@ $pageTitle = "Leave Management";
                             <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Filter Status:</span>
                             <div class="flex items-center gap-1">
                                 <?php foreach (['ALL' => 'All', 'PENDING' => 'Pending', 'APPROVED' => 'Approved', 'REJECTED' => 'Rejected'] as $st => $stLbl): ?>
-                                    <a href="?tab=requests&status=<?= $st ?>" class="px-2.5 py-1 rounded-lg text-xs font-bold transition <?= $statusFilter === $st ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200 text-slate-600' ?>">
+                                    <a href="?tab=requests&status=<?= $st ?>&branch_id=<?= $selectedBranchId ?>" class="px-2.5 py-1 rounded-lg text-xs font-bold transition <?= $statusFilter === $st ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200 text-slate-600' ?>">
                                         <?= $stLbl ?>
                                     </a>
                                 <?php endforeach; ?>
@@ -341,13 +385,13 @@ $pageTitle = "Leave Management";
                                     $nextYear = $currentYear;
                                     if ($nextMonth > 12) { $nextMonth = 1; $nextYear++; }
                                 ?>
-                                <a href="?tab=calendar&year=<?= $prevYear ?>&month=<?= $prevMonth ?>" class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 text-xs transition">
+                                <a href="?tab=calendar&year=<?= $prevYear ?>&month=<?= $prevMonth ?>&branch_id=<?= $selectedBranchId ?>" class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 text-xs transition">
                                     <i class="fa-solid fa-chevron-left"></i>
                                 </a>
-                                <a href="?tab=calendar&year=<?= date('Y') ?>&month=<?= date('m') ?>" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition">
+                                <a href="?tab=calendar&year=<?= date('Y') ?>&month=<?= date('m') ?>&branch_id=<?= $selectedBranchId ?>" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition">
                                     Today
                                 </a>
-                                <a href="?tab=calendar&year=<?= $nextYear ?>&month=<?= $nextMonth ?>" class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 text-xs transition">
+                                <a href="?tab=calendar&year=<?= $nextYear ?>&month=<?= $nextMonth ?>&branch_id=<?= $selectedBranchId ?>" class="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 text-xs transition">
                                     <i class="fa-solid fa-chevron-right"></i>
                                 </a>
                             </div>

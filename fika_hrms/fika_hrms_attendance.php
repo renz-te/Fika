@@ -19,7 +19,31 @@ if ($val = $setStmt->fetchColumn()) {
 $dateFrom = $_GET['date_from'] ?? date('Y-m-d', strtotime('-7 days'));
 $dateTo = $_GET['date_to'] ?? date('Y-m-d');
 
-[$scopeSql, $scopeParams] = Rbac::branch_scope('e');
+$currentUser = Auth::user();
+$userBranchId = $currentUser['branch_id'] ?? null;
+$userRole = (int)($currentUser['role_id'] ?? 0);
+$isAdminOrChr = in_array($userRole, [1, 2], true) || $userBranchId === null;
+
+$branches = [];
+if ($isAdminOrChr) {
+    $branches = $pdo->query("SELECT id, name, address FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY name ASC, id ASC")->fetchAll();
+    if (isset($_GET['branch_id']) && is_numeric($_GET['branch_id'])) {
+        $selectedBranchId = (int)$_GET['branch_id'];
+    } else {
+        $defStmt = $pdo->query("
+            SELECT b.id FROM branches b 
+            WHERE b.status = 'Active' AND b.deleted_at IS NULL 
+            ORDER BY (SELECT COUNT(*) FROM employees e WHERE e.branch_id = b.id AND e.status = 'Active') DESC, b.id ASC 
+            LIMIT 1
+        ");
+        $selectedBranchId = (int)($defStmt ? $defStmt->fetchColumn() : ($branches[0]['id'] ?? 1));
+    }
+    $scopeSql = " AND e.branch_id = ?";
+    $scopeParams = [$selectedBranchId];
+} else {
+    $selectedBranchId = (int)$userBranchId;
+    [$scopeSql, $scopeParams] = Rbac::branch_scope('e');
+}
 
 $sql = "
     SELECT a.*, e.first_name, e.last_name, e.employee_code 
@@ -59,7 +83,22 @@ $logs = $stmt->fetchAll();
             </div>
         </div>
 
-        <form method="GET" class="bg-white p-4 rounded shadow mb-6 flex gap-4 items-end">
+        <form method="GET" class="bg-white p-4 rounded shadow mb-6 flex flex-wrap gap-4 items-end">
+            <?php if ($isAdminOrChr && count($branches) > 0): ?>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Branch</label>
+                    <select name="branch_id" class="mt-1 block rounded-md border-gray-300 shadow-sm p-2 border bg-white">
+                        <?php foreach ($branches as $b): 
+                            $bLabel = $b['name'];
+                            if (!empty($b['address'])) {
+                                $bLabel .= ' (' . $b['address'] . ')';
+                            }
+                        ?>
+                            <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php endif; ?>
             <div>
                 <label class="block text-sm font-medium text-gray-700">Date From</label>
                 <input type="date" name="date_from" value="<?= e($dateFrom) ?>" class="mt-1 block rounded-md border-gray-300 shadow-sm p-2 border">

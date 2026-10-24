@@ -10,15 +10,30 @@ global $pdo;
 $user = Auth::user();
 $canManage = Rbac::can('schedule.manage');
 $userBranchId = $user['branch_id'] ?? null;
+$userRole = (int)($user['role_id'] ?? 0);
+$isAdminOrChr = in_array($userRole, [1, 2], true) || $userBranchId === null;
 
 // Branch Scoping
 $branches = [];
-if ($userBranchId === null) {
-    $branches = $pdo->query("SELECT id, name FROM branches WHERE deleted_at IS NULL ORDER BY name ASC")->fetchAll();
-    $selectedBranchId = (int)($_GET['branch_id'] ?? ($branches[0]['id'] ?? 1));
+if ($isAdminOrChr) {
+    // List all active branches for Admin/CHR
+    $branches = $pdo->query("SELECT id, name, address FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY name ASC, id ASC")->fetchAll();
+    
+    if (isset($_GET['branch_id']) && is_numeric($_GET['branch_id'])) {
+        $selectedBranchId = (int)$_GET['branch_id'];
+    } else {
+        // Default to the first active branch with active staff, or first active branch in DB
+        $defStmt = $pdo->query("
+            SELECT b.id FROM branches b 
+            WHERE b.status = 'Active' AND b.deleted_at IS NULL 
+            ORDER BY (SELECT COUNT(*) FROM employees e WHERE e.branch_id = b.id AND e.status = 'Active') DESC, b.id ASC 
+            LIMIT 1
+        ");
+        $selectedBranchId = (int)($defStmt ? $defStmt->fetchColumn() : ($branches[0]['id'] ?? 1));
+    }
 } else {
     $selectedBranchId = (int)$userBranchId;
-    $bStmt = $pdo->prepare("SELECT id, name FROM branches WHERE id = ?");
+    $bStmt = $pdo->prepare("SELECT id, name, address FROM branches WHERE id = ?");
     $bStmt->execute([$selectedBranchId]);
     $branches = $bStmt->fetchAll();
 }
@@ -46,7 +61,7 @@ $dateFrom = $monday->format('Y-m-d');
 $dateTo = $sunday->format('Y-m-d');
 
 // Fetch branch employees
-$empStmt = $pdo->prepare("SELECT id, first_name, last_name, employee_code, position, employment_type FROM employees WHERE branch_id = ? AND deleted_at IS NULL ORDER BY first_name ASC");
+$empStmt = $pdo->prepare("SELECT * FROM employees WHERE branch_id = ? AND status = 'Active' ORDER BY first_name ASC");
 $empStmt->execute([$selectedBranchId]);
 $employees = $empStmt->fetchAll();
 
@@ -147,30 +162,35 @@ $pageTitle = "Roster & Scheduler";
             <!-- Controls: Week navigation & Branch selector -->
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-wrap justify-between items-center gap-4">
                 <div class="flex items-center gap-3">
-                    <a href="?week_offset=<?= $weekOffset - 1 ?><?= isset($_GET['branch_id']) ? '&branch_id=' . (int)$_GET['branch_id'] : '' ?>" class="px-3.5 py-2 bg-white border border-slate-300 rounded-xl shadow-xs hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
+                    <a href="?week_offset=<?= $weekOffset - 1 ?>&branch_id=<?= $selectedBranchId ?>" class="px-3.5 py-2 bg-white border border-slate-300 rounded-xl shadow-xs hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
                         <i class="fa-solid fa-chevron-left text-[11px]"></i> Prev Week
                     </a>
                     <span class="font-bold text-slate-900 text-sm px-2">
                         <?= $monday->format('M d') ?> &ndash; <?= $sunday->format('M d, Y') ?>
                     </span>
-                    <a href="?week_offset=<?= $weekOffset + 1 ?><?= isset($_GET['branch_id']) ? '&branch_id=' . (int)$_GET['branch_id'] : '' ?>" class="px-3.5 py-2 bg-white border border-slate-300 rounded-xl shadow-xs hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
+                    <a href="?week_offset=<?= $weekOffset + 1 ?>&branch_id=<?= $selectedBranchId ?>" class="px-3.5 py-2 bg-white border border-slate-300 rounded-xl shadow-xs hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
                         Next Week <i class="fa-solid fa-chevron-right text-[11px]"></i>
                     </a>
                     <?php if ($weekOffset !== 0): ?>
-                        <a href="?week_offset=0<?= isset($_GET['branch_id']) ? '&branch_id=' . (int)$_GET['branch_id'] : '' ?>" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 ml-1">
+                        <a href="?week_offset=0&branch_id=<?= $selectedBranchId ?>" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 ml-1">
                             Current Week
                         </a>
                     <?php endif; ?>
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <?php if ($userBranchId === null && count($branches) > 1): ?>
+                    <?php if ($isAdminOrChr && count($branches) > 0): ?>
                         <form method="GET" class="inline-flex items-center gap-2">
                             <input type="hidden" name="week_offset" value="<?= $weekOffset ?>">
                             <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Branch:</label>
                             <select name="branch_id" onchange="this.form.submit()" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-white shadow-xs">
-                                <?php foreach ($branches as $b): ?>
-                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
+                                <?php foreach ($branches as $b): 
+                                    $bLabel = $b['name'];
+                                    if (!empty($b['address'])) {
+                                        $bLabel .= ' (' . $b['address'] . ')';
+                                    }
+                                ?>
+                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </form>
