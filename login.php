@@ -3,7 +3,7 @@ require_once __DIR__ . '/app/bootstrap.php';
 
 if (isset($_GET['logout'])) {
     Auth::logout();
-    header("Location: /login.php");
+    header("Location: login.php");
     exit;
 }
 

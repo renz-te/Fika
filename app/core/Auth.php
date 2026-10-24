@@ -59,21 +59,34 @@ class Auth {
         return isset($_SESSION['user']);
     }
 
+    public static function getLoginUrl(): string {
+        if (file_exists('login.php')) {
+            return 'login.php';
+        }
+        if (file_exists('../login.php')) {
+            return '../login.php';
+        }
+        if (file_exists('../../login.php')) {
+            return '../../login.php';
+        }
+        return '../login.php';
+    }
+
     public static function requireLogin(): void {
         if (!self::check()) {
-            http_response_code(401);
             $isApi = (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
                 || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'))
                 || (isset($_SERVER['REQUEST_URI']) && str_contains($_SERVER['REQUEST_URI'], '/api/'))
                 || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 
             if ($isApi) {
+                http_response_code(401);
                 header('Content-Type: application/json');
                 exit(json_encode(['error' => 'Unauthorized: authentication required.']));
             }
 
-            $loginUrl = config('app.base_url') . '/login.php';
-            header("Location: {$loginUrl}", true, 401);
+            $loginUrl = self::getLoginUrl();
+            header("Location: {$loginUrl}");
             exit();
         }
     }
@@ -93,6 +106,11 @@ class Auth {
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_unset();
             session_destroy();
+        }
+
+        if (!headers_sent() && php_sapi_name() !== 'cli') {
+            header("Location: " . self::getLoginUrl());
+            exit();
         }
     }
 
