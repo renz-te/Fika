@@ -64,7 +64,7 @@ try {
         throw new Exception("Payroll totals mismatch: Expected {$expectedNet}, but got {$actualNet}.");
     }
     
-    $pdo->prepare("UPDATE payroll_runs SET status = 'APPROVED' WHERE id = ?")->execute([$runId]);
+    $pdo->prepare("UPDATE payroll_runs SET status = 'APPROVED', approved_by = ? WHERE id = ?")->execute([$user['id'], $runId]);
     
     Audit::log('PAYROLL_APPROVED', "Payroll Run ID {$runId} approved by User {$user['id']}");
     $pdo->commit();

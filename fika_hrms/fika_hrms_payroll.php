@@ -28,13 +28,31 @@ $hqEmployees = $pdo->query("SELECT id, first_name, last_name, employee_code FROM
 
 $canGenerate = Rbac::can('payroll.generate');
 
+$rStmt = $pdo->prepare("SELECT name FROM roles WHERE id = ?");
+$rStmt->execute([$user['role_id']]);
+$userRoleName = (string)$rStmt->fetchColumn();
+
 function can_perform_action($run, $action, $user, $pdo) {
     if ($action === 'APPROVE' && !Rbac::can('payroll.approve')) return false;
     if ($action === 'RELEASE' && !Rbac::can('payroll.release')) return false;
     if ($action === 'DELETE' && !Rbac::can('payroll.delete')) return false;
 
-    if ($action === 'APPROVE' && $run['processed_by'] == $user['id']) {
-        return false; // Drafter cannot approve
+    // Maker cannot approve or release
+    if (in_array($action, ['APPROVE', 'RELEASE']) && (int)$run['processed_by'] === (int)$user['id']) {
+        return false;
+    }
+
+    // Approver cannot release
+    if ($action === 'RELEASE') {
+        $approverId = (int)($run['approved_by'] ?? 0);
+        if (!$approverId && !empty($run['id'])) {
+            $stmt = $pdo->prepare("SELECT user_id FROM audit_logs WHERE action = 'PAYROLL_APPROVED' AND details LIKE ? ORDER BY id DESC LIMIT 1");
+            $stmt->execute(["Payroll Run ID " . $run['id'] . "%"]);
+            $approverId = (int)$stmt->fetchColumn();
+        }
+        if ($approverId && (int)$user['id'] === $approverId) {
+            return false;
+        }
     }
 
     if ($user['employee_id']) {
@@ -76,6 +94,26 @@ function can_perform_action($run, $action, $user, $pdo) {
                         Generate New Run
                     </button>
                 <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- SoD Workflow Banner -->
+        <div class="mb-6 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl p-4 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                    <div class="font-bold text-sm text-blue-950">Payroll Separation of Duties (SoD) Chain</div>
+                    <div class="text-slate-600 mt-0.5">
+                        <span class="font-semibold text-emerald-700">1. HR Generates (Maker)</span> &rarr; 
+                        <span class="font-semibold text-blue-700">2. Accountant Approves (Checker 1)</span> &rarr; 
+                        <span class="font-semibold text-purple-700">3. Branch Manager Releases (Checker 2)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="text-xs bg-white px-3 py-1.5 rounded-lg border border-blue-200 font-semibold text-blue-800">
+                Logged in as: <span class="font-bold uppercase text-blue-950"><?= e($userRoleName ?: ('Role ' . $user['role_id'])) ?></span>
             </div>
         </div>
 
@@ -128,6 +166,10 @@ function can_perform_action($run, $action, $user, $pdo) {
                                 <?php if ($r['status'] === 'DRAFT' || $r['status'] === 'GENERATED'): ?>
                                     <?php if (can_perform_action($r, 'APPROVE', $user, $pdo)): ?>
                                         <button onclick="approveRun(<?= $r['id'] ?>)" class="text-green-600 hover:underline text-xs font-bold">Approve</button>
+                                    <?php elseif ((int)$r['processed_by'] === (int)$user['id']): ?>
+                                        <span class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded font-medium">Awaiting BA Approval</span>
+                                    <?php elseif (Rbac::can('payroll.release')): ?>
+                                        <span class="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">Awaiting BA Approval</span>
                                     <?php endif; ?>
                                     <?php if (can_perform_action($r, 'DELETE', $user, $pdo)): ?>
                                         <button onclick="clearRun(<?= $r['id'] ?>)" class="text-red-600 hover:underline text-xs font-bold">Clear Draft</button>
@@ -135,6 +177,8 @@ function can_perform_action($run, $action, $user, $pdo) {
                                 <?php elseif ($r['status'] === 'APPROVED'): ?>
                                     <?php if (can_perform_action($r, 'RELEASE', $user, $pdo)): ?>
                                         <button onclick="releaseRun(<?= $r['id'] ?>)" class="text-purple-600 hover:underline text-xs font-bold">Release</button>
+                                    <?php else: ?>
+                                        <span class="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded font-medium">Awaiting BM Release</span>
                                     <?php endif; ?>
                                 <?php elseif ($r['status'] === 'RELEASED'): ?>
                                     <?php if (Rbac::can('payroll.export')): ?>

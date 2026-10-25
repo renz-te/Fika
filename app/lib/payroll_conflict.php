@@ -2,6 +2,7 @@
 
 /**
  * Validates payroll approval chain and SOD rules.
+ * Workflow: HR Generates (Maker) -> Accountant Approves (Checker 1) -> Branch Manager Releases (Checker 2)
  * Throws Exception if a conflict is detected.
  */
 function payroll_conflict(array $user, array $run, string $action): void {
@@ -12,18 +13,30 @@ function payroll_conflict(array $user, array $run, string $action): void {
     $stmt->execute([$user['role_id']]);
     $role = $stmt->fetchColumn();
 
-    $scope = $run['scope'];
+    $scope = $run['scope'] ?? 'BRANCH';
     
-    // Maker-Checker: Cannot approve/release if they generated it
+    // Maker-Checker: The user who generated the payroll cannot also approve or release it
     if (in_array($action, ['APPROVE', 'RELEASE'])) {
         if ((int)$run['processed_by'] === (int)$user['id']) {
             throw new Exception("Separation of Duties violation: The user who generated the payroll cannot also {$action} it.");
         }
     }
 
-    // Maker-Checker: Cannot contain own pay (except maybe delete? delete is fine. But generate/approve/release should not contain own pay)
-    // Wait, generate already checks "not my own pay" inside the generator, but we can do it here too if run has an ID.
-    if ($user['employee_id'] && !empty($run['id']) && in_array($action, ['APPROVE', 'RELEASE'])) {
+    // Checker 1 to Checker 2: The user who approved the payroll cannot also release it
+    if ($action === 'RELEASE') {
+        $approverId = (int)($run['approved_by'] ?? 0);
+        if (!$approverId && !empty($run['id'])) {
+            $stmt = $pdo->prepare("SELECT user_id FROM audit_logs WHERE action = 'PAYROLL_APPROVED' AND details LIKE ? ORDER BY id DESC LIMIT 1");
+            $stmt->execute(["Payroll Run ID " . $run['id'] . "%"]);
+            $approverId = (int)$stmt->fetchColumn();
+        }
+        if ($approverId && (int)$user['id'] === $approverId) {
+            throw new Exception("Separation of Duties violation: The user who approved the payroll cannot also release it.");
+        }
+    }
+
+    // Maker-Checker: Cannot contain own pay
+    if (!empty($user['employee_id']) && !empty($run['id']) && in_array($action, ['APPROVE', 'RELEASE'])) {
         $check = $pdo->prepare("SELECT id FROM payroll_items WHERE payroll_run_id = ? AND employee_id = ?");
         $check->execute([$run['id'], $user['employee_id']]);
         if ($check->fetch()) {
@@ -31,19 +44,23 @@ function payroll_conflict(array $user, array $run, string $action): void {
         }
     }
 
-    // Chain Rules
+    // Chain Rules: Strict 3-step workflow
     if ($scope === 'BRANCH') {
         if ($action === 'GENERATE') {
-            if (!in_array($role, ['BHR', 'GA', 'CHR'])) {
-                throw new Exception("Only BHR (or GA/CHR fallback) can draft a BRANCH payroll.");
+            if (!in_array($role, ['BHR', 'CHR', 'GA'])) {
+                throw new Exception("Only BHR (or CHR/GA) can draft a BRANCH payroll.");
             }
         } else if ($action === 'APPROVE') {
             if (!in_array($role, ['BA', 'GA'])) {
                 throw new Exception("Only BA (or GA fallback) can approve a BRANCH payroll.");
             }
-        } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if (!in_array($role, ['BA', 'GA'])) {
-                throw new Exception("Only BA (or GA fallback) can {$action} a BRANCH payroll.");
+        } else if ($action === 'RELEASE') {
+            if (!in_array($role, ['BM'])) {
+                throw new Exception("Only Branch Manager (BM) can release a BRANCH payroll.");
+            }
+        } else if ($action === 'DELETE') {
+            if (!in_array($role, ['BHR', 'CHR', 'GA'])) {
+                throw new Exception("Only HR can delete a BRANCH payroll draft.");
             }
         }
     } else if ($scope === 'OFFICIALS') {
@@ -55,9 +72,13 @@ function payroll_conflict(array $user, array $run, string $action): void {
             if (!in_array($role, ['GA', 'BA'])) {
                 throw new Exception("Only GA (or BA fallback) can approve an OFFICIALS payroll.");
             }
-        } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if (!in_array($role, ['GA', 'BA'])) {
-                throw new Exception("Only GA (or BA fallback) can {$action} an OFFICIALS payroll.");
+        } else if ($action === 'RELEASE') {
+            if (!in_array($role, ['BM', 'CHR'])) {
+                throw new Exception("Only authorized management can release an OFFICIALS payroll.");
+            }
+        } else if ($action === 'DELETE') {
+            if (!in_array($role, ['GA', 'CHR'])) {
+                throw new Exception("Only HR or GA can delete an OFFICIALS payroll.");
             }
         }
     } else if ($scope === 'HQ') {
@@ -69,9 +90,13 @@ function payroll_conflict(array $user, array $run, string $action): void {
             if (!in_array($role, ['GA', 'BA'])) {
                 throw new Exception("Only GA or BA can approve an HQ payroll.");
             }
-        } else if (in_array($action, ['RELEASE', 'DELETE'])) {
-            if (!in_array($role, ['GA', 'BA'])) {
-                throw new Exception("Only GA or BA can {$action} an HQ payroll.");
+        } else if ($action === 'RELEASE') {
+            if (!in_array($role, ['BM', 'CHR'])) {
+                throw new Exception("Only authorized management can release an HQ payroll.");
+            }
+        } else if ($action === 'DELETE') {
+            if (!in_array($role, ['GA', 'CHR'])) {
+                throw new Exception("Only HR or GA can delete an HQ payroll.");
             }
         }
     }
