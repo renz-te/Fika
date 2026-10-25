@@ -4,19 +4,6 @@ require_once __DIR__ . '/app/core/Output.php';
 
 $logoUrl = 'public/assets/logo.svg';
 
-// Query 4 active products for Menu Highlights
-global $pdo;
-$menuHighlights = [];
-try {
-    $stmt = $pdo->query("SELECT id, name, category, price, price_cents, image_path FROM products WHERE is_active = 1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 4");
-    if ($stmt) {
-        $menuHighlights = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-} catch (Throwable $e) {
-    $menuHighlights = [];
-}
-
-// Query Flagship Branch for Visit Us section
 $branch = null;
 try {
     $branchStmt = $pdo->query("SELECT id, name, address, contact_number FROM branches WHERE id = 1 LIMIT 1");
@@ -31,14 +18,6 @@ $branch = $branch ?: [
     'name' => 'Fika Flagship',
     'address' => 'Bayan, Dasmarinas City, Cavite',
     'contact_number' => '0917-888-3452'
-];
-
-// Fallback high-res café imagery for items without uploaded photos
-$defaultImages = [
-    'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=800&q=80', // Spanish Latte
-    'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?auto=format&fit=crop&w=800&q=80', // Iced Matcha Latte
-    'https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80', // Butter Croissant
-    'https://images.unsplash.com/photo-1485808191679-5f86510681a2?auto=format&fit=crop&w=800&q=80'  // Caramel Macchiato
 ];
 ?>
 <!DOCTYPE html>
@@ -118,9 +97,8 @@ $defaultImages = [
                 </div>
             </a>
 
-            <!-- Nav Links (Only Menu and Our Story - no careers redundancy) -->
+            <!-- Nav Links (Origins, Our Story, Visit Us) -->
             <nav class="hidden md:flex items-center gap-10 text-sm font-semibold text-espresso-800">
-                <a href="#menu" class="hover:text-amber-700 transition-colors">Menu</a>
                 <a href="#origins" class="hover:text-amber-700 transition-colors">Origins</a>
                 <a href="#story" class="hover:text-amber-700 transition-colors">Our Story</a>
                 <a href="#visit" class="hover:text-amber-700 transition-colors">Visit Us</a>
@@ -168,8 +146,8 @@ $defaultImages = [
 
             <!-- Call to Actions -->
             <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="#menu" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-amber-500 hover:bg-amber-400 text-espresso-950 font-bold text-sm tracking-wider uppercase shadow-xl shadow-amber-950/50 transition-all transform hover:-translate-y-0.5">
-                    <span>Explore Menu</span>
+                <a href="#origins" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-amber-500 hover:bg-amber-400 text-espresso-950 font-bold text-sm tracking-wider uppercase shadow-xl shadow-amber-950/50 transition-all transform hover:-translate-y-0.5">
+                    <span>Our Origins</span>
                     <i class="fa-solid fa-arrow-down text-xs"></i>
                 </a>
                 <a href="#story" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
@@ -200,75 +178,7 @@ $defaultImages = [
         </div>
     </section>
 
-    <!-- Menu Highlights Section -->
-    <section id="menu" class="py-24 bg-cream-100/70 border-b border-cream-200 relative">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center max-w-2xl mx-auto mb-16">
-                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Crafted with Purpose</span>
-                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">Menu Highlights</h2>
-                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
-                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base leading-relaxed">
-                    A taste of our specialty offerings. Sourced responsibly from high-altitude micro-lots and extracted to exacting brew ratios.
-                </p>
-            </div>
 
-            <?php if (!empty($menuHighlights)): ?>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                    <?php foreach ($menuHighlights as $idx => $item): 
-                        // Price calculation via Money::format()
-                        $priceCents = (int)($item['price_cents'] ?? round(((float)$item['price']) * 100));
-                        $formattedPrice = Money::format($priceCents);
-                        
-                        // Image resolution
-                        $imgSrc = !empty($item['image_path']) ? $item['image_path'] : ($defaultImages[$idx % count($defaultImages)]);
-                    ?>
-                        <!-- Premium Card (Large image h-64, rounded-2xl, subtle shadow, hover lift) -->
-                        <div class="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl border border-cream-200/80 transition-all duration-300 flex flex-col transform hover:-translate-y-2">
-                            <div class="relative h-64 overflow-hidden bg-espresso-100">
-                                <img src="<?= e($imgSrc) ?>" alt="<?= e($item['name']) ?>" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
-                                <div class="absolute top-3 right-3 px-3.5 py-1 bg-espresso-950/85 backdrop-blur-md text-amber-300 font-bold text-xs uppercase tracking-wider rounded-full border border-amber-500/25 shadow-sm">
-                                    <?= e($item['category'] ?? 'Specialty') ?>
-                                </div>
-                            </div>
-                            <div class="p-6 flex-1 flex flex-col justify-between">
-                                <div>
-                                    <h3 class="font-serif font-bold text-xl text-espresso-900 group-hover:text-amber-700 transition-colors line-clamp-1">
-                                        <?= e($item['name']) ?>
-                                    </h3>
-                                </div>
-                                <div class="mt-6 pt-4 border-t border-cream-100 flex items-center justify-between">
-                                    <span class="text-2xl font-black text-espresso-900 font-serif">
-                                        <?= e($formattedPrice) ?>
-                                    </span>
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cream-100 text-espresso-700 text-[11px] font-semibold border border-cream-200">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                        <span>Available in-store</span>
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <!-- Graceful empty state -->
-                <div class="bg-white rounded-2xl p-12 text-center max-w-md mx-auto border border-cream-200 shadow-sm">
-                    <div class="w-16 h-16 rounded-full bg-cream-100 text-amber-700 flex items-center justify-center mx-auto mb-4 text-2xl">
-                        <i class="fa-solid fa-mug-saucer"></i>
-                    </div>
-                    <h3 class="font-serif font-bold text-xl text-espresso-900">New Seasonal Menu Brewing</h3>
-                    <p class="text-sm text-espresso-700/80 mt-2">
-                        Our baristas are curating the next seasonal rotation. Visit our counters today to explore current roaster selects.
-                    </p>
-                </div>
-            <?php endif; ?>
-
-            <div class="text-center mt-12">
-                <p class="text-xs uppercase tracking-widest text-espresso-700/70">
-                    Oat, almond, and lactose-free milk options available on request.
-                </p>
-            </div>
-        </div>
-    </section>
 
     <!-- Section 1: Coffee Origins -->
     <section id="origins" class="py-24 bg-cream-50 relative overflow-hidden border-b border-cream-200">
@@ -574,7 +484,6 @@ $defaultImages = [
                 <div>
                     <h4 class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-4">Explore</h4>
                     <ul class="space-y-2.5 text-xs text-cream-300">
-                        <li><a href="#menu" class="hover:text-amber-300 transition-colors">Menu Highlights</a></li>
                         <li><a href="#origins" class="hover:text-amber-300 transition-colors">Coffee Origins</a></li>
                         <li><a href="#story" class="hover:text-amber-300 transition-colors">Our Story & Roastery</a></li>
                         <li><a href="#visit" class="hover:text-amber-300 transition-colors">Visit Our Café</a></li>
