@@ -16,6 +16,23 @@ try {
     $menuHighlights = [];
 }
 
+// Query Flagship Branch for Visit Us section
+$branch = null;
+try {
+    $branchStmt = $pdo->query("SELECT id, name, address, contact_number FROM branches WHERE id = 1 LIMIT 1");
+    if ($branchStmt) {
+        $branch = $branchStmt->fetch(PDO::FETCH_ASSOC);
+    }
+} catch (Throwable $e) {
+    $branch = null;
+}
+
+$branch = $branch ?: [
+    'name' => 'Fika Flagship',
+    'address' => 'Bayan, Dasmarinas City, Cavite',
+    'contact_number' => '0917-888-3452'
+];
+
 // Fallback high-res café imagery for items without uploaded photos
 $defaultImages = [
     'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=800&q=80', // Spanish Latte
@@ -434,7 +451,7 @@ $defaultImages = [
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
                     <div>
                         <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block mb-2">Our Flagship Sanctuary</span>
-                        <h2 class="text-3xl sm:text-4xl font-black font-serif text-espresso-900">Visit Us</h2>
+                        <h2 class="text-3xl sm:text-4xl font-black font-serif text-espresso-900"><?= e($branch['name']) ?></h2>
                         <div class="w-14 h-1 bg-amber-600 mt-3 rounded-full mb-6"></div>
 
                         <div class="space-y-5 text-sm text-espresso-800">
@@ -444,10 +461,23 @@ $defaultImages = [
                                     <i class="fa-solid fa-location-dot text-sm"></i>
                                 </div>
                                 <div>
-                                    <p class="font-bold text-espresso-950">Flagship Roastery & Espresso Bar</p>
-                                    <p class="text-espresso-700 mt-0.5">101 Ayala Ave, Makati City</p>
+                                    <p class="font-bold text-espresso-950">Address</p>
+                                    <p class="text-espresso-700 mt-0.5"><?= e($branch['address']) ?></p>
                                 </div>
                             </div>
+
+                            <!-- Phone -->
+                            <?php if (!empty($branch['contact_number'])): ?>
+                            <div class="flex items-start gap-3.5">
+                                <div class="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <i class="fa-solid fa-phone text-sm"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-espresso-950">Phone</p>
+                                    <p class="text-espresso-700 mt-0.5"><?= e($branch['contact_number']) ?></p>
+                                </div>
+                            </div>
+                            <?php endif; ?>
 
                             <!-- Opening Hours -->
                             <div class="flex items-start gap-3.5">
@@ -463,7 +493,7 @@ $defaultImages = [
 
                         <!-- Directions Button -->
                         <div class="mt-8">
-                            <a href="https://maps.google.com/?q=101+Ayala+Ave+Makati+City" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-full bg-espresso-900 hover:bg-espresso-800 text-cream-100 font-bold text-xs uppercase tracking-wider transition-all shadow-md transform hover:-translate-y-0.5 border border-amber-600/30">
+                            <a href="https://www.google.com/maps/search/?api=1&query=<?= urlencode($branch['address']) ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-full bg-espresso-900 hover:bg-espresso-800 text-cream-100 font-bold text-xs uppercase tracking-wider transition-all shadow-md transform hover:-translate-y-0.5 border border-amber-600/30">
                                 <i class="fa-solid fa-diamond-turn-right text-amber-400"></i>
                                 <span>Get Directions</span>
                             </a>
