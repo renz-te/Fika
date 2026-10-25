@@ -30,8 +30,17 @@ if ($userBranchId === null) {
     $branches = $bStmt->fetchAll();
 }
 
-// Fetch categories
-$categories = $pdo->query("SELECT id, name FROM categories ORDER BY name ASC")->fetchAll();
+// Ensure initial default categories exist
+$pdo->exec("INSERT IGNORE INTO categories (name) VALUES ('Hot'), ('Cold'), ('Special'), ('Pastries')");
+
+// Fetch categories with linked product count
+$categories = $pdo->query("
+    SELECT c.id, c.name, COUNT(p.id) as product_count
+    FROM categories c
+    LEFT JOIN products p ON p.category = c.name AND p.deleted_at IS NULL
+    GROUP BY c.id, c.name
+    ORDER BY c.name ASC
+")->fetchAll(PDO::FETCH_ASSOC);
 
 // Search and Category Filter
 $search = trim($_GET['search'] ?? '');
@@ -109,6 +118,10 @@ $csrfToken = Csrf::getToken();
             </div>
             <div class="flex items-center gap-3">
                 <?php if ($canManage): ?>
+                <button type="button" onclick="openCategoryModal()" class="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-lg shadow-sm text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors">
+                    <svg class="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                    Manage Categories
+                </button>
                 <button onclick="openProductModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-amber-700 hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     Add Product
@@ -262,12 +275,12 @@ $csrfToken = Csrf::getToken();
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Category *</label>
-                        <input type="text" id="prod-category" name="category" list="cat-list" required class="block w-full rounded-lg border-slate-200 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm p-2.5 border" placeholder="e.g. Espresso">
-                        <datalist id="cat-list">
+                        <select id="prod-category" name="category" required class="block w-full rounded-lg border-slate-200 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm p-2.5 border">
+                            <option value="">-- Select Category --</option>
                             <?php foreach ($categories as $cat): ?>
-                                <option value="<?= e($cat['name']) ?>"></option>
+                                <option value="<?= e($cat['name']) ?>"><?= e($cat['name']) ?></option>
                             <?php endforeach; ?>
-                        </datalist>
+                        </select>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Price (₱) *</label>
@@ -302,6 +315,71 @@ $csrfToken = Csrf::getToken();
         </div>
     </div>
 
+    <!-- Category Management Modal -->
+    <div id="category-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">Manage Categories</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Add new menu categories or remove empty ones.</p>
+                </div>
+                <button type="button" onclick="closeCategoryModal()" class="text-slate-400 hover:text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5">
+                <!-- Add Category Form -->
+                <form id="add-category-form" onsubmit="addCategory(event)" class="flex gap-2">
+                    <input type="text" id="new-cat-name" placeholder="New category name (e.g. Milktea)" required maxlength="100" class="flex-1 rounded-lg border-slate-200 text-sm p-2.5 border focus:border-amber-500 focus:ring-amber-500 shadow-xs">
+                    <button type="submit" id="add-cat-btn" class="px-4 py-2.5 bg-amber-700 text-white rounded-lg text-sm font-medium hover:bg-amber-800 transition-colors shadow-sm flex items-center gap-1.5 flex-shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>Add Category</span>
+                    </button>
+                </form>
+
+                <div id="cat-msg" class="hidden text-xs py-2 px-3 rounded-lg font-medium"></div>
+
+                <!-- Categories List -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Existing Categories</span>
+                        <span id="cat-count-badge" class="text-xs text-slate-500"><?= count($categories) ?> categories</span>
+                    </div>
+                    <div class="max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl bg-slate-50/50">
+                        <ul id="category-list" class="divide-y divide-slate-100">
+                            <?php foreach ($categories as $cat): 
+                                $pCount = (int)($cat['product_count'] ?? 0);
+                            ?>
+                                <li id="cat-row-<?= (int)$cat['id'] ?>" class="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50/80 transition-colors">
+                                    <div class="flex items-center gap-2.5">
+                                        <span class="text-sm font-semibold text-slate-800 cat-row-name"><?= e($cat['name']) ?></span>
+                                        <span class="text-[11px] px-2 py-0.5 rounded-full <?= $pCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500' ?> font-medium">
+                                            <?= $pCount ?> <?= $pCount === 1 ? 'product' : 'products' ?>
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <?php if ($pCount === 0): ?>
+                                            <button type="button" onclick="deleteCategory(<?= (int)$cat['id'] ?>, '<?= e(addslashes($cat['name'])) ?>')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors" title="Delete Empty Category">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                            </button>
+                                        <?php else: ?>
+                                            <span class="text-[11px] text-slate-400 italic px-2 py-1">In use</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex justify-end">
+                    <button type="button" onclick="closeCategoryModal()" class="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const csrfToken = document.getElementById('csrf-token').value;
         const currentBranchId = document.getElementById('current-branch-id').value;
@@ -327,7 +405,26 @@ $csrfToken = Csrf::getToken();
             document.getElementById('modal-title').textContent = 'Edit Product';
             document.getElementById('prod-id').value = p.id;
             document.getElementById('prod-name').value = p.name;
-            document.getElementById('prod-category').value = p.category || '';
+            const catSel = document.getElementById('prod-category');
+            if (p.category) {
+                let found = false;
+                for (let i = 0; i < catSel.options.length; i++) {
+                    if (catSel.options[i].value.toLowerCase() === p.category.toLowerCase()) {
+                        catSel.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    const opt = document.createElement('option');
+                    opt.value = p.category;
+                    opt.textContent = p.category;
+                    catSel.appendChild(opt);
+                    catSel.value = p.category;
+                }
+            } else {
+                catSel.value = '';
+            }
             
             const priceCents = p.price_cents ? parseInt(p.price_cents) : Math.round(parseFloat(p.price) * 100);
             document.getElementById('prod-price').value = (priceCents / 100).toFixed(2);
@@ -436,6 +533,202 @@ $csrfToken = Csrf::getToken();
             } catch (err) {
                 alert('Network error deleting product.');
             }
+        }
+
+        function openCategoryModal() {
+            document.getElementById('cat-msg').classList.add('hidden');
+            document.getElementById('new-cat-name').value = '';
+            document.getElementById('category-modal').classList.remove('hidden');
+            document.getElementById('new-cat-name').focus();
+        }
+
+        function closeCategoryModal() {
+            document.getElementById('category-modal').classList.add('hidden');
+        }
+
+        async function addCategory(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('new-cat-name');
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            const btn = document.getElementById('add-cat-btn');
+            btn.disabled = true;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'Adding...';
+
+            const msgBox = document.getElementById('cat-msg');
+            msgBox.classList.add('hidden');
+
+            try {
+                const res = await fetch('api/fika_pos_category_save.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({
+                        csrf_token: csrfToken,
+                        name: name
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    nameInput.value = '';
+                    msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-emerald-50 text-emerald-800 border border-emerald-200';
+                    msgBox.textContent = `Category "${data.category.name}" added successfully!`;
+                    msgBox.classList.remove('hidden');
+
+                    // 1. Instantly append to Product Modal Category <select> dropdown (Constraint 3)
+                    const prodSelect = document.getElementById('prod-category');
+                    if (prodSelect) {
+                        let exists = false;
+                        for (let i = 0; i < prodSelect.options.length; i++) {
+                            if (prodSelect.options[i].value.toLowerCase() === data.category.name.toLowerCase()) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            const opt = document.createElement('option');
+                            opt.value = data.category.name;
+                            opt.textContent = data.category.name;
+                            prodSelect.appendChild(opt);
+                        }
+                    }
+
+                    // 2. Also append to Filter category select
+                    const filterSelect = document.querySelector('select[name="category"]');
+                    if (filterSelect) {
+                        let fExists = false;
+                        for (let i = 0; i < filterSelect.options.length; i++) {
+                            if (filterSelect.options[i].value.toLowerCase() === data.category.name.toLowerCase()) {
+                                fExists = true;
+                                break;
+                            }
+                        }
+                        if (!fExists) {
+                            const fOpt = document.createElement('option');
+                            fOpt.value = data.category.name;
+                            fOpt.textContent = data.category.name;
+                            filterSelect.appendChild(fOpt);
+                        }
+                    }
+
+                    // 3. Append to Modal category list
+                    const list = document.getElementById('category-list');
+                    const li = document.createElement('li');
+                    li.id = 'cat-row-' + data.category.id;
+                    li.className = 'flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50/80 transition-colors animate-in fade-in duration-150';
+                    li.innerHTML = `
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-sm font-semibold text-slate-800 cat-row-name">${escapeHtml(data.category.name)}</span>
+                            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">0 products</span>
+                        </div>
+                        <div>
+                            <button type="button" onclick="deleteCategory(${data.category.id}, '${escapeJs(data.category.name)}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors" title="Delete Empty Category">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(li);
+
+                    // Update badge count
+                    const countBadge = document.getElementById('cat-count-badge');
+                    if (countBadge) {
+                        const total = list.children.length;
+                        countBadge.textContent = `${total} categories`;
+                    }
+                } else {
+                    msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-rose-50 text-rose-800 border border-rose-200';
+                    msgBox.textContent = data.error || 'Failed to add category.';
+                    msgBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-rose-50 text-rose-800 border border-rose-200';
+                msgBox.textContent = 'Network error while adding category.';
+                msgBox.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        async function deleteCategory(id, name) {
+            if (!confirm(`Are you sure you want to delete category "${name}"?`)) {
+                return;
+            }
+
+            const msgBox = document.getElementById('cat-msg');
+            msgBox.classList.add('hidden');
+
+            try {
+                const res = await fetch('api/fika_pos_category_delete.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({
+                        csrf_token: csrfToken,
+                        id: id
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    // Remove from list
+                    const row = document.getElementById('cat-row-' + id);
+                    if (row) row.remove();
+
+                    // Remove from select dropdowns
+                    const prodSelect = document.getElementById('prod-category');
+                    if (prodSelect) {
+                        for (let i = 0; i < prodSelect.options.length; i++) {
+                            if (prodSelect.options[i].value.toLowerCase() === name.toLowerCase()) {
+                                prodSelect.remove(i);
+                                break;
+                            }
+                        }
+                    }
+                    const filterSelect = document.querySelector('select[name="category"]');
+                    if (filterSelect) {
+                        for (let i = 0; i < filterSelect.options.length; i++) {
+                            if (filterSelect.options[i].value.toLowerCase() === name.toLowerCase()) {
+                                filterSelect.remove(i);
+                                break;
+                            }
+                        }
+                    }
+
+                    msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-emerald-50 text-emerald-800 border border-emerald-200';
+                    msgBox.textContent = `Category "${name}" deleted.`;
+                    msgBox.classList.remove('hidden');
+
+                    const countBadge = document.getElementById('cat-count-badge');
+                    if (countBadge) {
+                        const list = document.getElementById('category-list');
+                        countBadge.textContent = `${list.children.length} categories`;
+                    }
+                } else {
+                    msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-rose-50 text-rose-800 border border-rose-200';
+                    msgBox.textContent = data.error || 'Failed to delete category.';
+                    msgBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                msgBox.className = 'text-xs py-2 px-3 rounded-lg font-medium bg-rose-50 text-rose-800 border border-rose-200';
+                msgBox.textContent = 'Network error while deleting category.';
+                msgBox.classList.remove('hidden');
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function escapeJs(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         }
     </script>
 </body>
