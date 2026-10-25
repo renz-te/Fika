@@ -223,9 +223,9 @@ $defaultImages = [
                                     <span class="text-2xl font-black text-espresso-900 font-serif">
                                         <?= e($formattedPrice) ?>
                                     </span>
-                                    <span class="inline-flex items-center text-xs font-bold text-amber-700 group-hover:text-amber-800">
-                                        <span>Order at Counter</span>
-                                        <i class="fa-solid fa-chevron-right text-[10px] ml-1.5"></i>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cream-100 text-espresso-700 text-[11px] font-semibold border border-cream-200">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                        <span>Available in-store</span>
                                     </span>
                                 </div>
                             </div>
