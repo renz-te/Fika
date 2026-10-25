@@ -104,7 +104,6 @@ $defaultImages = [
             <!-- Nav Links -->
             <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-espresso-800">
                 <a href="#menu" class="hover:text-amber-700 transition-colors">Menu</a>
-                <a href="#system-modules" class="hover:text-amber-700 transition-colors">System Features</a>
                 <a href="#story" class="hover:text-amber-700 transition-colors">Our Story</a>
                 <a href="applicant_form.php" class="hover:text-amber-700 transition-colors flex items-center gap-1.5">
                     <span>Careers</span>
@@ -157,9 +156,9 @@ $defaultImages = [
                     <span>Explore Menu</span>
                     <i class="fa-solid fa-arrow-down text-xs"></i>
                 </a>
-                <a href="#system-modules" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
-                    <i class="fa-solid fa-microchip text-amber-400 text-xs"></i>
-                    <span>System Features</span>
+                <a href="#story" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
+                    <i class="fa-solid fa-mug-hot text-amber-400 text-xs"></i>
+                    <span>Our Story</span>
                 </a>
             </div>
 
@@ -257,153 +256,8 @@ $defaultImages = [
         </div>
     </section>
 
-    <!-- System Modules Grid Section (Replacing Locations) -->
-    <section id="system-modules" class="py-24 bg-cream-50 relative overflow-hidden border-b border-cream-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center max-w-2xl mx-auto mb-16">
-                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Unified Café Platform</span>
-                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">System Modules</h2>
-                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
-                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base leading-relaxed">
-                    A comprehensive, high-reliability backoffice ecosystem driving every cup, shift, invoice, and ingredient across our café enterprise.
-                </p>
-            </div>
-
-            <!-- 4 Module Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <!-- Card 1: Point of Sale -->
-                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
-                    <div>
-                        <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-cash-register"></i>
-                        </div>
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-amber-700 block mb-1">Module 01</span>
-                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-amber-800 transition-colors mb-3">
-                            Point of Sale
-                        </h3>
-                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
-                            Fast register checkout, barcode itemization, cash transactions, and PayMongo digital payments with automatic drawer balancing.
-                        </p>
-                    </div>
-                    <div class="pt-4 border-t border-cream-100">
-                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
-                                <span>High-speed order taking</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
-                                <span>Cash & digital payments</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
-                                <span>X/Z drawer reconciliation</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Card 2: Human Resources -->
-                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
-                    <div>
-                        <div class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-users-gear"></i>
-                        </div>
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600 block mb-1">Module 02</span>
-                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-indigo-700 transition-colors mb-3">
-                            HRMS & Roster
-                        </h3>
-                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
-                            Complete employee lifecycle management, dynamic shift scheduling, attendance clock punches, leave requests, and payroll engine.
-                        </p>
-                    </div>
-                    <div class="pt-4 border-t border-cream-100">
-                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
-                                <span>Staff profiles & roles</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
-                                <span>Roster & shift claims</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
-                                <span>Audited payroll runs</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Card 3: Finance & Accounting -->
-                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
-                    <div>
-                        <div class="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-chart-line"></i>
-                        </div>
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-700 block mb-1">Module 03</span>
-                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-emerald-800 transition-colors mb-3">
-                            Finance & Ledger
-                        </h3>
-                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
-                            General ledger accounting, MTD sales intake vs. operating expenses, branch budget allocations, and audited disbursement vouchers.
-                        </p>
-                    </div>
-                    <div class="pt-4 border-t border-cream-100">
-                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
-                                <span>Real-time P&L reporting</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
-                                <span>Operating expense audits</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
-                                <span>Maker-Checker approvals</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Card 4: Inventory & Procurement -->
-                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
-                    <div>
-                        <div class="w-14 h-14 rounded-2xl bg-blue-100 text-blue-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
-                            <i class="fa-solid fa-boxes-stacked"></i>
-                        </div>
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-blue-700 block mb-1">Module 04</span>
-                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-blue-800 transition-colors mb-3">
-                            Supply & Stock
-                        </h3>
-                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
-                            Perpetual inventory tracking, low-stock alerts, recipe formulation COGS yields, supplier management, and purchase orders.
-                        </p>
-                    </div>
-                    <div class="pt-4 border-t border-cream-100">
-                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
-                                <span>Perpetual inventory ledger</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
-                                <span>Automatic stock deductions</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
-                                <span>PO workflow & receiving</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <!-- Our Story Section -->
-    <section id="story" class="py-24 bg-cream-100/60 relative overflow-hidden">
+    <section id="story" class="py-24 bg-cream-50 relative overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                 <!-- Visual Collage -->
@@ -489,7 +343,6 @@ $defaultImages = [
                     <h4 class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-4">Explore</h4>
                     <ul class="space-y-2.5 text-xs text-cream-300">
                         <li><a href="#menu" class="hover:text-amber-300 transition-colors">Menu Highlights</a></li>
-                        <li><a href="#system-modules" class="hover:text-amber-300 transition-colors">System Features</a></li>
                         <li><a href="#story" class="hover:text-amber-300 transition-colors">Our Story & Roastery</a></li>
                         <li><a href="applicant_form.php" class="hover:text-amber-300 transition-colors">Join Our Team (Careers)</a></li>
                     </ul>
