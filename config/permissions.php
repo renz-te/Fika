@@ -7,6 +7,7 @@ return [
     'users.edit',
     'users.delete',
     'users.manage',
+    'user.manage',
     'devices.view',
     'devices.manage',
     'roles.view',

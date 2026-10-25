@@ -34,7 +34,7 @@ $isHB = (stripos($empPos, 'Head Barista') !== false) || ($sessRoleId === 5);
 $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER'], true) || in_array(strtoupper($empPos), ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true);
 $isStaffOrHB = !$isAdmin && ($isHB || $isStaff);
 
-$canPosDash = Rbac::can('pos.access') || Rbac::can('pos.void_order') || Rbac::can('pos.menu.manage');
+$canPosDash = Rbac::can('pos.access');
 $canInv = Rbac::can('inventory.manage') || Rbac::can('inventory.view');
 $canProc = Rbac::can('procurement.view');
 $canFin = Rbac::can('finance.view');
@@ -44,10 +44,11 @@ $canPayroll = Rbac::can('payroll.view');
 $canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
 $canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
+$canSystemAccounts = ($sessRoleId === 1) || $isAdmin || Rbac::can('user.manage');
 $canDevices = Rbac::can('devices.view');
 $canSettings = Rbac::can('settings.manage');
 $canBranches = Rbac::can('branches.view');
-$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canDevices || $canSettings || $canBranches);
+$showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canSystemAccounts || $canSettings || $canBranches);
 
 $currentDir = basename(dirname($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? ''));
 $url = function(string $targetModule, string $file) use ($currentDir): string {
@@ -177,9 +178,9 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <!-- 5. SYSTEM & SETTINGS Group -->
-        <?php if ($canUsers || $canDevices || $canSettings): ?>
+        <?php if ($canUsers || $canSystemAccounts || $canSettings || $canBranches): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">SYSTEM &amp; SETTINGS</div>
-        <?php if ($canDevices): ?>
+        <?php if ($canSystemAccounts): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_devices.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_devices.php') ?>">
             <i class="fa-solid fa-tablet-screen-button w-5 text-center text-cyan-400"></i>
             <span>System Accounts</span>

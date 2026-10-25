@@ -16,16 +16,29 @@ $pendingLeaves = 0;
 $todaySales = 0.0;
 
 try {
-    $empStmt = $pdo->query("SELECT COUNT(*) FROM employees WHERE status = 'ACTIVE' AND deleted_at IS NULL");
+    [$empScope, $empParams] = Rbac::branch_scope();
+    $empStmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE status = 'ACTIVE' AND deleted_at IS NULL {$empScope}");
+    $empStmt->execute($empParams);
     $totalEmployees = (int)($empStmt ? $empStmt->fetchColumn() : 0);
 
-    $clockStmt = $pdo->query("SELECT COUNT(DISTINCT employee_id) FROM attendance_logs WHERE work_date = CURDATE() AND clock_in IS NOT NULL");
+    [$clockScope, $clockParams] = Rbac::branch_scope();
+    $clockStmt = $pdo->prepare("SELECT COUNT(DISTINCT employee_id) FROM attendance_logs WHERE work_date = CURDATE() AND clock_in IS NOT NULL {$clockScope}");
+    $clockStmt->execute($clockParams);
     $presentToday = (int)($clockStmt ? $clockStmt->fetchColumn() : 0);
 
-    $leaveStmt = $pdo->query("SELECT COUNT(*) FROM leave_requests WHERE status = 'PENDING'");
+    [$leaveScope, $leaveParams] = Rbac::branch_scope('e');
+    $leaveStmt = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM leave_requests lr
+        LEFT JOIN employees e ON lr.employee_id = e.id
+        WHERE lr.status = 'PENDING' {$leaveScope}
+    ");
+    $leaveStmt->execute($leaveParams);
     $pendingLeaves = (int)($leaveStmt ? $leaveStmt->fetchColumn() : 0);
 
-    $salesStmt = $pdo->query("SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE DATE(created_at) = CURDATE() AND payment_status = 'PAID'");
+    [$salesScope, $salesParams] = Rbac::branch_scope();
+    $salesStmt = $pdo->prepare("SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE DATE(created_at) = CURDATE() AND payment_status = 'PAID' {$salesScope}");
+    $salesStmt->execute($salesParams);
     $todaySales = (float)($salesStmt ? $salesStmt->fetchColumn() : 0.0);
 } catch (Throwable $e) {
     // Fallback defaults on query failure
@@ -34,15 +47,17 @@ try {
 // 2. Daily Agenda: Today's Scheduled Interviews
 $todayInterviews = [];
 try {
-    $intStmt = $pdo->query("
+    [$appScopeA, $appParamsA] = Rbac::branch_scope('a');
+    $intStmt = $pdo->prepare("
         SELECT i.id AS interview_id, i.interview_time AS start_time, 
                a.first_name, a.last_name, 
                COALESCE(NULLIF(a.position_applied, ''), a.position, 'Staff') AS position 
         FROM interviews i 
         INNER JOIN applicants a ON i.applicant_id = a.id 
-        WHERE i.interview_date = CURDATE() AND i.status != 'Cancelled' 
+        WHERE i.interview_date = CURDATE() AND i.status != 'Cancelled' {$appScopeA}
         ORDER BY i.interview_time ASC
     ");
+    $intStmt->execute($appParamsA);
     $todayInterviews = $intStmt ? $intStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (Throwable $e) {
     $todayInterviews = [];
@@ -58,33 +73,34 @@ $insights = [
 ];
 
 try {
+    [$appScope, $appParams] = Rbac::branch_scope();
     // Top Position Applied
-    $stPos = $pdo->prepare("SELECT COALESCE(NULLIF(position_applied, ''), position) AS pos, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? GROUP BY pos ORDER BY cnt DESC LIMIT 1");
-    $stPos->execute([$currentMonthStr]);
+    $stPos = $pdo->prepare("SELECT COALESCE(NULLIF(position_applied, ''), position) AS pos, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? {$appScope} GROUP BY pos ORDER BY cnt DESC LIMIT 1");
+    $stPos->execute(array_merge([$currentMonthStr], $appParams));
     $rowPos = $stPos->fetch(PDO::FETCH_ASSOC);
     if ($rowPos && !empty($rowPos['pos'])) {
         $insights['top_position'] = $rowPos['pos'];
     }
 
     // Top Category
-    $stCat = $pdo->prepare("SELECT employment_category, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? AND employment_category IS NOT NULL AND employment_category != '' GROUP BY employment_category ORDER BY cnt DESC LIMIT 1");
-    $stCat->execute([$currentMonthStr]);
+    $stCat = $pdo->prepare("SELECT employment_category, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? AND employment_category IS NOT NULL AND employment_category != '' {$appScope} GROUP BY employment_category ORDER BY cnt DESC LIMIT 1");
+    $stCat->execute(array_merge([$currentMonthStr], $appParams));
     $rowCat = $stCat->fetch(PDO::FETCH_ASSOC);
     if ($rowCat && !empty($rowCat['employment_category'])) {
         $insights['top_category'] = $rowCat['employment_category'];
     }
 
     // Prevalent Gender
-    $stSex = $pdo->prepare("SELECT sex, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? AND sex IS NOT NULL AND sex != '' GROUP BY sex ORDER BY cnt DESC LIMIT 1");
-    $stSex->execute([$currentMonthStr]);
+    $stSex = $pdo->prepare("SELECT sex, COUNT(*) AS cnt FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? AND sex IS NOT NULL AND sex != '' {$appScope} GROUP BY sex ORDER BY cnt DESC LIMIT 1");
+    $stSex->execute(array_merge([$currentMonthStr], $appParams));
     $rowSex = $stSex->fetch(PDO::FETCH_ASSOC);
     if ($rowSex && !empty($rowSex['sex'])) {
         $insights['top_sex'] = $rowSex['sex'];
     }
 
     // Total applicants this month
-    $stTot = $pdo->prepare("SELECT COUNT(*) FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ?");
-    $stTot->execute([$currentMonthStr]);
+    $stTot = $pdo->prepare("SELECT COUNT(*) FROM applicants WHERE DATE_FORMAT(created_at, '%Y-%m') = ? {$appScope}");
+    $stTot->execute(array_merge([$currentMonthStr], $appParams));
     $insights['total_month_applicants'] = (int)$stTot->fetchColumn();
 } catch (Throwable $e) {
     // Non-fatal fallback
@@ -94,13 +110,15 @@ try {
 $attendanceLabels = [];
 $attendanceValues = [];
 try {
-    $attStmt = $pdo->query("
+    [$attScope, $attParams] = Rbac::branch_scope();
+    $attStmt = $pdo->prepare("
         SELECT MONTH(work_date) AS month, COUNT(DISTINCT CONCAT(employee_id, '_', work_date)) AS total 
         FROM attendance_logs 
-        WHERE YEAR(work_date) = YEAR(CURDATE()) AND clock_in IS NOT NULL 
+        WHERE YEAR(work_date) = YEAR(CURDATE()) AND clock_in IS NOT NULL {$attScope}
         GROUP BY MONTH(work_date) 
         ORDER BY month ASC
     ");
+    $attStmt->execute($attParams);
     $attRows = $attStmt ? $attStmt->fetchAll(PDO::FETCH_ASSOC) : [];
     foreach ($attRows as $row) {
         $attendanceLabels[] = date('M', mktime(0, 0, 0, (int)$row['month'], 1));
