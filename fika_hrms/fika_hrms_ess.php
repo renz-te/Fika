@@ -61,7 +61,7 @@ if (!empty($bankDecrypted)) {
 }
 
 $empPos = (string)($employee['position'] ?? '');
-$isHB = (stripos($empPos, 'Head Barista') !== false) || ((int)($_SESSION['user']['role_id'] ?? 0) === 5);
+$isHB = (stripos($empPos, 'Head Barista') !== false);
 $userRoleName = '';
 if (!empty($_SESSION['user']['role_id'])) {
     $rStmt = $pdo->prepare("SELECT name FROM roles WHERE id = ?");

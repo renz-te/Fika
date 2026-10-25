@@ -40,9 +40,13 @@ return [
     'hr.attendance.view',
     'hr.attendance.adjust',
     'hr.attendance.certify',
+    'attendance.view',
+    'attendance.adjust',
     'hr.leave.view',
     'hr.leave.approve',
     'hr.leave.manage',
+    'leave.view',
+    'leave.approve',
     'payroll.view',
     'payroll.generate',
     'payroll.approve',
@@ -52,6 +56,7 @@ return [
     'schedule.view',
     'schedule.manage',
     'schedule.claim',
+    'applicant.view',
     'settings.manage',
 
     // Finance

@@ -10,13 +10,21 @@ if (isset($_GET['logout'])) {
 global $pdo;
 
 function get_role_redirect_url(int $roleId, PDO $pdo, ?int $employeeId = null): string {
+    if (in_array($roleId, [1, 2, 5, 6], true)) {
+        return 'fika_hrms/fika_hrms_dashboard.php';
+    }
     return Auth::getRedirectUrl(['role_id' => $roleId, 'employee_id' => $employeeId]);
 }
 
 // If already logged in, redirect based on role
 if (Auth::check()) {
     $currentUser = Auth::user();
-    $target = Auth::getRedirectUrl($currentUser);
+    $roleId = (int)($currentUser['role_id'] ?? 0);
+    if (in_array($roleId, [1, 2, 5, 6], true)) {
+        $target = 'fika_hrms/fika_hrms_dashboard.php';
+    } else {
+        $target = Auth::getRedirectUrl($currentUser);
+    }
     header("Location: {$target}");
     exit;
 }
@@ -33,7 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $success = Auth::attemptLogin($username, $password);
         if ($success) {
             $currentUser = Auth::user();
-            $target = Auth::getRedirectUrl($currentUser);
+            $roleId = (int)($currentUser['role_id'] ?? 0);
+            if (in_array($roleId, [1, 2, 5, 6], true)) {
+                $target = 'fika_hrms/fika_hrms_dashboard.php';
+            } else {
+                $target = Auth::getRedirectUrl($currentUser);
+            }
             header("Location: {$target}");
             exit;
         } else {

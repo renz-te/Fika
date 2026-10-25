@@ -30,7 +30,7 @@ if ($sessEmpId > 0 && $pdo) {
 }
 
 $isAdmin = ($userRoleName === 'ADMIN') || ($sessRoleId === 1);
-$isHB = (stripos($empPos, 'Head Barista') !== false) || ($sessRoleId === 5);
+$isHB = (stripos($empPos, 'Head Barista') !== false);
 $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER'], true) || in_array(strtoupper($empPos), ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true);
 $isStaffOrHB = !$isAdmin && ($isHB || $isStaff);
 

@@ -160,11 +160,12 @@ class Auth {
         $upperRole = strtoupper(trim($roleName));
         $upperPos = strtoupper(trim($position));
 
-        // Admins & Branch Managers always go to HRMS management dashboard unless they are staff/baristas
-        if (in_array($upperRole, ['ADMIN', 'SUPER ADMIN', 'BM', 'BRANCH MANAGER', 'CHR', 'CENTRAL HR'], true)) {
-            if (!in_array($upperPos, ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true)) {
-                return 'fika_hrms/fika_hrms_dashboard.php';
-            }
+        // Admins, CHR, Branch HR & Branch Managers always go to HRMS management dashboard
+        if (
+            in_array($roleId, [1, 2, 5, 6], true) ||
+            in_array($upperRole, ['ADMIN', 'SUPER ADMIN', 'BM', 'BRANCH MANAGER', 'CHR', 'CENTRAL HR', 'BHR', 'BRANCH HR'], true)
+        ) {
+            return 'fika_hrms/fika_hrms_dashboard.php';
         }
 
         // Financial roles
