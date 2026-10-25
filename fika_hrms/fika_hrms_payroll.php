@@ -89,7 +89,7 @@ function can_perform_action($run, $action, $user, $pdo) {
                 <p class="mt-2 text-sm text-gray-600">Manage and review payroll periods.</p>
             </div>
             <div class="text-right flex gap-3">
-                <?php if ($canGenerate): ?>
+                <?php if (Rbac::can('payroll.generate')): ?>
                     <button onclick="document.getElementById('generateModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
                         Generate New Run
                     </button>
