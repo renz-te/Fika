@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <i class="fa-solid fa-arrow-left text-[10px]"></i>
             <span>Back to Main Page</span>
         </a>
-        <a href="careers.php" class="text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors">
+        <a href="applicant_form.php" class="text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors">
             Looking for Careers?
         </a>
     </div>

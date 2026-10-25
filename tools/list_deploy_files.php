@@ -35,7 +35,6 @@ $includePatterns = [
     'public/**',
     'index.php',
     'login.php',
-    'careers.php',
     'applicant_form.php',
     'config/permissions.php',
     'config/paymongo.php',

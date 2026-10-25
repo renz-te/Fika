@@ -119,7 +119,7 @@ try {
         FROM audit_logs a 
         LEFT JOIN users u ON a.user_id = u.id 
         ORDER BY a.id DESC 
-        LIMIT 6
+        LIMIT 5
     ");
     $recentActivities = $actStmt ? $actStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (Throwable $e) {
@@ -169,25 +169,25 @@ $pageTitle = 'HRMS Dashboard';
             
             <!-- 4 Top Stat Cards Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <!-- Stat Card 1: Total Staff -->
+                <!-- Stat Card 1: Total Employees -->
                 <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 flex items-center transition hover:shadow-md">
                     <div class="h-12 w-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl mr-4 flex-shrink-0">
                         <i class="fa-solid fa-users"></i>
                     </div>
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Staff</p>
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Employees</p>
                         <p class="text-2xl font-black text-slate-900 mt-0.5"><?= number_format($totalEmployees) ?></p>
                         <a href="fika_hrms_employees.php" class="text-[11px] font-bold text-blue-600 hover:underline mt-0.5 inline-block">View staff list &rarr;</a>
                     </div>
                 </div>
                 
-                <!-- Stat Card 2: Attendance Today -->
+                <!-- Stat Card 2: Clocked In Today -->
                 <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 flex items-center transition hover:shadow-md">
                     <div class="h-12 w-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl mr-4 flex-shrink-0">
                         <i class="fa-solid fa-user-check"></i>
                     </div>
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Attendance Today</p>
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Clocked In Today</p>
                         <p class="text-2xl font-black text-slate-900 mt-0.5"><?= number_format($presentToday) ?></p>
                         <span class="text-[11px] font-medium text-emerald-600 mt-0.5 inline-block">Staff clocked in</span>
                     </div>
@@ -205,7 +205,7 @@ $pageTitle = 'HRMS Dashboard';
                     </div>
                 </div>
                 
-                <!-- Stat Card 4: Today's Sales Revenue -->
+                <!-- Stat Card 4: Today's Sales -->
                 <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 flex items-center transition hover:shadow-md">
                     <div class="h-12 w-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl mr-4 flex-shrink-0">
                         <i class="fa-solid fa-cash-register"></i>
@@ -215,6 +215,55 @@ $pageTitle = 'HRMS Dashboard';
                         <p class="text-2xl font-black text-slate-900 mt-0.5">₱<?= number_format($todaySales, 2) ?></p>
                         <span class="text-[11px] font-medium text-indigo-600 mt-0.5 inline-block">Settled orders</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Quick Links Hub (Applicants, Employees, Payroll, Shift Board) -->
+            <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-indigo-600"></i>
+                    <span>HRMS Quick Links</span>
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <a href="fika_hrms_applicants.php" class="flex items-center gap-3.5 p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group">
+                        <div class="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-base group-hover:scale-105 transition-transform flex-shrink-0">
+                            <i class="fa-solid fa-user-plus"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-sm">Applicants</p>
+                            <p class="text-xs text-slate-500">Candidate pipeline & reviews</p>
+                        </div>
+                    </a>
+
+                    <a href="fika_hrms_employees.php" class="flex items-center gap-3.5 p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group">
+                        <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-base group-hover:scale-105 transition-transform flex-shrink-0">
+                            <i class="fa-solid fa-id-card"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-sm">Employees</p>
+                            <p class="text-xs text-slate-500">Staff directory & records</p>
+                        </div>
+                    </a>
+
+                    <a href="fika_hrms_payroll.php" class="flex items-center gap-3.5 p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-base group-hover:scale-105 transition-transform flex-shrink-0">
+                            <i class="fa-solid fa-file-invoice-dollar"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-sm">Payroll</p>
+                            <p class="text-xs text-slate-500">Compensation & payslips</p>
+                        </div>
+                    </a>
+
+                    <a href="fika_hrms_shift_board.php" class="flex items-center gap-3.5 p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group">
+                        <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-base group-hover:scale-105 transition-transform flex-shrink-0">
+                            <i class="fa-solid fa-calendar-week"></i>
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-900 text-sm">Shift Board</p>
+                            <p class="text-xs text-slate-500">Rosters & assignments</p>
+                        </div>
+                    </a>
                 </div>
             </div>
 

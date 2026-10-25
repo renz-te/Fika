@@ -123,7 +123,7 @@ try {
             <!-- 1. Total Items -->
             <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Cataloged Items</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Items</span>
                     <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-box-archive"></i>
                     </div>
@@ -162,7 +162,7 @@ try {
             <!-- 3. Pending POs -->
             <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Pending Orders</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Pending POs</span>
                     <div class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
                         <i class="fa-solid fa-truck-ramp-box"></i>
                     </div>

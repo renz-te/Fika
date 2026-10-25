@@ -176,16 +176,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Header Navigation -->
     <header class="bg-stone-950/80 backdrop-blur-md border-b border-stone-800">
         <div class="max-w-4xl mx-auto px-4 h-20 flex items-center justify-between">
-            <a href="careers.php" class="flex items-center gap-3 group">
+            <a href="index.php" class="flex items-center gap-3 group">
                 <img src="public/assets/logo.svg" alt="Fika Logo" class="w-10 h-10 object-contain">
                 <div>
                     <span class="text-lg font-black tracking-wider text-white">FIKA</span>
                     <span class="text-[11px] uppercase tracking-widest text-amber-500 block font-bold">Applicant Intake</span>
                 </div>
             </a>
-            <a href="careers.php" class="text-xs text-stone-400 hover:text-amber-400 transition-colors flex items-center gap-1.5 font-medium">
+            <a href="index.php" class="text-xs text-stone-400 hover:text-amber-400 transition-colors flex items-center gap-1.5 font-medium">
                 <i class="fa-solid fa-arrow-left text-[10px]"></i>
-                <span>Back to Job Openings</span>
+                <span>Back to Home</span>
             </a>
         </div>
     </header>
@@ -205,10 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Our team reviews submissions continuously. If your qualifications match our current shift requirements, our hiring manager will reach out via email or phone.
                 </div>
                 <div class="mt-8 flex justify-center gap-4">
-                    <a href="careers.php" class="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs uppercase tracking-wider transition-all">
-                        View Other Openings
-                    </a>
-                    <a href="index.php" class="px-6 py-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs uppercase tracking-wider border border-stone-700 transition-all">
+                    <a href="index.php" class="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs uppercase tracking-wider transition-all">
                         Return Home
                     </a>
                 </div>

@@ -2,18 +2,9 @@
 require_once __DIR__ . '/app/bootstrap.php';
 require_once __DIR__ . '/app/core/Output.php';
 
-// Helper for root-relative or configured base_url
-if (!function_exists('base_url')) {
-    function base_url(string $path = ''): string {
-        $base = rtrim((string)config('app.base_url', ''), '/');
-        $clean = ltrim($path, '/');
-        return $base !== '' ? $base . '/' . $clean : $clean;
-    }
-}
+$logoUrl = 'public/assets/logo.svg';
 
-$logoUrl = base_url('public/assets/logo.svg');
-
-// Query 4 active products for Menu Highlights (gracefully handling any count)
+// Query 4 active products for Menu Highlights
 global $pdo;
 $menuHighlights = [];
 try {
@@ -23,17 +14,6 @@ try {
     }
 } catch (Throwable $e) {
     $menuHighlights = [];
-}
-
-// Query active branches for Locations section
-$branches = [];
-try {
-    $bStmt = $pdo->query("SELECT id, name, address, contact_number, status FROM branches WHERE status = 'Active' AND deleted_at IS NULL ORDER BY id ASC");
-    if ($bStmt) {
-        $branches = $bStmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-} catch (Throwable $e) {
-    $branches = [];
 }
 
 // Fallback high-res café imagery for items without uploaded photos
@@ -49,7 +29,7 @@ $defaultImages = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fika &middot; Slow Hours | Specialty Café & Roastery</title>
+    <title>Fika - Slow Hours | Specialty Café & Roastery</title>
     <link rel="icon" type="image/svg+xml" href="public/assets/logo.svg">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -124,9 +104,9 @@ $defaultImages = [
             <!-- Nav Links -->
             <nav class="hidden md:flex items-center gap-8 text-sm font-semibold text-espresso-800">
                 <a href="#menu" class="hover:text-amber-700 transition-colors">Menu</a>
+                <a href="#system-modules" class="hover:text-amber-700 transition-colors">System Features</a>
                 <a href="#story" class="hover:text-amber-700 transition-colors">Our Story</a>
-                <a href="#locations" class="hover:text-amber-700 transition-colors">Locations</a>
-                <a href="careers.php" class="hover:text-amber-700 transition-colors flex items-center gap-1.5">
+                <a href="applicant_form.php" class="hover:text-amber-700 transition-colors flex items-center gap-1.5">
                     <span>Careers</span>
                     <span class="px-1.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 rounded-full border border-amber-200">Hiring</span>
                 </a>
@@ -134,7 +114,7 @@ $defaultImages = [
 
             <!-- Backoffice CTA -->
             <div class="flex items-center gap-3">
-                <a href="careers.php" class="hidden lg:inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 transition-colors">
+                <a href="applicant_form.php" class="hidden lg:inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 transition-colors">
                     Join Our Crew
                 </a>
                 <a href="login.php" class="inline-flex items-center gap-2 px-5 py-2.5 bg-espresso-900 hover:bg-espresso-800 text-amber-100 font-bold text-xs uppercase tracking-wider rounded-full shadow-md shadow-espresso-950/20 transition-all transform hover:-translate-y-0.5 border border-amber-600/30">
@@ -160,7 +140,7 @@ $defaultImages = [
 
             <!-- Hero Headline -->
             <h1 class="text-5xl sm:text-7xl lg:text-8xl font-black font-serif tracking-tight text-cream-50 leading-[1.05]">
-                Fika &middot; <span class="italic font-normal text-amber-400">Slow Hours</span>
+                Fika - <span class="italic font-normal text-amber-400">Slow Hours</span>
             </h1>
 
             <p class="mt-6 text-xl sm:text-2xl text-cream-200 font-serif italic max-w-2xl mx-auto font-normal">
@@ -177,9 +157,9 @@ $defaultImages = [
                     <span>Explore Menu</span>
                     <i class="fa-solid fa-arrow-down text-xs"></i>
                 </a>
-                <a href="#locations" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
-                    <i class="fa-solid fa-location-dot text-amber-400 text-xs"></i>
-                    <span>Find Our Cafés</span>
+                <a href="#system-modules" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-full bg-espresso-900/90 hover:bg-espresso-800 text-cream-100 font-bold text-sm tracking-wider uppercase border border-amber-500/30 transition-all transform hover:-translate-y-0.5">
+                    <i class="fa-solid fa-microchip text-amber-400 text-xs"></i>
+                    <span>System Features</span>
                 </a>
             </div>
 
@@ -277,8 +257,153 @@ $defaultImages = [
         </div>
     </section>
 
+    <!-- System Modules Grid Section (Replacing Locations) -->
+    <section id="system-modules" class="py-24 bg-cream-50 relative overflow-hidden border-b border-cream-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Unified Café Platform</span>
+                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">System Modules</h2>
+                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
+                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base leading-relaxed">
+                    A comprehensive, high-reliability backoffice ecosystem driving every cup, shift, invoice, and ingredient across our café enterprise.
+                </p>
+            </div>
+
+            <!-- 4 Module Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- Card 1: Point of Sale -->
+                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-cash-register"></i>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-amber-700 block mb-1">Module 01</span>
+                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-amber-800 transition-colors mb-3">
+                            Point of Sale
+                        </h3>
+                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
+                            Fast register checkout, barcode itemization, cash transactions, and PayMongo digital payments with automatic drawer balancing.
+                        </p>
+                    </div>
+                    <div class="pt-4 border-t border-cream-100">
+                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
+                                <span>High-speed order taking</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
+                                <span>Cash & digital payments</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-amber-600 text-[10px]"></i>
+                                <span>X/Z drawer reconciliation</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Card 2: Human Resources -->
+                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-users-gear"></i>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600 block mb-1">Module 02</span>
+                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-indigo-700 transition-colors mb-3">
+                            HRMS & Roster
+                        </h3>
+                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
+                            Complete employee lifecycle management, dynamic shift scheduling, attendance clock punches, leave requests, and payroll engine.
+                        </p>
+                    </div>
+                    <div class="pt-4 border-t border-cream-100">
+                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
+                                <span>Staff profiles & roles</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
+                                <span>Roster & shift claims</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-indigo-600 text-[10px]"></i>
+                                <span>Audited payroll runs</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Card 3: Finance & Accounting -->
+                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-700 block mb-1">Module 03</span>
+                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-emerald-800 transition-colors mb-3">
+                            Finance & Ledger
+                        </h3>
+                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
+                            General ledger accounting, MTD sales intake vs. operating expenses, branch budget allocations, and audited disbursement vouchers.
+                        </p>
+                    </div>
+                    <div class="pt-4 border-t border-cream-100">
+                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
+                                <span>Real-time P&L reporting</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
+                                <span>Operating expense audits</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-emerald-600 text-[10px]"></i>
+                                <span>Maker-Checker approvals</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Card 4: Inventory & Procurement -->
+                <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1">
+                    <div>
+                        <div class="w-14 h-14 rounded-2xl bg-blue-100 text-blue-800 flex items-center justify-center text-2xl mb-6 shadow-inner group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-boxes-stacked"></i>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-blue-700 block mb-1">Module 04</span>
+                        <h3 class="font-serif font-bold text-2xl text-espresso-900 group-hover:text-blue-800 transition-colors mb-3">
+                            Supply & Stock
+                        </h3>
+                        <p class="text-sm text-espresso-700/90 leading-relaxed mb-6">
+                            Perpetual inventory tracking, low-stock alerts, recipe formulation COGS yields, supplier management, and purchase orders.
+                        </p>
+                    </div>
+                    <div class="pt-4 border-t border-cream-100">
+                        <ul class="space-y-2 text-xs text-espresso-600 font-medium">
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
+                                <span>Perpetual inventory ledger</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
+                                <span>Automatic stock deductions</span>
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i class="fa-solid fa-check text-blue-600 text-[10px]"></i>
+                                <span>PO workflow & receiving</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Our Story Section -->
-    <section id="story" class="py-24 bg-cream-50 relative overflow-hidden">
+    <section id="story" class="py-24 bg-cream-100/60 relative overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                 <!-- Visual Collage -->
@@ -324,66 +449,6 @@ $defaultImages = [
         </div>
     </section>
 
-    <!-- Locations Section -->
-    <section id="locations" class="py-24 bg-cream-100/60 border-t border-cream-200 relative">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center max-w-2xl mx-auto mb-16">
-                <span class="text-xs uppercase font-extrabold tracking-[0.25em] text-amber-700 block">Come Sit With Us</span>
-                <h2 class="text-3xl sm:text-5xl font-black font-serif text-espresso-900 mt-2">Our Locations</h2>
-                <div class="w-16 h-1 bg-amber-600 mx-auto mt-4 rounded-full"></div>
-                <p class="text-espresso-800/80 mt-4 text-sm sm:text-base">
-                    Find your neighborhood sanctuary. Each Fika space is designed with cozy corners and natural light.
-                </p>
-            </div>
-
-            <?php if (!empty($branches)): ?>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <?php foreach ($branches as $branch): ?>
-                        <div class="bg-white rounded-2xl p-8 border border-cream-200 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between">
-                            <div>
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="w-10 h-10 rounded-full bg-cream-100 text-amber-700 flex items-center justify-center text-lg">
-                                        <i class="fa-solid fa-mug-hot"></i>
-                                    </div>
-                                    <span class="px-2.5 py-1 text-[11px] font-bold bg-amber-100/80 text-amber-800 rounded-full border border-amber-200">
-                                        Open Daily
-                                    </span>
-                                </div>
-                                <h3 class="font-serif font-bold text-2xl text-espresso-900 mb-2">
-                                    <?= e($branch['name']) ?>
-                                </h3>
-                                <p class="text-sm text-espresso-700/90 leading-relaxed mb-4">
-                                    <i class="fa-solid fa-location-dot text-amber-600 mr-2"></i>
-                                    <?= !empty($branch['address']) ? e($branch['address']) : 'Specialty Café & Espresso Bar' ?>
-                                </p>
-                                <?php if (!empty($branch['contact_number'])): ?>
-                                    <p class="text-xs text-espresso-600 flex items-center gap-2">
-                                        <i class="fa-solid fa-phone text-amber-600"></i>
-                                        <span><?= e($branch['contact_number']) ?></span>
-                                    </p>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="mt-8 pt-6 border-t border-cream-100 flex items-center justify-between text-xs text-espresso-600">
-                                <span class="flex items-center gap-1.5">
-                                    <i class="fa-regular fa-clock text-amber-600"></i>
-                                    <span>7:00 AM &ndash; 10:00 PM</span>
-                                </span>
-                                <span class="font-bold text-amber-800">Dine-in &bull; Takeout</span>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <!-- Graceful fallback -->
-                <div class="bg-white rounded-2xl p-10 text-center max-w-md mx-auto border border-cream-200">
-                    <p class="text-espresso-800 font-serif text-lg font-bold">Main Flagship Roastery</p>
-                    <p class="text-sm text-espresso-600 mt-2">123 Coffee Boulevard, Cityville &bull; Open 7am - 10pm</p>
-                </div>
-            <?php endif; ?>
-        </div>
-    </section>
-
     <!-- Footer -->
     <footer class="bg-espresso-950 text-cream-200 pt-16 pb-12 border-t border-espresso-900">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -424,9 +489,9 @@ $defaultImages = [
                     <h4 class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-4">Explore</h4>
                     <ul class="space-y-2.5 text-xs text-cream-300">
                         <li><a href="#menu" class="hover:text-amber-300 transition-colors">Menu Highlights</a></li>
+                        <li><a href="#system-modules" class="hover:text-amber-300 transition-colors">System Features</a></li>
                         <li><a href="#story" class="hover:text-amber-300 transition-colors">Our Story & Roastery</a></li>
-                        <li><a href="#locations" class="hover:text-amber-300 transition-colors">Café Locations</a></li>
-                        <li><a href="careers.php" class="hover:text-amber-300 transition-colors">Join Our Team (Careers)</a></li>
+                        <li><a href="applicant_form.php" class="hover:text-amber-300 transition-colors">Join Our Team (Careers)</a></li>
                     </ul>
                 </div>
 
@@ -438,7 +503,7 @@ $defaultImages = [
                     </p>
                     <a href="login.php" class="inline-flex items-center gap-2 px-4 py-2 bg-espresso-900 hover:bg-espresso-800 text-amber-300 hover:text-amber-200 text-xs font-semibold rounded-lg border border-espresso-800 transition-colors">
                         <i class="fa-solid fa-lock text-[10px]"></i>
-                        <span>Backoffice Login</span>
+                        <span>Staff Login</span>
                     </a>
                 </div>
             </div>

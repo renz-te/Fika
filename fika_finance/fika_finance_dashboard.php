@@ -153,7 +153,7 @@ try {
             <!-- 3. Net Profit -->
             <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Net Margin / Profit</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Net Profit</span>
                     <div class="w-10 h-10 rounded-lg <?= $isProfitable ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600' ?> flex items-center justify-center text-lg">
                         <i class="fa-solid <?= $isProfitable ? 'fa-scale-balanced' : 'fa-triangle-exclamation' ?>"></i>
                     </div>
