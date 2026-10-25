@@ -20,12 +20,12 @@ echo "====================================================================\n";
 echo "Fika Café — Role-Based Demo Account Seeder\n";
 echo "====================================================================\n\n";
 
-// 1. Verify branches 1 and 2 exist; create if missing
+// 1. Verify branches 1 and 2 exist; create or update with realistic names & addresses
 echo "[1/3] Checking branches ID 1 and 2...\n";
 
 $branchCheck = $pdo->prepare("SELECT id, name FROM branches WHERE id = ?");
 
-// Branch 1
+// Branch 1 (Makati)
 $branchCheck->execute([1]);
 $branch1 = $branchCheck->fetch(PDO::FETCH_ASSOC);
 if (!$branch1) {
@@ -33,18 +33,22 @@ if (!$branch1) {
     $ins->execute();
     echo "  + Created Branch 1: Fika Makati\n";
 } else {
-    echo "  * Branch 1 exists: {$branch1['name']}\n";
+    $updBranch = $pdo->prepare("UPDATE branches SET name = 'Fika Makati', address = 'Ayala Ave, Makati City', status = 'Active', deleted_at = NULL WHERE id = 1");
+    $updBranch->execute();
+    echo "  * Updated Branch 1: Fika Makati (Ayala Ave, Makati City)\n";
 }
 
-// Branch 2
+// Branch 2 (BGC)
 $branchCheck->execute([2]);
 $branch2 = $branchCheck->fetch(PDO::FETCH_ASSOC);
 if (!$branch2) {
-    $ins = $pdo->prepare("INSERT INTO branches (id, name, address, contact_number, status) VALUES (2, 'Fika BGC', 'High Street, BGC, Taguig', '0917-100-0002', 'Active')");
+    $ins = $pdo->prepare("INSERT INTO branches (id, name, address, contact_number, status) VALUES (2, 'Fika BGC', '9th Ave, Bonifacio Global City, Taguig', '0917-100-0002', 'Active')");
     $ins->execute();
     echo "  + Created Branch 2: Fika BGC\n";
 } else {
-    echo "  * Branch 2 exists: {$branch2['name']}\n";
+    $updBranch = $pdo->prepare("UPDATE branches SET name = 'Fika BGC', address = '9th Ave, Bonifacio Global City, Taguig', status = 'Active', deleted_at = NULL WHERE id = 2");
+    $updBranch->execute();
+    echo "  * Updated Branch 2: Fika BGC (9th Ave, Bonifacio Global City, Taguig)\n";
 }
 
 // 2. Define Demo Accounts
@@ -52,6 +56,7 @@ $passwordPlain = 'Password123!';
 $passwordHash = password_hash($passwordPlain, PASSWORD_DEFAULT);
 
 $demoAccounts = [
+    // HQ / Global Roles
     [
         'username'      => 'chr_user',
         'role_id'       => 2,
@@ -80,6 +85,8 @@ $demoAccounts = [
         'department'    => 'Finance',
         'staff_class'   => 'HQ',
     ],
+
+    // Branch 1: Makati Roles
     [
         'username'      => 'bm_makati',
         'role_id'       => 6,
@@ -118,6 +125,50 @@ $demoAccounts = [
         'last_name'     => 'Accountant',
         'email'         => 'ba_makati@fika.local',
         'employee_code' => 'EMP-BA-001',
+        'position'      => 'Branch Accountant',
+        'department'    => 'Finance',
+        'staff_class'   => 'OFFICIAL',
+    ],
+
+    // Branch 2: BGC Roles
+    [
+        'username'      => 'bm_bgc',
+        'role_id'       => 6,
+        'role_name'     => 'Branch Manager (BM)',
+        'branch_id'     => 2,
+        'branch_label'  => 'Branch 2 (BGC)',
+        'first_name'    => 'Jose',
+        'last_name'     => 'BGC Manager',
+        'email'         => 'bm_bgc@fika.local',
+        'employee_code' => 'EMP-BM-002',
+        'position'      => 'Branch Manager',
+        'department'    => 'Operations',
+        'staff_class'   => 'OFFICIAL',
+    ],
+    [
+        'username'      => 'bhr_bgc',
+        'role_id'       => 5,
+        'role_name'     => 'Branch HR (BHR)',
+        'branch_id'     => 2,
+        'branch_label'  => 'Branch 2 (BGC)',
+        'first_name'    => 'Ana',
+        'last_name'     => 'BGC HR',
+        'email'         => 'bhr_bgc@fika.local',
+        'employee_code' => 'EMP-BHR-002',
+        'position'      => 'Branch HR',
+        'department'    => 'Human Resources',
+        'staff_class'   => 'OFFICIAL',
+    ],
+    [
+        'username'      => 'ba_bgc',
+        'role_id'       => 4,
+        'role_name'     => 'Branch Accountant (BA)',
+        'branch_id'     => 2,
+        'branch_label'  => 'Branch 2 (BGC)',
+        'first_name'    => 'Luis',
+        'last_name'     => 'BGC Accountant',
+        'email'         => 'ba_bgc@fika.local',
+        'employee_code' => 'EMP-BA-002',
         'position'      => 'Branch Accountant',
         'department'    => 'Finance',
         'staff_class'   => 'OFFICIAL',
@@ -229,10 +280,10 @@ foreach ($demoAccounts as $acc) {
 // 3. Print Summary Table
 echo "\n[3/3] Demo Accounts Table:\n\n";
 
-$colUsername = 12;
+$colUsername = 14;
 $colRole     = 28;
 $colBranch   = 20;
-$colEmployee = 20;
+$colEmployee = 22;
 $colPassword = 14;
 
 $line = '+' . str_repeat('-', $colUsername + 2)
