@@ -19,18 +19,23 @@ if (!in_array($tab, ['kanban', 'directory', 'calendar'], true)) {
 
 // Branch Filter Scoping
 $branches = $pdo->query("SELECT id, name FROM branches WHERE deleted_at IS NULL ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+[$branchScopeSql, $branchScopeParams] = Rbac::branch_scope('a');
+
 $selectedBranchId = null;
 if ($userBranchId !== null) {
     $selectedBranchId = (int)$userBranchId;
-} elseif (!empty($_GET['branch_id']) && $_GET['branch_id'] !== 'all') {
-    $selectedBranchId = (int)$_GET['branch_id'];
-}
-
-$branchSql = "";
-$branchParams = [];
-if ($selectedBranchId !== null) {
-    $branchSql = " AND (a.branch_id = ? OR a.branch_id IS NULL)";
-    $branchParams[] = $selectedBranchId;
+    $branchSql = $branchScopeSql;
+    $branchParams = $branchScopeParams;
+} else {
+    if (!empty($_GET['branch_id']) && $_GET['branch_id'] !== 'all') {
+        $selectedBranchId = (int)$_GET['branch_id'];
+        $branchSql = " AND a.branch_id = ?";
+        $branchParams = [$selectedBranchId];
+    } else {
+        $branchSql = $branchScopeSql;
+        $branchParams = $branchScopeParams;
+    }
 }
 
 $csrfToken = Csrf::getToken();
@@ -347,7 +352,7 @@ $pipelineRanks = [
                                 </div>
 
                                 <div class="flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-100">
-                                    <span><?= e($app['branch_name'] ?: 'Main Branch') ?></span>
+                                    <span><?= e($app['branch_name'] ?: 'HQ / General') ?></span>
                                     <span><?= date('M d', strtotime($app['created_at'])) ?></span>
                                 </div>
 
@@ -443,7 +448,7 @@ $pipelineRanks = [
                                         <?= e($app['position_applied'] ?: ($app['position'] ?: 'Staff')) ?>
                                     </td>
                                     <td class="py-3.5 px-6 text-slate-600 text-xs font-medium">
-                                        <?= e($app['branch_name'] ?: 'Main Branch') ?>
+                                        <?= e($app['branch_name'] ?: 'HQ / General') ?>
                                     </td>
                                     <td class="py-3.5 px-6">
                                         <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold 
@@ -523,7 +528,7 @@ $pipelineRanks = [
                                         <?php if (!empty($int['interviewer_name'])): ?>
                                             <span><i class="fa-solid fa-user-tie text-slate-400 mr-1"></i>Interviewer: <?= e($int['interviewer_name']) ?></span>
                                         <?php endif; ?>
-                                        <span><i class="fa-solid fa-location-dot text-slate-400 mr-1"></i><?= e($int['branch_name'] ?: 'Main Branch') ?></span>
+                                        <span><i class="fa-solid fa-location-dot text-slate-400 mr-1"></i><?= e($int['branch_name'] ?: 'HQ / General') ?></span>
                                     </div>
                                 </div>
                             </div>
@@ -831,7 +836,7 @@ $pipelineRanks = [
                 <div class="text-sm font-bold text-slate-900">${candidate.position_applied || candidate.position || 'Staff'}</div>
                 <div class="text-slate-600"><i class="fa-solid fa-envelope mr-1.5 text-slate-400"></i>${candidate.email}</div>
                 <div class="text-slate-600"><i class="fa-solid fa-phone mr-1.5 text-slate-400"></i>${candidate.phone}</div>
-                <div class="text-slate-600"><i class="fa-solid fa-location-dot mr-1.5 text-slate-400"></i>${candidate.branch_name || 'Main Branch'}</div>
+                <div class="text-slate-600"><i class="fa-solid fa-location-dot mr-1.5 text-slate-400"></i>${candidate.branch_name || 'HQ / General'}</div>
             </div>
 
             <div class="space-y-1">
