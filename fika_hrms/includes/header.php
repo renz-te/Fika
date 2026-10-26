@@ -30,20 +30,21 @@ if ($sessEmpId > 0 && $pdo) {
 }
 
 $isAdmin = ($userRoleName === 'ADMIN') || ($sessRoleId === 1);
+$isBM = ($userRoleName === 'BM') || ($sessRoleId === 6);
 $isHB = (stripos($empPos, 'Head Barista') !== false);
 $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER'], true) || in_array(strtoupper($empPos), ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true);
-$isStaffOrHB = !$isAdmin && ($isHB || $isStaff);
+$isStaffOrHB = !$isAdmin && !$isBM && ($isHB || $isStaff);
 
 $canPosDash = Rbac::can('pos.access');
-$canInv = Rbac::can('inventory.adjust');
+$canInv = (Rbac::can('inventory.view') || Rbac::can('inventory.adjust')) && !($sessRoleId === 1);
 $canProc = Rbac::can('procurement.view');
 $canFin = Rbac::can('finance.view') && !($sessRoleId === 1);
-$canHR = Rbac::can('hr.employee.view') && !($sessRoleId === 1);
+$canHR = Rbac::can('hr.employee.view') && !($sessRoleId === 1) && !$isBM;
 $canLeave = (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($sessRoleId === 1);
 $canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
 $canShift = (Rbac::can('schedule.view') || Rbac::can('schedule.manage')) && !($sessRoleId === 1);
 $canAttendance = Rbac::can('hr.attendance.view') && !($sessRoleId === 1);
-$canUsers = Rbac::can('users.view');
+$canUsers = Rbac::can('users.view') && !$isBM;
 $canSystemAccounts = ($sessRoleId === 1) || $isAdmin || Rbac::can('user.manage');
 $canDevices = Rbac::can('devices.view');
 $canSettings = Rbac::can('settings.manage') && ($sessRoleId === 1);
@@ -107,6 +108,61 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <!-- Management Sections (Hidden from regular STAFF and Head Baristas) -->
         <?php if ($showMgmt): ?>
 
+        <?php if ($isBM): ?>
+        <!-- Branch Manager Operational Modules -->
+        <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">OPERATIONS</div>
+        
+        <?php if (Rbac::can('pos.access')): ?>
+        <a href="<?= $url('fika_pos', 'fika_pos_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_pos_dashboard.php') ?>">
+            <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
+            <span>POS Dashboard</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('inventory.view') || Rbac::can('inventory.adjust')): ?>
+        <a href="<?= $url('fika_inventory', 'fika_inventory_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_inventory_dashboard.php', ['fika_inventory_stock.php', 'fika_inventory_recipes.php', 'fika_inventory_procurement.php']) ?>">
+            <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
+            <span>Inventory</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('finance.view')): ?>
+        <a href="<?= $url('fika_finance', 'fika_finance_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php', ['fika_finance_reports.php', 'fika_finance_budgets.php', 'fika_finance_reconcile.php']) ?>">
+            <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
+            <span>Branch Finance</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('payroll.generate') || Rbac::can('payroll.release')): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_payroll.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_payroll.php') ?>">
+            <i class="fa-solid fa-file-invoice-dollar w-5 text-center text-emerald-400"></i>
+            <span>Payroll</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('schedule.manage') || Rbac::can('schedule.view')): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_shift_board.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_shift_board.php') ?>">
+            <i class="fa-solid fa-calendar-days w-5 text-center text-purple-400"></i>
+            <span>Roster &amp; Scheduler</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('hr.attendance.view')): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_attendance.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_attendance.php') ?>">
+            <i class="fa-solid fa-clock w-5 text-center text-emerald-400"></i>
+            <span>Attendance</span>
+        </a>
+        <?php endif; ?>
+
+        <?php if (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_leave.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_leave.php') ?>">
+            <i class="fa-solid fa-plane-departure w-5 text-center text-blue-400"></i>
+            <span>Leave Management</span>
+        </a>
+        <?php endif; ?>
+
+        <?php else: ?>
+
         <!-- 1. HR MODULES Group -->
         <?php if ($canHR || $canPayroll || $canShift || $canAttendance || $canLeave): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">HR MODULES</div>
@@ -164,12 +220,12 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">FINANCE</div>
         <a href="<?= $url('fika_finance', 'fika_finance_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php', ['fika_finance_reports.php', 'fika_finance_budgets.php', 'fika_finance_reconcile.php']) ?>">
             <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
-            <span>Finance</span>
+            <span><?= ($isBM) ? 'Branch Finance' : 'Finance' ?></span>
         </a>
         <?php endif; ?>
 
         <!-- 4. INVENTORY Group -->
-        <?php if (Rbac::can('inventory.adjust')): ?>
+        <?php if ($canInv): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">INVENTORY</div>
         <a href="<?= $url('fika_inventory', 'fika_inventory_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_inventory_dashboard.php', ['fika_inventory_stock.php', 'fika_inventory_recipes.php', 'fika_inventory_procurement.php']) ?>">
             <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
@@ -204,6 +260,8 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <span>Settings</span>
         </a>
         <?php endif; ?>
+        <?php endif; ?>
+
         <?php endif; ?>
 
         <?php endif; ?>
