@@ -562,11 +562,12 @@ echo "[SUCCESS] Generated " . count($humanAccounts) . " human accounts.\n\n";
 // ====================================================================
 echo "[4/6] Creating System Accounts & Device Terminals...\n";
 
-// Ensure Role 9 (Cashier Terminal) and Role 12 (Clock) exist
+// Ensure Role 9 (Cashier Terminal), Role 12 (Clock), and Role 13 (Kiosk) exist
 $pdo->exec("
     INSERT INTO roles (id, name, description) VALUES 
     (9, 'Cashier Terminal', 'Point of sale cashier terminal system role'),
-    (12, 'Clock', 'Time and attendance clock station system role')
+    (12, 'Clock', 'Time and attendance clock station system role'),
+    (13, 'Kiosk', 'Self-service kiosk system role')
     ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description)
 ");
 
@@ -575,8 +576,8 @@ $rolePerms = [
     [9, 'pos.access'],
     [9, 'pos.order_create'],
     [12, 'pos.access'],
-    [4, 'pos.access'],
-    [4, 'pos.order_create'],
+    [13, 'pos.access'],
+    [13, 'pos.order_create'],
 ];
 $insRP = $pdo->prepare("INSERT IGNORE INTO role_permissions (role_id, permission_name) VALUES (?, ?)");
 foreach ($rolePerms as [$rId, $pName]) {
@@ -596,7 +597,7 @@ $systemAccounts = [
     [
         'branch_id'    => 1,
         'username'     => 'gentri.kiosk',
-        'role_id'      => 4,
+        'role_id'      => 13,
         'device_name'  => 'General Trias Self-Service Kiosk',
         'device_token' => 'tok_gentri_kiosk_123',
         'mac_address'  => '00:1A:2B:01:00:04',
@@ -622,7 +623,7 @@ $systemAccounts = [
     [
         'branch_id'    => 2,
         'username'     => 'trece.kiosk',
-        'role_id'      => 4,
+        'role_id'      => 13,
         'device_name'  => 'Trece Martires Self-Service Kiosk',
         'device_token' => 'tok_trece_kiosk_123',
         'mac_address'  => '00:1A:2B:02:00:04',
@@ -648,7 +649,7 @@ $systemAccounts = [
     [
         'branch_id'    => 3,
         'username'     => 'imus.kiosk',
-        'role_id'      => 4,
+        'role_id'      => 13,
         'device_name'  => 'Imus Self-Service Kiosk',
         'device_token' => 'tok_imus_kiosk_123',
         'mac_address'  => '00:1A:2B:03:00:04',
@@ -665,9 +666,9 @@ $systemAccounts = [
 
 $insDevice = $pdo->prepare("
     INSERT INTO devices (
-        branch_id, device_name, mac_address, device_token, status, created_at, updated_at
+        branch_id, user_id, device_name, mac_address, device_token, status, created_at, updated_at
     ) VALUES (
-        :branch_id, :device_name, :mac_address, :device_token, 'Active', NOW(), NOW()
+        :branch_id, :user_id, :device_name, :mac_address, :device_token, 'Active', NOW(), NOW()
     )
 ");
 
@@ -688,6 +689,7 @@ foreach ($systemAccounts as $sys) {
     // 2. Insert device
     $insDevice->execute([
         ':branch_id'    => $sys['branch_id'],
+        ':user_id'      => $userId,
         ':device_name'  => $sys['device_name'],
         ':mac_address'  => $sys['mac_address'],
         ':device_token' => $sys['device_token'],

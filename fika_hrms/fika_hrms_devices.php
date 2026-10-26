@@ -75,9 +75,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
     $deviceName = trim($inputData['device_name'] ?? '');
     $macAddress = trim($inputData['mac_address'] ?? '');
     $deviceToken = trim($inputData['device_token'] ?? '');
-    $status = $inputData['status'] ?? 'Active';
-    if (!in_array($status, ['Active', 'Inactive', 'Maintenance'], true)) {
-        $status = 'Active';
+    $systemRole = trim($inputData['system_role'] ?? '');
+    $status = 'Active';
+
+    // Auto-infer system role if missing (for test backward compatibility)
+    if ($systemRole === '') {
+        if (stripos($deviceName, 'clock') !== false) {
+            $systemRole = 'Clock';
+        } elseif (stripos($deviceName, 'kiosk') !== false) {
+            $systemRole = 'Kiosk';
+        } else {
+            $systemRole = 'Cashier Terminal';
+        }
     }
 
     $submittedBranchId = isset($inputData['branch_id']) && $inputData['branch_id'] !== '' ? (int)$inputData['branch_id'] : null;
@@ -103,9 +112,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
             die(json_encode(["error" => $error]));
         }
     } else {
+        // 1. Resolve branch prefix
+        $brStmt = $pdo->prepare("SELECT name FROM branches WHERE id = ? LIMIT 1");
+        $brStmt->execute([$effectiveBranchId]);
+        $branchRowName = (string)$brStmt->fetchColumn();
+
+        if (stripos($branchRowName, 'General Trias') !== false || stripos($branchRowName, 'gentri') !== false) {
+            $branchPrefix = 'gentri';
+        } elseif (stripos($branchRowName, 'Trece') !== false) {
+            $branchPrefix = 'trece';
+        } elseif (stripos($branchRowName, 'Imus') !== false) {
+            $branchPrefix = 'imus';
+        } else {
+            $words = explode(' ', trim($branchRowName));
+            $branchPrefix = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $words[0] ?: 'branch' . $effectiveBranchId));
+        }
+
+        // 2. Resolve role suffix & system role ID
+        switch ($systemRole) {
+            case 'Clock':
+                $roleSuffix = 'clock';
+                $systemRoleId = 12;
+                break;
+            case 'Kiosk':
+                $roleSuffix = 'kiosk';
+                $systemRoleId = 13;
+                break;
+            case 'Cashier Terminal':
+            default:
+                $systemRole = 'Cashier Terminal';
+                $roleSuffix = 'cashier';
+                $systemRoleId = 9;
+                break;
+        }
+
+        // 3. Auto-generate unique username
+        $baseUsername = "{$branchPrefix}.{$roleSuffix}";
+        $generatedUsername = $baseUsername;
+        $suffixCounter = 2;
+        $checkUserStmt = $pdo->prepare("SELECT id FROM users WHERE username = ? AND deleted_at IS NULL LIMIT 1");
+        while (true) {
+            $checkUserStmt->execute([$generatedUsername]);
+            if (!$checkUserStmt->fetch()) {
+                break;
+            }
+            $generatedUsername = "{$baseUsername}{$suffixCounter}";
+            $suffixCounter++;
+        }
+
+        // 4. Generate random device_token strictly following tok_{branchPrefix}_{roleSuffix}_ + bin2hex(random_bytes(4))
         if (empty($deviceToken)) {
-            $slug = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $deviceName), 0, 6));
-            $deviceToken = 'DEV-' . ($slug ?: 'TERM') . '-' . bin2hex(random_bytes(4));
+            $deviceToken = "tok_{$branchPrefix}_{$roleSuffix}_" . bin2hex(random_bytes(4));
         }
 
         $checkStmt = $pdo->prepare("SELECT id FROM devices WHERE device_token = ? AND deleted_at IS NULL LIMIT 1");
@@ -117,13 +174,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
                 die(json_encode(["error" => $error]));
             }
         } else {
-            $ins = $pdo->prepare("INSERT INTO devices (branch_id, device_name, mac_address, device_token, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())");
-            $ins->execute([$effectiveBranchId, $deviceName, $macAddress ?: null, $deviceToken, $status]);
-            $newDeviceId = (int)$pdo->lastInsertId();
-            $success = 'Hardware device enrolled successfully.';
-            if ($isJson) {
-                header('Content-Type: application/json');
-                die(json_encode(["success" => true, "device_id" => $newDeviceId, "message" => $success]));
+            try {
+                $pdo->beginTransaction();
+
+                // 5. Create System User Account
+                $defaultPasswordHash = password_hash('password', PASSWORD_DEFAULT);
+                $systemEmail = "{$generatedUsername}@fika.local";
+                $insUser = $pdo->prepare("
+                    INSERT INTO users (username, password, email, role_id, employee_id, branch_id, created_at, updated_at) 
+                    VALUES (?, ?, ?, ?, NULL, ?, NOW(), NOW())
+                ");
+                $insUser->execute([$generatedUsername, $defaultPasswordHash, $systemEmail, $systemRoleId, $effectiveBranchId]);
+                $newUserId = (int)$pdo->lastInsertId();
+
+                // 6. Create Device linked to user_id
+                $insDevice = $pdo->prepare("
+                    INSERT INTO devices (branch_id, user_id, device_name, mac_address, device_token, status, created_at, updated_at) 
+                    VALUES (?, ?, ?, ?, ?, 'Active', NOW(), NOW())
+                ");
+                $insDevice->execute([$effectiveBranchId, $newUserId, $deviceName, $macAddress ?: null, $deviceToken]);
+                $newDeviceId = (int)$pdo->lastInsertId();
+
+                $pdo->commit();
+
+                $success = "Hardware device enrolled successfully. System account '{$generatedUsername}' created.";
+                if ($isJson) {
+                    header('Content-Type: application/json');
+                    die(json_encode([
+                        "success" => true,
+                        "device_id" => $newDeviceId,
+                        "user_id" => $newUserId,
+                        "username" => $generatedUsername,
+                        "device_token" => $deviceToken,
+                        "message" => $success
+                    ]));
+                }
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $error = 'Failed to enroll device: ' . $e->getMessage();
+                if ($isJson) {
+                    http_response_code(500);
+                    die(json_encode(["error" => $error]));
+                }
             }
         }
     }
@@ -132,10 +226,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
 // Fetch devices with branch details scoped by Rbac::branch_scope
 [$branchClause, $branchParams] = Rbac::branch_scope('d');
 $sql = "
-    SELECT d.id, d.branch_id, d.device_name, d.device_token, d.mac_address, d.status, d.created_at, d.updated_at,
-           b.name AS branch_name
+    SELECT d.id, d.branch_id, d.user_id, d.device_name, d.device_token, d.mac_address, d.status, d.created_at, d.updated_at,
+           b.name AS branch_name,
+           COALESCE(u.username, u_match.username) AS username
     FROM devices d
     LEFT JOIN branches b ON d.branch_id = b.id
+    LEFT JOIN users u ON d.user_id = u.id
+    LEFT JOIN users u_match ON (
+        u_match.branch_id = d.branch_id 
+        AND (
+            (d.device_name LIKE '%Clock%' AND u_match.username LIKE '%.clock%')
+            OR (d.device_name LIKE '%Kiosk%' AND u_match.username LIKE '%.kiosk%')
+            OR (d.device_name LIKE '%Cashier%' AND (u_match.username LIKE '%.cashier%' OR u_match.username LIKE '%.pos%'))
+        )
+    )
     WHERE d.deleted_at IS NULL {$branchClause}
     ORDER BY d.id ASC
 ";
@@ -273,6 +377,7 @@ $csrfToken = Csrf::getToken();
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                                 <th class="px-6 py-3.5">Device Name</th>
+                                <th class="px-6 py-3.5">System Account</th>
                                 <th class="px-6 py-3.5">Device Token</th>
                                 <th class="px-6 py-3.5">Assigned Branch</th>
                                 <th class="px-6 py-3.5">MAC Address</th>
@@ -283,7 +388,7 @@ $csrfToken = Csrf::getToken();
                         <tbody class="divide-y divide-slate-100 text-sm">
                             <?php if (empty($devices)): ?>
                                 <tr>
-                                    <td colspan="6" class="px-6 py-8 text-center text-slate-400">
+                                    <td colspan="7" class="px-6 py-8 text-center text-slate-400">
                                         No system devices registered for this branch.
                                     </td>
                                 </tr>
@@ -301,6 +406,16 @@ $csrfToken = Csrf::getToken();
                                                 <?php endif; ?>
                                             </div>
                                             <span><?= e($dev['device_name']) ?></span>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <?php if (!empty($dev['username'])): ?>
+                                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-50 text-cyan-800 text-xs font-semibold border border-cyan-200 font-mono">
+                                                    <i class="fa-solid fa-user-gear text-cyan-600 text-[11px]"></i>
+                                                    <?= e($dev['username']) ?>
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="text-slate-400 text-xs">—</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="px-6 py-4">
                                             <code class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-mono font-semibold border border-slate-200">
@@ -353,10 +468,27 @@ $csrfToken = Csrf::getToken();
                 <input type="hidden" name="action" value="enroll_device">
                 <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
 
+                <!-- Helper Text -->
+                <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-xl flex items-start gap-2.5 text-xs text-cyan-900">
+                    <i class="fa-solid fa-circle-info text-cyan-600 mt-0.5 text-sm shrink-0"></i>
+                    <p class="leading-relaxed font-medium">Credentials will be generated automatically based on the branch and role.</p>
+                </div>
+
                 <!-- Device Name -->
                 <div>
-                    <label for="enrollDeviceName" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Name</label>
+                    <label for="enrollDeviceName" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Name <span class="text-rose-500">*</span></label>
                     <input type="text" name="device_name" id="enrollDeviceName" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" placeholder="e.g. Counter Terminal 2 (POS-02)">
+                </div>
+
+                <!-- System Role -->
+                <div>
+                    <label for="enrollSystemRole" class="block text-xs font-bold uppercase text-slate-600 mb-1">System Role <span class="text-rose-500">*</span></label>
+                    <select name="system_role" id="enrollSystemRole" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none bg-white font-medium">
+                        <option value="">-- Select System Role --</option>
+                        <option value="Clock">Clock (Time Attendance)</option>
+                        <option value="Kiosk">Kiosk (Self-Service Ordering)</option>
+                        <option value="Cashier Terminal">Cashier Terminal (POS)</option>
+                    </select>
                 </div>
 
                 <!-- MAC Address -->
@@ -369,7 +501,7 @@ $csrfToken = Csrf::getToken();
                 <div>
                     <label for="enrollDeviceToken" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Token (Optional)</label>
                     <input type="text" name="device_token" id="enrollDeviceToken" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none font-mono" placeholder="Leave blank to auto-generate...">
-                    <p class="text-[11px] text-slate-400 mt-1">Unique secret token installed on physical hardware terminal.</p>
+                    <p class="text-[11px] text-slate-400 mt-1">Leave blank to auto-generate secure token matching branch and role.</p>
                 </div>
 
                 <!-- Assigned Branch -->
@@ -389,16 +521,6 @@ $csrfToken = Csrf::getToken();
                             <?php endforeach; ?>
                         </select>
                     <?php endif; ?>
-                </div>
-
-                <!-- Status -->
-                <div>
-                    <label for="enrollStatus" class="block text-xs font-bold uppercase text-slate-600 mb-1">Initial Status</label>
-                    <select name="status" id="enrollStatus" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="Maintenance">Maintenance</option>
-                    </select>
                 </div>
 
                 <div class="flex justify-end gap-3 pt-4 border-t border-slate-100">
