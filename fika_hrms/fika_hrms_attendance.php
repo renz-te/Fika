@@ -88,13 +88,8 @@ $logs = $stmt->fetchAll();
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Branch</label>
                     <select name="branch_id" class="mt-1 block rounded-md border-gray-300 shadow-sm p-2 border bg-white">
-                        <?php foreach ($branches as $b): 
-                            $bLabel = $b['name'];
-                            if (!empty($b['address'])) {
-                                $bLabel .= ' (' . $b['address'] . ')';
-                            }
-                        ?>
-                            <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
+                        <?php foreach ($branches as $b): ?>
+                            <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>

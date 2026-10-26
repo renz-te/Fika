@@ -154,7 +154,7 @@ $csrfToken = Csrf::getToken();
                     <div class="w-full sm:w-56">
                         <select name="branch_id" onchange="this.form.submit()" class="block w-full rounded-lg border-slate-200 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm p-2.5 border bg-amber-50/50 text-amber-950 font-medium">
                             <?php foreach ($branches as $b): ?>
-                                <option value="<?= e($b['id']) ?>" <?= (int)$selectedBranchId === (int)$b['id'] ? 'selected' : '' ?>>Branch: <?= e($b['name']) ?></option>
+                                <option value="<?= e($b['id']) ?>" <?= (int)$selectedBranchId === (int)$b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>

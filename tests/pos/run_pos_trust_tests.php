@@ -175,9 +175,9 @@ try {
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
 
     // 1. Setup Branches
-    $pdo->exec("INSERT INTO branches (id, name) VALUES (1, 'Main Branch') ON DUPLICATE KEY UPDATE name=name");
-    $pdo->exec("INSERT INTO branches (id, name) VALUES (2, 'Branch 2 Test') ON DUPLICATE KEY UPDATE name=name");
-    $createdBranchIds[] = 2;
+    $pdo->exec("INSERT INTO branches (id, name, address) VALUES (1, 'General Trias Branch', 'General Trias City, Cavite') ON DUPLICATE KEY UPDATE name=name");
+    $pdo->exec("INSERT INTO branches (id, name, address) VALUES (2, 'Trece Martires Branch', 'Trece Martires City, Cavite') ON DUPLICATE KEY UPDATE name=name");
+
 
     // 2. Setup Products & Modifiers for Cases 1-5 & 10
     // Product 1: 120.00 (12000 cents), Modifier 2: 30.00 (3000 cents)
@@ -958,8 +958,9 @@ try {
         $pdo->query("DELETE FROM users WHERE id IN ({$inUsers})");
     }
 
-    if (!empty($createdBranchIds)) {
-        $inBranches = implode(',', array_map('intval', $createdBranchIds));
+    $safeBranchIds = array_diff($createdBranchIds, [1, 2, 3]);
+    if (!empty($safeBranchIds)) {
+        $inBranches = implode(',', array_map('intval', $safeBranchIds));
         $pdo->query("DELETE FROM branches WHERE id IN ({$inBranches})");
     }
 

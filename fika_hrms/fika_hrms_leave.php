@@ -169,13 +169,8 @@ $pageTitle = "Leave Management";
                             <?php endif; ?>
                             <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Branch:</label>
                             <select name="branch_id" onchange="this.form.submit()" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-white shadow-xs">
-                                <?php foreach ($branches as $b): 
-                                    $bLabel = $b['name'];
-                                    if (!empty($b['address'])) {
-                                        $bLabel .= ' (' . $b['address'] . ')';
-                                    }
-                                ?>
-                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
+                                <?php foreach ($branches as $b): ?>
+                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </form>

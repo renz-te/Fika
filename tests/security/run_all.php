@@ -711,8 +711,8 @@ $b2UserId = 990020;
 $b2EmpId = 990020;
 
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
-$pdo->exec("INSERT INTO branches (id, name) VALUES (1, 'Main Branch') ON DUPLICATE KEY UPDATE name='Main Branch'");
-$pdo->exec("INSERT INTO branches (id, name) VALUES (2, 'Second Branch') ON DUPLICATE KEY UPDATE name='Second Branch'");
+$pdo->exec("INSERT INTO branches (id, name) VALUES (1, 'General Trias Branch') ON DUPLICATE KEY UPDATE name=name");
+$pdo->exec("INSERT INTO branches (id, name) VALUES (2, 'Trece Martires Branch') ON DUPLICATE KEY UPDATE name=name");
 
 $pdo->exec("INSERT INTO employees (id, employee_code, first_name, last_name, email, branch_id) 
             VALUES ($bmEmpId, 'EMP990010', 'BM', 'BranchOne', 'bm1@example.com', 1) 

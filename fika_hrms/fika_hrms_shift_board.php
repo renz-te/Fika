@@ -184,19 +184,14 @@ $pageTitle = "Roster & Scheduler";
                             <input type="hidden" name="week_offset" value="<?= $weekOffset ?>">
                             <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Branch:</label>
                             <select name="branch_id" onchange="this.form.submit()" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-white shadow-xs">
-                                <?php foreach ($branches as $b): 
-                                    $bLabel = $b['name'];
-                                    if (!empty($b['address'])) {
-                                        $bLabel .= ' (' . $b['address'] . ')';
-                                    }
-                                ?>
-                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($bLabel) ?></option>
+                                <?php foreach ($branches as $b): ?>
+                                    <option value="<?= $b['id'] ?>" <?= $selectedBranchId == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </form>
                     <?php else: ?>
                         <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
-                            <i class="fa-solid fa-location-dot text-indigo-500"></i> <?= e($branches[0]['name'] ?? 'Main Branch') ?>
+                            <i class="fa-solid fa-location-dot text-indigo-500"></i> <?= e($branches[0]['name'] ?? 'General Trias Branch') ?>
                         </span>
                     <?php endif; ?>
                 </div>
