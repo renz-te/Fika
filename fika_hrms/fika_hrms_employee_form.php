@@ -1,5 +1,5 @@
 <?php
-require __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/bootstrap.php';
 
 Auth::requireLogin();
 $id = (int) ($_GET['id'] ?? 0);
@@ -26,25 +26,39 @@ if ($id > 0) {
     Rbac::assert_branch_access($employee['branch_id']);
 }
 
+$currentUser = Auth::user();
+$userRoleId = (int)($currentUser['role_id'] ?? 0);
+$isChr = ($userRoleId === 2);
+$isAdmin = ($userRoleId === 1);
+$isChrOrAdmin = ($isChr || $isAdmin || empty($currentUser['branch_id']));
+
+$isOfficial = ($employee['staff_class'] ?? '') === 'OFFICIAL';
+$canChangeBranch = ($id === 0) || $isAdmin || ($isChr && $isOfficial);
+
 // Fetch branches for dropdown
-$bSql = "SELECT id, name FROM branches WHERE deleted_at IS NULL";
-$bParams = [];
-list($bScopeSql, $bScopeParams) = Rbac::branch_scope();
-$bSql .= str_replace('branch_id', 'id', $bScopeSql) . " ORDER BY name ASC";
-$bStmt = $pdo->prepare($bSql);
-$bStmt->execute($bScopeParams);
-$branches = $bStmt->fetchAll();
+if ($isChrOrAdmin) {
+    $branches = $pdo->query("SELECT id, name FROM branches WHERE deleted_at IS NULL AND status = 'Active' ORDER BY name ASC")->fetchAll();
+} else {
+    $bSql = "SELECT id, name FROM branches WHERE deleted_at IS NULL AND status = 'Active'";
+    list($bScopeSql, $bScopeParams) = Rbac::branch_scope();
+    $bSql .= str_replace('branch_id', 'id', $bScopeSql) . " ORDER BY name ASC";
+    $bStmt = $pdo->prepare($bSql);
+    $bStmt->execute($bScopeParams);
+    $branches = $bStmt->fetchAll();
+}
 
 // Helper to decrypt PII for editing or fallback to raw value
-function get_form_pii(?string $encryptedValue): string {
-    if ($encryptedValue === null || $encryptedValue === '') {
-        return '';
-    }
-    try {
-        $decrypted = Crypto::decrypt($encryptedValue);
-        return $decrypted !== null ? $decrypted : $encryptedValue;
-    } catch (\Throwable $e) {
-        return $encryptedValue;
+if (!function_exists('get_form_pii')) {
+    function get_form_pii(?string $encryptedValue): string {
+        if ($encryptedValue === null || $encryptedValue === '') {
+            return '';
+        }
+        try {
+            $decrypted = Crypto::decrypt($encryptedValue);
+            return $decrypted !== null ? $decrypted : $encryptedValue;
+        } catch (\Throwable $e) {
+            return $encryptedValue;
+        }
     }
 }
 
@@ -79,12 +93,25 @@ function get_form_pii(?string $encryptedValue): string {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Branch *</label>
-                        <select name="branch_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
-                            <option value="">Select Branch</option>
-                            <?php foreach($branches as $b): ?>
-                                <option value="<?= e($b['id']) ?>" <?= ($employee['branch_id'] ?? '') == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php if ($canChangeBranch): ?>
+                            <select name="branch_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
+                                <option value="">Select Branch</option>
+                                <?php foreach($branches as $b): ?>
+                                    <option value="<?= e($b['id']) ?>" <?= ($employee['branch_id'] ?? '') == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if ($id > 0 && $isOfficial && $isChr): ?>
+                                <p class="text-xs text-indigo-600 mt-1 font-medium">Official Assignment: Select new branch to reassign.</p>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <select disabled class="mt-1 block w-full rounded-md border-gray-200 bg-gray-100 text-gray-500 shadow-sm p-2 border cursor-not-allowed">
+                                <?php foreach($branches as $b): ?>
+                                    <option value="<?= e($b['id']) ?>" <?= ($employee['branch_id'] ?? '') == $b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="hidden" name="branch_id" value="<?= e($employee['branch_id'] ?? '') ?>">
+                            <p class="text-xs text-gray-400 mt-1">Branch reassignment is only available for Branch Officials (BM, BHR, BA).</p>
+                        <?php endif; ?>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Staff Class *</label>

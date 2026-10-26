@@ -85,6 +85,26 @@ try {
         }
         // Ensure they have access to the employee's CURRENT branch
         Rbac::assert_branch_access($existing['branch_id']);
+
+        // Check Branch Reassignment Authorization
+        if ((int)$existing['branch_id'] !== $branchId) {
+            $currentUser = Auth::user();
+            $userRoleId = (int)($currentUser['role_id'] ?? 0);
+            $isChr = ($userRoleId === 2);
+            $isAdmin = ($userRoleId === 1);
+            $isChrOrAdmin = ($isChr || $isAdmin || empty($currentUser['branch_id']));
+
+            if (!$isChrOrAdmin) {
+                http_response_code(403);
+                throw new Exception("Only Central HR or Administrators can reassign employee branches.");
+            }
+
+            // Central HR can only reassign Branch Officials (BM, BHR, BA)
+            if ($isChr && ($existing['staff_class'] ?? '') !== 'OFFICIAL') {
+                http_response_code(403);
+                throw new Exception("Central HR can only reassign Branch Officials (BM, BHR, BA) to different branches.");
+            }
+        }
     }
     
     // Process Encrypted Fields (If empty or contains '****', ignore update to prevent wiping)
@@ -191,6 +211,12 @@ try {
             
             if (!empty($auditChanges)) {
                 Audit::log('EMPLOYEE_UPDATED', "Updated Employee #{$id}. Changed fields: " . implode(", ", $auditChanges));
+            }
+
+            // Synchronize linked user account's branch_id on reassignment
+            if ((int)$existing['branch_id'] !== $branchId) {
+                $uStmt = $pdo->prepare("UPDATE users SET branch_id = ? WHERE employee_id = ?");
+                $uStmt->execute([$branchId, $id]);
             }
         }
         $employeeId = $id;

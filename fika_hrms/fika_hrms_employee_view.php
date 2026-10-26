@@ -128,7 +128,7 @@ $isArchived = in_array(strtoupper((string)$employee['status']), ['ARCHIVED', 'SE
                         </div>
                         <div class="flex items-center gap-1.5">
                             <i class="fa-solid fa-location-dot text-amber-600"></i>
-                            <span><?= e($employee['branch_name'] ?? 'Main Branch') ?></span>
+                            <span><?= e($employee['branch_name'] ?? 'Unassigned') ?></span>
                         </div>
                         <div class="flex items-center gap-1.5">
                             <i class="fa-solid fa-briefcase text-amber-600"></i>

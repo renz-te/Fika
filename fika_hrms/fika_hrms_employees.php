@@ -20,10 +20,12 @@ $isCentral = ($userRoleId === 1 || $userRoleId === 2 || empty($userBranchId));
 $sql = "SELECT e.*, 
         CONCAT(e.first_name, ' ', e.last_name) AS full_name,
         COALESCE(e.employee_code, CONCAT('EMP-', e.id)) AS emp_code_display,
+        b.name AS branch_name,
         (SELECT COALESCE(SUM(TIMESTAMPDIFF(MINUTE, clock_in, clock_out))/60, 0) 
          FROM attendance_logs 
          WHERE employee_id = e.id AND clock_out IS NOT NULL) AS total_hours
         FROM employees e 
+        LEFT JOIN branches b ON e.branch_id = b.id
         LEFT JOIN users u ON u.employee_id = e.id
         WHERE e.deleted_at IS NULL 
           AND e.branch_id IS NOT NULL 
@@ -236,7 +238,13 @@ $pageTitle = 'Employees Directory';
                                     </td>
                                     <td class="py-4 px-6">
                                         <div class="font-semibold text-slate-800"><?= e($emp['position'] ?? 'Staff') ?></div>
-                                        <div class="text-[11px] text-slate-400 uppercase tracking-wider font-bold"><?= e($typeDisplay) ?></div>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="text-[11px] text-slate-400 uppercase tracking-wider font-bold"><?= e($typeDisplay) ?></span>
+                                            <?php if ($isCentral && !empty($emp['branch_name'])): ?>
+                                                <span class="text-slate-300">&bull;</span>
+                                                <span class="text-[11px] text-indigo-600 font-semibold"><?= e($emp['branch_name']) ?></span>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                     <td class="py-4 px-6">
                                         <div class="font-medium text-slate-700"><?= e($tenure) ?></div>

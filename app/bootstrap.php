@@ -5,8 +5,9 @@ if (php_sapi_name() !== 'cli' && basename($_SERVER['PHP_SELF']) === 'bootstrap.p
     exit('Forbidden');
 }
 
-// 1. Set base constant
-define('APP_ROOT', dirname(__DIR__));
+if (!defined('APP_ROOT')) {
+    define('APP_ROOT', dirname(__DIR__));
+}
 
 // 2. Load Configuration
 $configPath = APP_ROOT . '/config/config.php';

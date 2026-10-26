@@ -1,5 +1,5 @@
 <?php
-require __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/bootstrap.php';
 class_exists('Output');
 
 Auth::requireLogin();
@@ -60,8 +60,8 @@ for ($i = 0; $i < 7; $i++) {
 $dateFrom = $monday->format('Y-m-d');
 $dateTo = $sunday->format('Y-m-d');
 
-// Fetch branch employees
-$empStmt = $pdo->prepare("SELECT * FROM employees WHERE branch_id = ? AND status = 'Active' ORDER BY first_name ASC");
+// Fetch branch crew members (exclude officials/management: BM, BHR, BA)
+$empStmt = $pdo->prepare("SELECT * FROM employees WHERE branch_id = ? AND status = 'Active' AND staff_class = 'CREW' AND deleted_at IS NULL ORDER BY first_name ASC");
 $empStmt->execute([$selectedBranchId]);
 $employees = $empStmt->fetchAll();
 
@@ -289,8 +289,8 @@ $pageTitle = "Roster & Scheduler";
                                                                 $badgeStyle = 'bg-purple-50 text-purple-800 border-purple-200';
                                                             }
                                                         ?>
-                                                            <div onclick='openAssignModal(<?= $emp['id'] ?>, "<?= e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) ?>", "<?= $dateStr ?>", <?= json_encode($sh) ?>)'
-                                                                 class="border rounded-xl p-2 text-xs cursor-pointer hover:shadow-sm transition text-left <?= $badgeStyle ?>">
+                                                            <div <?= $canManage ? 'onclick=\'openAssignModal(' . $emp['id'] . ', "' . e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) . '", "' . $dateStr . '", ' . json_encode($sh) . ')\'' : '' ?>
+                                                                 class="border rounded-xl p-2 text-xs <?= $canManage ? 'cursor-pointer hover:shadow-sm' : '' ?> transition text-left <?= $badgeStyle ?>">
                                                                 <div class="font-bold flex items-center justify-between text-[11px]">
                                                                     <span><?= e($sh['shift_type']) ?></span>
                                                                     <span class="text-[9px] px-1 py-0.2 rounded font-black uppercase <?= $isDraft ? 'bg-amber-200 text-amber-900' : 'bg-emerald-100 text-emerald-800' ?>">
@@ -330,6 +330,7 @@ $pageTitle = "Roster & Scheduler";
         </div>
     </div>
 
+    <?php if ($canManage): ?>
     <!-- Assign / Edit Shift Modal -->
     <div id="assignModal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
@@ -476,6 +477,7 @@ $pageTitle = "Roster & Scheduler";
             </form>
         </div>
     </div>
+    <?php endif; ?>
 
     <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
