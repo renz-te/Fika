@@ -209,7 +209,9 @@ assertTest(
 // =========================================================================
 // Case 5: HRMS Applicants page requires login (401 if unauthenticated)
 // =========================================================================
-$resApplicantsUnauth = executeScript('fika_hrms/fika_hrms_applicants.php', [], [], [], null);
+$resApplicantsUnauth = executeScript('fika_hrms/fika_hrms_applicants.php', [
+    'HTTP_ACCEPT' => 'application/json'
+], [], [], null);
 $c5Pass = ($resApplicantsUnauth['status'] === 401);
 assertTest("Case 5: HRMS Applicants page requires login (401 if unauthenticated)", $c5Pass, "Returned status {$resApplicantsUnauth['status']} instead of 401");
 

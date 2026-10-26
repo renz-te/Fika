@@ -17,10 +17,18 @@ if (!is_dir($storageDir)) {
 $stmt = $pdo->query("SELECT id, title, department, location FROM job_openings WHERE status = 'OPEN' ORDER BY id ASC");
 $openings = $stmt->fetchAll();
 
-// Preselected job opening
+// Fetch active branches for the dropdown
+$branchStmt = $pdo->query("SELECT id, name FROM branches ORDER BY id ASC");
+$branches = $branchStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Preselected job opening and branch
 $selectedJobId = (int)($_GET['job_id'] ?? ($_POST['job_opening_id'] ?? 0));
 if (!$selectedJobId && !empty($openings)) {
     $selectedJobId = (int)$openings[0]['id'];
+}
+$selectedBranchId = (int)($_GET['branch_id'] ?? ($_POST['branch_id'] ?? 0));
+if (!$selectedBranchId && !empty($branches)) {
+    $selectedBranchId = (int)$branches[0]['id'];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -49,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $jobOpeningId = (int)($_POST['job_opening_id'] ?? 0);
+        $branchId = isset($_POST['branch_id']) && (int)$_POST['branch_id'] > 0 ? (int)$_POST['branch_id'] : 1;
 
         // 2. Validate inputs
         if ($firstName === '' || $lastName === '' || $email === '' || $phone === '') {
@@ -86,13 +95,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $insertStmt = $pdo->prepare("
                         INSERT INTO applicants 
-                            (job_opening_id, first_name, last_name, email, phone, position, position_applied, resume, resume_path, status, created_at)
+                            (job_opening_id, branch_id, first_name, last_name, email, phone, position, position_applied, resume, resume_path, status, created_at)
                         VALUES 
-                            (?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', NOW())
+                            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', NOW())
                     ");
 
                     $insertStmt->execute([
                         $jobOpeningId,
+                        $branchId,
                         $firstName,
                         $lastName,
                         $email,
@@ -233,19 +243,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php endif; ?>
 
                     <form method="POST" action="applicant_form.php" enctype="multipart/form-data" class="space-y-6">
-                        <!-- Position Selector -->
-                        <div>
-                            <label for="job_opening_id" class="block text-xs font-bold uppercase tracking-wider text-stone-300 mb-2">
-                                Position Applied For *
-                            </label>
-                            <select id="job_opening_id" name="job_opening_id" required
-                                class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500">
-                                <?php foreach ($openings as $job): ?>
-                                    <option value="<?= (int)$job['id'] ?>" <?= $selectedJobId === (int)$job['id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($job['title'], ENT_QUOTES, 'UTF-8') ?> &mdash; <?= htmlspecialchars($job['department'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($job['location'], ENT_QUOTES, 'UTF-8') ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                        <!-- Position & Branch Selectors -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="job_opening_id" class="block text-xs font-bold uppercase tracking-wider text-stone-300 mb-2">
+                                    Position Applied For *
+                                </label>
+                                <select id="job_opening_id" name="job_opening_id" required
+                                    class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500">
+                                    <?php foreach ($openings as $job): ?>
+                                        <option value="<?= (int)$job['id'] ?>" <?= $selectedJobId === (int)$job['id'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($job['title'], ENT_QUOTES, 'UTF-8') ?> &mdash; <?= htmlspecialchars($job['department'], ENT_QUOTES, 'UTF-8') ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="branch_id" class="block text-xs font-bold uppercase tracking-wider text-stone-300 mb-2">
+                                    Preferred Branch Location *
+                                </label>
+                                <select id="branch_id" name="branch_id" required
+                                    class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500">
+                                    <?php foreach ($branches as $br): ?>
+                                        <option value="<?= (int)$br['id'] ?>" <?= $selectedBranchId === (int)$br['id'] ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($br['name'], ENT_QUOTES, 'UTF-8') ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
 
                         <!-- Name Fields -->

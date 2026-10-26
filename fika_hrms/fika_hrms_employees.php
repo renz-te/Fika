@@ -11,6 +11,11 @@ $search = trim($_GET['search'] ?? '');
 $status = trim($_GET['status'] ?? '');
 $tab = $_GET['tab'] ?? 'directory';
 
+$currentUser = Auth::user();
+$userRoleId = (int)($currentUser['role_id'] ?? 0);
+$userBranchId = $currentUser['branch_id'] ?? null;
+$isCentral = ($userRoleId === 1 || $userRoleId === 2 || empty($userBranchId));
+
 // Base SQL with calculated total hours from attendance_logs
 $sql = "SELECT e.*, 
         CONCAT(e.first_name, ' ', e.last_name) AS full_name,
@@ -19,14 +24,22 @@ $sql = "SELECT e.*,
          FROM attendance_logs 
          WHERE employee_id = e.id AND clock_out IS NOT NULL) AS total_hours
         FROM employees e 
-        WHERE e.deleted_at IS NULL";
+        LEFT JOIN users u ON u.employee_id = e.id
+        WHERE e.deleted_at IS NULL 
+          AND e.branch_id IS NOT NULL 
+          AND (u.role_id IS NULL OR u.role_id != 1)
+          AND e.employee_code NOT LIKE 'ADMIN%'
+          AND e.position NOT LIKE '%Admin%'";
 
 $params = [];
 
-// Branch Scoping
-list($scopeSql, $scopeParams) = Rbac::branch_scope('e');
-$sql .= $scopeSql;
-$params = array_merge($params, $scopeParams);
+// Branch Scoping:
+// Admin (1) or CHR (2) sees all 24 branch employees.
+// BHR (5) and branch roles see only the 8 employees for their branch.
+if (!$isCentral && !empty($userBranchId)) {
+    $sql .= " AND e.branch_id = ?";
+    $params[] = (int)$userBranchId;
+}
 
 if ($search !== '') {
     $sql .= " AND (e.employee_code LIKE ? OR CONCAT(e.first_name, ' ', e.last_name) LIKE ? OR e.position LIKE ? OR e.email LIKE ?)";
@@ -39,7 +52,7 @@ if ($status !== '') {
     $params[] = $status;
 }
 
-$sql .= " ORDER BY e.first_name ASC, e.last_name ASC";
+$sql .= " ORDER BY e.branch_id ASC, e.first_name ASC, e.last_name ASC";
 
 $employees = [];
 $pending_hires = [];
@@ -54,7 +67,7 @@ if ($tab === 'onboarding') {
 }
 
 // Positions list for filter dropdown
-$posStmt = $pdo->query("SELECT DISTINCT position FROM employees WHERE position IS NOT NULL AND position != '' AND deleted_at IS NULL ORDER BY position ASC");
+$posStmt = $pdo->query("SELECT DISTINCT position FROM employees WHERE position IS NOT NULL AND position != '' AND deleted_at IS NULL AND branch_id IS NOT NULL ORDER BY position ASC");
 $positionsList = $posStmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Count pending onboarding

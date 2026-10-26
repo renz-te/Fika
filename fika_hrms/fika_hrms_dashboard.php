@@ -16,9 +16,37 @@ $pendingLeaves = 0;
 $todaySales = 0.0;
 
 try {
-    [$empScope, $empParams] = Rbac::branch_scope();
-    $empStmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE status = 'ACTIVE' AND deleted_at IS NULL {$empScope}");
-    $empStmt->execute($empParams);
+    $userRoleId = (int)($currentUser['role_id'] ?? 0);
+    $userBranchId = $currentUser['branch_id'] ?? null;
+    $isCentral = ($userRoleId === 1 || $userRoleId === 2 || empty($userBranchId));
+
+    if ($isCentral) {
+        $empStmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM employees e 
+            LEFT JOIN users u ON u.employee_id = e.id 
+            WHERE e.status = 'ACTIVE' 
+              AND e.deleted_at IS NULL 
+              AND e.branch_id IS NOT NULL 
+              AND (u.role_id IS NULL OR u.role_id != 1)
+              AND e.employee_code NOT LIKE 'ADMIN%'
+              AND e.position NOT LIKE '%Admin%'
+        ");
+        $empStmt->execute();
+    } else {
+        $empStmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM employees e 
+            LEFT JOIN users u ON u.employee_id = e.id 
+            WHERE e.status = 'ACTIVE' 
+              AND e.deleted_at IS NULL 
+              AND e.branch_id = ? 
+              AND (u.role_id IS NULL OR u.role_id != 1)
+              AND e.employee_code NOT LIKE 'ADMIN%'
+              AND e.position NOT LIKE '%Admin%'
+        ");
+        $empStmt->execute([(int)$userBranchId]);
+    }
     $totalEmployees = (int)($empStmt ? $empStmt->fetchColumn() : 0);
 
     [$clockScope, $clockParams] = Rbac::branch_scope();

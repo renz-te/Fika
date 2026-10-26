@@ -8,10 +8,14 @@ $modal = isset($_GET['modal']) ? (int)$_GET['modal'] : 0;
 
 $user_role = $_SESSION['user']['role'] ?? 'Branch Manager';
 $positions = [];
-if ($user_role === 'Super Admin' || $user_role === 'System Admin' || $user_role === 'Central HR') {
+try {
+    $jobStmt = $pdo->query("SELECT DISTINCT title FROM job_openings WHERE status = 'OPEN' ORDER BY title ASC");
+    $positions = $jobStmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (\Throwable $t) {
+    $positions = [];
+}
+if (empty($positions)) {
     $positions = ['Barista', 'Head Barista', 'Branch Manager', 'Branch Accountant'];
-} else {
-    $positions = ['Barista', 'Head Barista'];
 }
 
 $applicant = [
@@ -352,7 +356,7 @@ require_once __DIR__ . '/includes/header.php';
                         <select name="branch_id" id="branchSelect" required class="w-full rounded-lg border-slate-300 p-2 bg-slate-50 border focus:ring-primary focus:border-primary transition-colors">
                             <option value="">Select Location...</option>
                             <?php
-                                $branchStmt = $pdo->query("SELECT id, name FROM branches WHERE status = 'Active' ORDER BY name");
+                                $branchStmt = $pdo->query("SELECT id, name FROM branches WHERE status = 'Active' ORDER BY id ASC");
                                 while ($branch = $branchStmt->fetch()) {
                                     $selected = ($currBranch == $branch['id']) ? 'selected' : '';
                                     echo '<option value="' . $branch['id'] . '" ' . $selected . '>' . h($branch['name']) . '</option>';
