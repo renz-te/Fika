@@ -42,7 +42,7 @@ $canFin = Rbac::can('finance.view') && !($sessRoleId === 1);
 $canHR = Rbac::can('hr.employee.view') && !($sessRoleId === 1) && !$isBM;
 $canLeave = (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($sessRoleId === 1);
 $canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
-$canShift = (Rbac::can('schedule.view') || Rbac::can('schedule.manage')) && !($sessRoleId === 1);
+$canShift = (Rbac::can('schedule.view') || Rbac::can('schedule.manage')) && !in_array($sessRoleId, [1, 2], true);
 $canAttendance = Rbac::can('hr.attendance.view') && !($sessRoleId === 1);
 $canUsers = Rbac::can('users.view') && !$isBM;
 $canSystemAccounts = ($sessRoleId === 1) || $isAdmin || Rbac::can('user.manage');
@@ -186,7 +186,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <span>Payroll</span>
         </a>
         <?php endif; ?>
-        <?php if ((Rbac::can('schedule.manage') || Rbac::can('schedule.view')) && !($sessRoleId === 1)): ?>
+        <?php if ((Rbac::can('schedule.manage') || Rbac::can('schedule.view')) && !in_array($sessRoleId, [1, 2], true)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_shift_board.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_shift_board.php') ?>">
             <i class="fa-solid fa-calendar-days w-5 text-center text-purple-400"></i>
             <span>Roster &amp; Scheduler</span>

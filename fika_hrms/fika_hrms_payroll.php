@@ -90,7 +90,7 @@ function can_perform_action($run, $action, $user, $pdo) {
             </div>
             <div class="text-right flex gap-3">
                 <?php if (Rbac::can('payroll.generate')): ?>
-                    <button onclick="document.getElementById('generateModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
+                    <button onclick="openGenerateModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
                         Generate New Run
                     </button>
                 <?php endif; ?>
@@ -204,10 +204,12 @@ function can_perform_action($run, $action, $user, $pdo) {
                 <div class="mb-4">
                     <label class="block text-sm font-bold text-gray-700 mb-2">Scope</label>
                     <select id="genScope" class="w-full p-2 border rounded" required onchange="toggleBranchSelect()">
-                        <option value="BRANCH">BRANCH (Branch Staff)</option>
                         <?php if ($user['branch_id'] === null): ?>
-                            <option value="OFFICIALS">OFFICIALS (Branch Managers/HR/Acc)</option>
+                            <option value="OFFICIALS" <?= ((int)($user['role_id'] ?? 0) === 2) ? 'selected' : '' ?>>OFFICIALS (Branch Managers/HR/Acc)</option>
                             <option value="HQ">HQ (Central Staff)</option>
+                            <option value="BRANCH" <?= ((int)($user['role_id'] ?? 0) !== 2) ? 'selected' : '' ?>>BRANCH (Branch Staff)</option>
+                        <?php else: ?>
+                            <option value="BRANCH" selected>BRANCH (Branch Staff)</option>
                         <?php endif; ?>
                     </select>
                 </div>
@@ -262,21 +264,37 @@ function can_perform_action($run, $action, $user, $pdo) {
     </div>
     
     <script>
+        function openGenerateModal() {
+            const modal = document.getElementById('generateModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                toggleBranchSelect();
+            }
+        }
+
         function toggleBranchSelect() {
-            const scope = document.getElementById('genScope').value;
+            const scopeEl = document.getElementById('genScope');
+            if (!scopeEl) return;
+            const scope = scopeEl.value;
             const branchDiv = document.getElementById('branchDiv');
             const branchSel = document.getElementById('genBranch');
             const hqDiv = document.getElementById('hqDiv');
             const hqSel = document.getElementById('genPayeeId');
             
-            branchDiv.style.display = scope === 'BRANCH' ? 'block' : 'none';
-            branchSel.required = scope === 'BRANCH';
-            if (scope !== 'BRANCH') branchSel.value = '';
+            if (branchDiv && branchSel) {
+                branchDiv.style.display = scope === 'BRANCH' ? 'block' : 'none';
+                branchSel.required = scope === 'BRANCH';
+                if (scope !== 'BRANCH') branchSel.value = '';
+            }
 
-            hqDiv.style.display = scope === 'HQ' ? 'block' : 'none';
-            hqSel.required = scope === 'HQ';
-            if (scope !== 'HQ') hqSel.value = '';
+            if (hqDiv && hqSel) {
+                hqDiv.style.display = scope === 'HQ' ? 'block' : 'none';
+                hqSel.required = scope === 'HQ';
+                if (scope !== 'HQ') hqSel.value = '';
+            }
         }
+
+        document.addEventListener('DOMContentLoaded', toggleBranchSelect);
         
         async function generateRun(e) {
             e.preventDefault();

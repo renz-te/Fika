@@ -221,7 +221,8 @@ $pageTitle = 'Employees Directory';
                                     data-status="<?= e(strtoupper($emp['status'] ?? 'ACTIVE')) ?>" 
                                     data-position="<?= e($emp['position'] ?? '') ?>" 
                                     data-category="<?= e($emp['employment_type'] ?? '') ?>" 
-                                    data-search="<?= e(strtolower(($emp['full_name'] ?? '') . ' ' . ($emp['emp_code_display'] ?? '') . ' ' . ($emp['position'] ?? '') . ' ' . ($emp['email'] ?? ''))) ?>">
+                                    data-staff-class="<?= e(strtoupper($emp['staff_class'] ?? '')) ?>"
+                                    data-search="<?= e(strtolower(($emp['full_name'] ?? '') . ' ' . ($emp['emp_code_display'] ?? '') . ' ' . ($emp['position'] ?? '') . ' ' . ($emp['staff_class'] ?? '') . ' ' . ($emp['email'] ?? ''))) ?>">
                                     <td class="py-4 px-6">
                                         <div class="flex items-center">
                                             <div class="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-extrabold mr-3 shadow-xs">
@@ -237,7 +238,18 @@ $pageTitle = 'Employees Directory';
                                         <?= e($emp['emp_code_display']) ?>
                                     </td>
                                     <td class="py-4 px-6">
-                                        <div class="font-semibold text-slate-800"><?= e($emp['position'] ?? 'Staff') ?></div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-slate-800"><?= e($emp['position'] ?? 'Staff') ?></span>
+                                            <?php 
+                                                $staffClass = strtoupper($emp['staff_class'] ?? '');
+                                                if ($staffClass === 'OFFICIAL'): ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 uppercase tracking-wider shadow-xs">OFFICIAL</span>
+                                            <?php elseif ($staffClass === 'CREW'): ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-300 uppercase tracking-wider shadow-xs">CREW</span>
+                                            <?php elseif ($staffClass === 'HQ'): ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-300 uppercase tracking-wider shadow-xs">HQ</span>
+                                            <?php endif; ?>
+                                        </div>
                                         <div class="flex items-center gap-1.5 mt-0.5">
                                             <span class="text-[11px] text-slate-400 uppercase tracking-wider font-bold"><?= e($typeDisplay) ?></span>
                                             <?php if ($isCentral && !empty($emp['branch_name'])): ?>
