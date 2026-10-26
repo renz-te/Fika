@@ -718,7 +718,8 @@ $pdo->exec("
     INSERT INTO job_openings (id, title, department, location, type, description, requirements, status) VALUES 
     (1, 'Head Barista', 'Operations', 'All Branches', 'Full-Time', 'Lead and mentor the barista team, oversee daily coffee bar operations.', '2+ years specialty coffee experience.', 'OPEN'),
     (2, 'Barista', 'Operations', 'All Branches', 'Full-Time', 'Craft espresso and signature coffee beverages with exceptional customer service.', 'Passionate about coffee and hospitality.', 'OPEN'),
-    (3, 'Branch Accountant', 'Finance', 'All Branches', 'Full-Time', 'Handle branch receipts, bank reconciliation, expense audits, and payroll verification.', 'BS Accountancy / Management Accounting.', 'OPEN')
+    (3, 'Branch Accountant', 'Finance', 'All Branches', 'Full-Time', 'Handle branch receipts, bank reconciliation, expense audits, and payroll verification.', 'BS Accountancy / Management Accounting.', 'OPEN'),
+    (4, 'Branch Manager', 'Store Operations', 'All Branches', 'Full-Time', 'Oversee branch café operations, quality, staff, and customer satisfaction.', '3+ years supervisory/café management experience.', 'OPEN')
     ON DUPLICATE KEY UPDATE title = VALUES(title), status = 'OPEN'
 ");
 

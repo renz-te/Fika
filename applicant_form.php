@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim($_POST['email'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $jobOpeningId = (int)($_POST['job_opening_id'] ?? 0);
-        $branchId = isset($_POST['branch_id']) && (int)$_POST['branch_id'] > 0 ? (int)$_POST['branch_id'] : 1;
+        $branchIdRaw = (int)($_POST['branch_id'] ?? 0);
 
         // 2. Validate inputs
         if ($firstName === '' || $lastName === '' || $email === '' || $phone === '') {
@@ -92,6 +92,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     // 5. Insert record into applicants table with status 'NEW'
                     $positionTitle = $jobOpening['title'];
+
+                    // Official roles (Manager, HR, Accountant) have branch assigned by CHR
+                    $isOfficial = (bool)preg_match('/(Manager|HR|Accountant)/i', $positionTitle);
+                    $branchId = (!$isOfficial && $branchIdRaw > 0) ? $branchIdRaw : null;
+                    if (!$isOfficial && $branchId === null) {
+                        $branchId = 1;
+                    }
 
                     $insertStmt = $pdo->prepare("
                         INSERT INTO applicants 
@@ -252,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <select id="job_opening_id" name="job_opening_id" required
                                     class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500">
                                     <?php foreach ($openings as $job): ?>
-                                        <option value="<?= (int)$job['id'] ?>" <?= $selectedJobId === (int)$job['id'] ? 'selected' : '' ?>>
+                                        <option value="<?= (int)$job['id'] ?>" data-title="<?= htmlspecialchars($job['title'], ENT_QUOTES, 'UTF-8') ?>" <?= $selectedJobId === (int)$job['id'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($job['title'], ENT_QUOTES, 'UTF-8') ?> &mdash; <?= htmlspecialchars($job['department'], ENT_QUOTES, 'UTF-8') ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -263,13 +270,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     Preferred Branch Location *
                                 </label>
                                 <select id="branch_id" name="branch_id" required
-                                    class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500">
+                                    class="w-full px-4 py-3 bg-stone-900 border border-stone-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-stone-950">
+                                    <option value="" id="branch_unassigned_opt" class="hidden">-- Branch Assigned by CHR --</option>
                                     <?php foreach ($branches as $br): ?>
                                         <option value="<?= (int)$br['id'] ?>" <?= $selectedBranchId === (int)$br['id'] ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($br['name'], ENT_QUOTES, 'UTF-8') ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                                <p id="branch_hint" class="text-xs text-amber-500/90 mt-2 hidden flex items-center gap-1.5 font-medium">
+                                    <i class="fa-solid fa-circle-info text-[11px]"></i>
+                                    <span>Branch assigned by CHR upon hire.</span>
+                                </p>
                             </div>
                         </div>
 
@@ -350,5 +362,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <footer class="bg-stone-950 text-stone-500 py-8 border-t border-stone-800 text-xs text-center">
         &copy; <?= date('Y') ?> Fika Café System &bull; Slow Hours Architecture. All rights reserved.
     </footer>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const jobSelect = document.getElementById('job_opening_id');
+        const branchSelect = document.getElementById('branch_id');
+        const branchHint = document.getElementById('branch_hint');
+        const unassignedOpt = document.getElementById('branch_unassigned_opt');
+
+        if (!jobSelect || !branchSelect) return;
+
+        function updateBranchState() {
+            const selectedOpt = jobSelect.options[jobSelect.selectedIndex];
+            const title = selectedOpt ? (selectedOpt.getAttribute('data-title') || selectedOpt.textContent || '') : '';
+            const isOfficial = /(Manager|HR|Accountant)/i.test(title);
+
+            if (isOfficial) {
+                if (unassignedOpt) unassignedOpt.classList.remove('hidden');
+                branchSelect.value = '';
+                branchSelect.disabled = true;
+                branchSelect.removeAttribute('required');
+                if (branchHint) branchHint.classList.remove('hidden');
+            } else {
+                if (unassignedOpt) unassignedOpt.classList.add('hidden');
+                branchSelect.disabled = false;
+                branchSelect.setAttribute('required', 'required');
+                if (!branchSelect.value && branchSelect.options.length > 1) {
+                    for (let i = 0; i < branchSelect.options.length; i++) {
+                        if (branchSelect.options[i].value !== '') {
+                            branchSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (branchHint) branchHint.classList.add('hidden');
+            }
+        }
+
+        jobSelect.addEventListener('change', updateBranchState);
+        updateBranchState();
+    });
+    </script>
 </body>
 </html>

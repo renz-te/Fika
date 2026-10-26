@@ -28,8 +28,12 @@ if ($userBranchId !== null) {
     $branchSql = $branchScopeSql;
     $branchParams = $branchScopeParams;
 } else {
-    if (!empty($_GET['branch_id']) && $_GET['branch_id'] !== 'all') {
-        $selectedBranchId = (int)$_GET['branch_id'];
+    $bParam = $_GET['branch_id'] ?? 'all';
+    if ($bParam === 'unassigned') {
+        $branchSql = " AND a.branch_id IS NULL";
+        $branchParams = [];
+    } elseif ($bParam !== 'all' && is_numeric($bParam)) {
+        $selectedBranchId = (int)$bParam;
         $branchSql = " AND a.branch_id = ?";
         $branchParams = [$selectedBranchId];
     } else {
@@ -121,7 +125,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $search = trim($_GET['search'] ?? '');
 $filterStage = trim($_GET['stage'] ?? '');
 
-$filterSql = $branchSql;
+// Role-based ATS Applicant Routing:
+// 1. Branch HR (Role 5): Only Crew applicants ('Barista', 'Head Barista')
+// 2. Central HR (Role 2) & Global Accountant (Role 3): Only Official applicants ('Branch Manager', 'Branch HR', 'Branch Accountant', 'Central HR', 'Global Accountant')
+// 3. Admin (Role 1): Sees all applicants
+$roleRoutingSql = "";
+if ($currentRoleId === 5) {
+    $roleRoutingSql = " AND COALESCE(a.position_applied, a.position) IN ('Barista', 'Head Barista')";
+} elseif (in_array($currentRoleId, [2, 3], true)) {
+    $roleRoutingSql = " AND COALESCE(a.position_applied, a.position) IN ('Branch Manager', 'Branch HR', 'Branch Accountant', 'Central HR', 'Global Accountant')";
+}
+
+$filterSql = $branchSql . $roleRoutingSql;
 $filterParams = $branchParams;
 
 if ($search !== '') {
@@ -177,7 +192,7 @@ $intStmt = $pdo->prepare("
     JOIN applicants a ON i.applicant_id = a.id
     LEFT JOIN branches b ON a.branch_id = b.id
     LEFT JOIN employees e ON i.interviewer_id = e.id
-    WHERE 1=1 {$branchSql}
+    WHERE 1=1 {$branchSql} {$roleRoutingSql}
     ORDER BY i.interview_date ASC, i.interview_time ASC
 ");
 $intStmt->execute($branchParams);
@@ -247,6 +262,7 @@ $pipelineRanks = [
                         <input type="hidden" name="tab" value="<?= e($tab) ?>">
                         <select name="branch_id" onchange="this.form.submit()" class="text-xs font-semibold rounded-xl border border-slate-300 py-1.5 px-3 bg-white shadow-xs focus:ring-2 focus:ring-teal-500">
                             <option value="all">All Branch Locations</option>
+                            <option value="unassigned" <?= (($_GET['branch_id'] ?? '') === 'unassigned' ? 'selected' : '') ?>>Unassigned (HQ / CHR Assigned)</option>
                             <?php foreach ($branches as $b): ?>
                                 <option value="<?= (int)$b['id'] ?>" <?= ($selectedBranchId === (int)$b['id'] ? 'selected' : '') ?>>
                                     <?= e($b['name']) ?>
