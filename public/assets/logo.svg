@@ -27,7 +27,7 @@
         letter-spacing="5"
         fill="#4A2E1B">
     <textPath href="#topTextArc" startOffset="50%" text-anchor="middle">
-      FIKA &bull; SLOW HOURS
+      FIKA &#8226; SLOW HOURS
     </textPath>
   </text>
 
