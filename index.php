@@ -86,10 +86,7 @@ $branch = $branch ?: [
             <!-- Brand Logo -->
             <a href="index.php" class="flex items-center gap-3.5 group">
                 <div class="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
-                    <img src="<?= e($logoUrl) ?>" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200" onerror="this.style.display='none'; document.getElementById('logo-nav-fallback').classList.remove('hidden');">
-                    <div id="logo-nav-fallback" class="hidden w-12 h-12 rounded-full bg-espresso-900 text-amber-300 flex items-center justify-center font-serif font-black text-xl shadow-inner border border-amber-600/40">
-                        <span>F</span>
-                    </div>
+                    <img src="public/assets/logo.svg" alt="Fika Logo" class="w-12 h-12 object-contain transition-transform group-hover:scale-105 duration-200">
                 </div>
                 <div>
                     <span class="text-2xl font-black tracking-wider text-espresso-900 font-serif leading-none block">FIKA</span>
@@ -453,10 +450,7 @@ $branch = $branch ?: [
                 <div class="md:col-span-2">
                     <div class="flex items-center gap-3 mb-4">
                         <div class="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
-                            <img src="<?= e($logoUrl) ?>" alt="Fika Logo" class="w-10 h-10 object-contain" onerror="this.style.display='none'; document.getElementById('logo-footer-fallback').classList.remove('hidden');">
-                            <div id="logo-footer-fallback" class="hidden w-10 h-10 rounded-full bg-espresso-900 text-amber-400 flex items-center justify-center font-serif font-black text-lg border border-amber-500/30">
-                                <span>F</span>
-                            </div>
+                            <img src="public/assets/logo.svg" alt="Fika Logo" class="w-10 h-10 object-contain">
                         </div>
                         <div>
                             <span class="text-2xl font-black tracking-wider text-cream-50 font-serif leading-none block">FIKA</span>
