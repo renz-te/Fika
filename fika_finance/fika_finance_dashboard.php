@@ -14,22 +14,36 @@ $monthRevenueCents = 0;
 $monthExpensesCents = 0;
 $monthExpenses = 0.0;
 
+$userBranchId = $currentUser['branch_id'] ?? null;
+$userBranchName = '';
+if (!empty($userBranchId)) {
+    $bStmt = $pdo->prepare("SELECT name FROM branches WHERE id = ?");
+    $bStmt->execute([$userBranchId]);
+    $userBranchName = (string)$bStmt->fetchColumn();
+}
+
 try {
-    $revStmt = $pdo->query("
+    list($orderScopeSql, $orderParams) = Rbac::branch_scope();
+    $revStmt = $pdo->prepare("
         SELECT COALESCE(SUM(final_amount), 0) 
         FROM orders 
         WHERE payment_status = 'PAID' 
           AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01 00:00:00')
+          {$orderScopeSql}
     ");
+    $revStmt->execute($orderParams);
     $monthRevenue = (float)($revStmt ? $revStmt->fetchColumn() : 0.0);
     $monthRevenueCents = Money::toCentavos($monthRevenue);
 
-    $expStmt = $pdo->query("
+    list($expScopeSql, $expParams) = Rbac::branch_scope();
+    $expStmt = $pdo->prepare("
         SELECT COALESCE(SUM(amount_cents), 0) 
         FROM expenses 
         WHERE status = 'APPROVED' 
           AND expense_date >= DATE_FORMAT(NOW(), '%Y-%m-01')
+          {$expScopeSql}
     ");
+    $expStmt->execute($expParams);
     $monthExpensesCents = (int)($expStmt ? $expStmt->fetchColumn() : 0);
     $monthExpenses = $monthExpensesCents / 100;
 } catch (Throwable $e) {
@@ -42,15 +56,18 @@ $isProfitable = $netProfitCents >= 0;
 // 2. Recent Approved Expenses (Last 5 records)
 $recentExpenses = [];
 try {
-    $recentStmt = $pdo->query("
+    list($recScopeSql, $recParams) = Rbac::branch_scope('e');
+    $recentStmt = $pdo->prepare("
         SELECT e.id, e.amount_cents, e.expense_date, e.payee, e.notes, ec.name as category_name, b.name as branch_name 
         FROM expenses e 
         LEFT JOIN expense_categories ec ON e.category_id = ec.id 
         LEFT JOIN branches b ON e.branch_id = b.id 
-        WHERE e.status = 'APPROVED' 
+        WHERE e.status = 'APPROVED'
+          {$recScopeSql}
         ORDER BY e.expense_date DESC, e.id DESC 
         LIMIT 5
     ");
+    $recentStmt->execute($recParams);
     if ($recentStmt) {
         $recentExpenses = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -104,9 +121,22 @@ try {
                 <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Finance Overview</h1>
                 <p class="text-sm text-slate-500 mt-1">Month-to-date revenue intake, audited operational disbursements, and bottom-line margin.</p>
             </div>
-            <div class="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 shadow-sm">
-                <i class="fa-regular fa-calendar-days text-emerald-600"></i>
-                <span>Period: <?= date('F Y') ?> (MTD)</span>
+            <div class="flex flex-wrap items-center gap-2">
+                <?php if (!empty($userBranchName)): ?>
+                <div class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700 shadow-sm">
+                    <i class="fa-solid fa-store"></i>
+                    <span><?= e($userBranchName) ?></span>
+                </div>
+                <?php else: ?>
+                <div class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700 shadow-sm">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>All Branches (Consolidated)</span>
+                </div>
+                <?php endif; ?>
+                <div class="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 shadow-sm">
+                    <i class="fa-regular fa-calendar-days text-emerald-600"></i>
+                    <span>Period: <?= date('F Y') ?> (MTD)</span>
+                </div>
             </div>
         </div>
 

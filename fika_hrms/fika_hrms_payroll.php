@@ -42,6 +42,22 @@ function can_perform_action($run, $action, $user, $pdo) {
         return false;
     }
 
+    // Role-specific approval distinction:
+    // BA (assigned to branch) approves branch crew runs (scope === 'BRANCH') for their branch
+    // GA (global, branch_id is null) approves HQ and OFFICIALS runs
+    if ($action === 'APPROVE') {
+        $userBranchId = $user['branch_id'] ?? null;
+        if (!empty($userBranchId)) {
+            if (($run['scope'] ?? '') !== 'BRANCH' || (int)($run['branch_id'] ?? 0) !== (int)$userBranchId) {
+                return false;
+            }
+        } else {
+            if (!in_array($run['scope'] ?? '', ['HQ', 'OFFICIALS'], true)) {
+                return false;
+            }
+        }
+    }
+
     // Approver cannot release
     if ($action === 'RELEASE') {
         $approverId = (int)($run['approved_by'] ?? 0);
@@ -166,10 +182,15 @@ function can_perform_action($run, $action, $user, $pdo) {
                                 <?php if ($r['status'] === 'DRAFT' || $r['status'] === 'GENERATED'): ?>
                                     <?php if (can_perform_action($r, 'APPROVE', $user, $pdo)): ?>
                                         <button onclick="approveRun(<?= $r['id'] ?>)" class="text-green-600 hover:underline text-xs font-bold">Approve</button>
-                                    <?php elseif ((int)$r['processed_by'] === (int)$user['id']): ?>
-                                        <span class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded font-medium">Awaiting BA Approval</span>
-                                    <?php elseif (Rbac::can('payroll.release')): ?>
-                                        <span class="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">Awaiting BA Approval</span>
+                                    <?php else: ?>
+                                        <?php 
+                                            $awaitingLabel = ($r['scope'] === 'BRANCH') ? 'Awaiting BA Approval' : 'Awaiting GA Approval';
+                                        ?>
+                                        <?php if ((int)$r['processed_by'] === (int)$user['id']): ?>
+                                            <span class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded font-medium"><?= $awaitingLabel ?></span>
+                                        <?php elseif (Rbac::can('payroll.release') || Rbac::can('payroll.approve')): ?>
+                                            <span class="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium"><?= $awaitingLabel ?></span>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                     <?php if (can_perform_action($r, 'DELETE', $user, $pdo)): ?>
                                         <button onclick="clearRun(<?= $r['id'] ?>)" class="text-red-600 hover:underline text-xs font-bold">Clear Draft</button>

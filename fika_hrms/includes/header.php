@@ -216,11 +216,13 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <!-- 3. FINANCE Group -->
-        <?php if (Rbac::can('finance.view') && !($sessRoleId === 1)): ?>
+        <?php if (Rbac::can('finance.view') && !($sessRoleId === 1)): 
+            $finLabel = ($sessRoleId === 3 || $userRoleName === 'GA') ? 'Global Finance' : (($sessRoleId === 4 || $sessRoleId === 6 || in_array($userRoleName, ['BA', 'BM'], true)) ? 'Branch Finance' : 'Finance');
+        ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">FINANCE</div>
         <a href="<?= $url('fika_finance', 'fika_finance_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php', ['fika_finance_reports.php', 'fika_finance_budgets.php', 'fika_finance_reconcile.php']) ?>">
             <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
-            <span><?= ($isBM) ? 'Branch Finance' : 'Finance' ?></span>
+            <span><?= $finLabel ?></span>
         </a>
         <?php endif; ?>
 

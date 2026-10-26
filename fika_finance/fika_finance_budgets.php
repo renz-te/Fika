@@ -7,13 +7,13 @@ Rbac::require_permission('finance.view');
 $user = Auth::user();
 $canCreateExpense = Rbac::can('finance.expense.create');
 $canApproveExpense = Rbac::can('finance.expense.approve');
-$canManageBudget = Rbac::can('finance.budget.manage');
 $csrfToken = Csrf::getToken();
 
 // Fetch branches for filter / selector
 global $pdo;
 $isAdminOrGa = in_array($user['role_name'] ?? '', ['ADMIN', 'Super Admin', 'GA', 'Global Accountant'], true) 
                || in_array((int)($user['role_id'] ?? 0), [1, 3], true);
+$canManageBudget = Rbac::can('finance.budget.manage') && $isAdminOrGa;
 
 if ($isAdminOrGa) {
     $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name ASC")->fetchAll();
@@ -117,7 +117,7 @@ $thresholdPesos = $thresholdCents / 100;
 
                 <?php if ($canManageBudget): ?>
                 <button type="button" onclick="openBudgetModal()" class="px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-xs shadow-sm">
-                    Set Monthly Budget
+                    Allocate Budget
                 </button>
                 <?php endif; ?>
             </div>
