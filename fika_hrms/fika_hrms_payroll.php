@@ -144,7 +144,7 @@ function can_perform_action($run, $action, $user, $pdo) {
                                 <?= (int)$r['emp_count'] ?>
                             </td>
                             <td class="px-4 py-3 text-right text-gray-900 font-mono">
-                                <?= format_money_decimal($r['total_net']) ?>
+                                <?= Money::format(Money::toCentavos($r['total_net'] ?? 0)) ?>
                             </td>
                             <td class="px-4 py-3 text-center">
                                 <?php 
