@@ -35,12 +35,12 @@ $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER
 $isStaffOrHB = !$isAdmin && ($isHB || $isStaff);
 
 $canPosDash = Rbac::can('pos.access');
-$canInv = Rbac::can('inventory.manage') || Rbac::can('inventory.view');
+$canInv = Rbac::can('inventory.adjust');
 $canProc = Rbac::can('procurement.view');
 $canFin = Rbac::can('finance.view');
 $canHR = Rbac::can('hr.employee.view');
 $canLeave = Rbac::can('hr.leave.view');
-$canPayroll = Rbac::can('payroll.view');
+$canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
 $canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
 $canAttendance = Rbac::can('hr.attendance.view');
 $canUsers = Rbac::can('users.view');
@@ -124,7 +124,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <span>Applicants / ATS</span>
         </a>
         <?php endif; ?>
-        <?php if ($canPayroll): ?>
+        <?php if (Rbac::can('payroll.generate') || Rbac::can('payroll.release')): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_payroll.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_payroll.php') ?>">
             <i class="fa-solid fa-file-invoice-dollar w-5 text-center text-emerald-400"></i>
             <span>Payroll</span>
@@ -151,7 +151,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <!-- 2. OPERATIONS Group -->
-        <?php if ($canPosDash): ?>
+        <?php if (Rbac::can('pos.access')): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">OPERATIONS</div>
         <a href="<?= $url('fika_pos', 'fika_pos_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_pos_dashboard.php') ?>">
             <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
@@ -169,7 +169,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <!-- 4. INVENTORY Group -->
-        <?php if ($canInv || $canProc): ?>
+        <?php if (Rbac::can('inventory.adjust')): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">INVENTORY</div>
         <a href="<?= $url('fika_inventory', 'fika_inventory_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_inventory_dashboard.php', ['fika_inventory_stock.php', 'fika_inventory_recipes.php', 'fika_inventory_procurement.php']) ?>">
             <i class="fa-solid fa-boxes-stacked w-5 text-center text-blue-400"></i>
