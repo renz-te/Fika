@@ -215,36 +215,36 @@ $pageTitle = "Roster & Scheduler";
                 </div>
 
                 <div class="flex items-center gap-2.5">
-                    <!-- 1. BHR Action: Submit to BM for Manpower Review -->
-                    <?php if (($isBHR || $isAdmin) && ($draftCount > 0 || $rejectedCount > 0)): ?>
+                    <?php if ($isBHR && ($draftCount > 0 || $rejectedCount > 0)): ?>
+                        <!-- 1. BHR Action: Submit to BM for Manpower Review -->
                         <button type="button" onclick="submitToBm()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
                             <i class="fa-solid fa-paper-plane"></i> Submit to BM for Manpower Review
                         </button>
                     <?php endif; ?>
 
-                    <!-- 2. BM Action: Approve Manpower -->
                     <?php if (($isBM || $isAdmin) && $pendingBmCount > 0): ?>
+                        <!-- 2. BM Action: Approve Manpower -->
                         <button type="button" onclick="approveManpower()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
                             <i class="fa-solid fa-users-viewfinder"></i> Approve Manpower
                         </button>
                     <?php endif; ?>
 
-                    <!-- 3. BA Action: Approve Budget -->
                     <?php if (($isBA || $isAdmin) && $pendingBaCount > 0): ?>
+                        <!-- 3. BA Action: Approve Budget -->
                         <button type="button" onclick="approveBudget()" class="bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
                             <i class="fa-solid fa-file-signature"></i> Approve Budget
                         </button>
                     <?php endif; ?>
 
-                    <!-- 4. BM Final Action: Publish to Staff -->
                     <?php if (($isBM || $isAdmin) && $approvedCount > 0): ?>
+                        <!-- 4. BM Final Action: Publish to Staff -->
                         <button type="button" onclick="publishApprovedRoster()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
                             <i class="fa-solid fa-upload"></i> Publish to Staff
                         </button>
                     <?php endif; ?>
 
-                    <!-- Add Shift Button (BHR & BM) -->
-                    <?php if ($canManage): ?>
+                    <?php if (($isBHR || $isAdmin) && $canManage): ?>
+                        <!-- Add Shift Button (BHR & Admin only) -->
                         <button type="button" onclick="openAddShiftModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-sm inline-flex items-center gap-1.5">
                             <i class="fa-solid fa-plus"></i> Add Shift
                         </button>
@@ -397,8 +397,26 @@ $pageTitle = "Roster & Scheduler";
                 <?php endif; ?>
             </div>
 
-            <!-- BM Manpower Screening Widget (Constraint 2 & Task 3) -->
-            <?php if ($isBM || $isAdmin || $pendingBmCount > 0): ?>
+            <?php if ($isBHR && ($draftCount > 0 || $rejectedCount > 0)): ?>
+            <!-- BHR Drafting & Submission Banner (Task 2.3) -->
+            <div class="bg-indigo-50/90 border border-indigo-200 rounded-2xl p-5 mb-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-indigo-950">Draft Schedule Ready for Manpower Review</h3>
+                        <p class="text-xs text-indigo-800 mt-0.5">You have <?= $draftCount ?> draft shift(s) configured for this week. Once finished scheduling baristas, submit the roster to the Branch Manager.</p>
+                    </div>
+                </div>
+                <button type="button" onclick="submitToBm()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2 whitespace-nowrap">
+                    <i class="fa-solid fa-paper-plane"></i> Submit to BM for Manpower Review
+                </button>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($isBM): ?>
+            <!-- BM Manpower Screening Widget (Task 2.1) -->
             <div class="bg-sky-50/90 border border-sky-200 rounded-2xl p-5 mb-6 shadow-sm">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -409,7 +427,7 @@ $pageTitle = "Roster & Scheduler";
                         <p class="text-xs text-slate-600 mt-0.5">Screen daily headcount across the branch to verify coverage before finance budget authorization.</p>
                     </div>
                     
-                    <?php if (($isBM || $isAdmin) && $pendingBmCount > 0): ?>
+                    <?php if ($pendingBmCount > 0): ?>
                     <div class="flex items-center gap-2.5">
                         <button type="button" onclick="openRejectModal('bm')" class="px-3.5 py-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5">
                             <i class="fa-solid fa-xmark"></i> Reject Manpower
@@ -439,8 +457,8 @@ $pageTitle = "Roster & Scheduler";
             </div>
             <?php endif; ?>
 
-            <!-- BA Budget & Labor Cost Review Widget (Constraint 2 & Task 4) -->
-            <?php if ($isBA || $isAdmin || $pendingBaCount > 0): ?>
+            <?php if ($isBA): ?>
+            <!-- BA Budget & Labor Cost Review Widget (Task 2.2) -->
             <div class="bg-violet-50/90 border border-violet-200 rounded-2xl p-5 mb-6 shadow-sm">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -451,7 +469,7 @@ $pageTitle = "Roster & Scheduler";
                         <p class="text-xs text-slate-600 mt-0.5">Calculated by multiplying scheduled barista shift hours by their respective hourly rates.</p>
                     </div>
 
-                    <?php if (($isBA || $isAdmin) && $pendingBaCount > 0): ?>
+                    <?php if ($pendingBaCount > 0): ?>
                     <div class="flex items-center gap-2.5">
                         <button type="button" onclick="openRejectModal('ba')" class="px-3.5 py-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5">
                             <i class="fa-solid fa-xmark"></i> Reject Budget
@@ -631,7 +649,7 @@ $pageTitle = "Roster & Scheduler";
                                                                 $badgeStyle = 'bg-purple-50 text-purple-800 border-purple-200';
                                                             }
 
-                                                            $canEditThis = $canManage && !in_array($st, ['PENDING_BM', 'PENDING_BA', 'APPROVED'], true);
+                                                            $canEditThis = ($isBHR || $isAdmin) && $canManage && !in_array($st, ['PENDING_BM', 'PENDING_BA', 'APPROVED'], true);
                                                         ?>
                                                             <div <?= $canEditThis ? 'onclick=\'openAssignModal(' . $emp['id'] . ', "' . e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) . '", "' . $dateStr . '", ' . json_encode($sh) . ')\'' : '' ?>
                                                                  class="border rounded-xl p-2 text-xs <?= $canEditThis ? 'cursor-pointer hover:shadow-sm' : '' ?> transition text-left <?= $badgeStyle ?>"
@@ -657,7 +675,7 @@ $pageTitle = "Roster & Scheduler";
                                                             </div>
                                                         <?php endforeach; ?>
                                                     <?php elseif (!$isOnLeave): ?>
-                                                        <?php if ($canManage): ?>
+                                                        <?php if (($isBHR || $isAdmin) && $canManage): ?>
                                                             <button type="button" onclick="openAssignModal(<?= $emp['id'] ?>, '<?= e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) ?>', '<?= $dateStr ?>', null)" class="w-full h-10 border border-dashed border-slate-200 hover:border-indigo-400 rounded-xl text-slate-300 hover:text-indigo-600 flex items-center justify-center text-xs transition">
                                                                 <i class="fa-solid fa-plus"></i>
                                                             </button>
@@ -679,7 +697,7 @@ $pageTitle = "Roster & Scheduler";
         </div>
     </div>
 
-    <?php if ($canManage): ?>
+    <?php if (($isBHR || $isAdmin) && $canManage): ?>
     <!-- Assign / Edit Shift Modal -->
     <div id="assignModal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
