@@ -37,16 +37,16 @@ $isStaffOrHB = !$isAdmin && ($isHB || $isStaff);
 $canPosDash = Rbac::can('pos.access');
 $canInv = Rbac::can('inventory.adjust');
 $canProc = Rbac::can('procurement.view');
-$canFin = Rbac::can('finance.view');
-$canHR = Rbac::can('hr.employee.view');
-$canLeave = Rbac::can('hr.leave.view');
+$canFin = Rbac::can('finance.view') && !($sessRoleId === 1);
+$canHR = Rbac::can('hr.employee.view') && !($sessRoleId === 1);
+$canLeave = (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($sessRoleId === 1);
 $canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
-$canShift = Rbac::can('schedule.view') || Rbac::can('schedule.manage');
-$canAttendance = Rbac::can('hr.attendance.view');
+$canShift = (Rbac::can('schedule.view') || Rbac::can('schedule.manage')) && !($sessRoleId === 1);
+$canAttendance = Rbac::can('hr.attendance.view') && !($sessRoleId === 1);
 $canUsers = Rbac::can('users.view');
 $canSystemAccounts = ($sessRoleId === 1) || $isAdmin || Rbac::can('user.manage');
 $canDevices = Rbac::can('devices.view');
-$canSettings = Rbac::can('settings.manage');
+$canSettings = Rbac::can('settings.manage') && ($sessRoleId === 1);
 $canBranches = Rbac::can('branches.view');
 $showMgmt = !$isStaffOrHB && ($canPosDash || $canInv || $canProc || $canFin || $canHR || $canLeave || $canPayroll || $canShift || $canAttendance || $canUsers || $canSystemAccounts || $canSettings || $canBranches);
 
@@ -130,19 +130,19 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <span>Payroll</span>
         </a>
         <?php endif; ?>
-        <?php if ($canShift): ?>
+        <?php if ((Rbac::can('schedule.manage') || Rbac::can('schedule.view')) && !($sessRoleId === 1)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_shift_board.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_shift_board.php') ?>">
             <i class="fa-solid fa-calendar-days w-5 text-center text-purple-400"></i>
             <span>Roster &amp; Scheduler</span>
         </a>
         <?php endif; ?>
-        <?php if ($canAttendance): ?>
+        <?php if (Rbac::can('hr.attendance.view') && !($sessRoleId === 1)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_attendance.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_attendance.php') ?>">
             <i class="fa-solid fa-clock w-5 text-center text-emerald-400"></i>
             <span>Attendance</span>
         </a>
         <?php endif; ?>
-        <?php if ($canLeave): ?>
+        <?php if ((Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($sessRoleId === 1)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_leave.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_leave.php') ?>">
             <i class="fa-solid fa-plane-departure w-5 text-center text-blue-400"></i>
             <span>Leave Management</span>
@@ -160,7 +160,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <!-- 3. FINANCE Group -->
-        <?php if ($canFin): ?>
+        <?php if (Rbac::can('finance.view') && !($sessRoleId === 1)): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">FINANCE</div>
         <a href="<?= $url('fika_finance', 'fika_finance_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_finance_dashboard.php', ['fika_finance_reports.php', 'fika_finance_budgets.php', 'fika_finance_reconcile.php']) ?>">
             <i class="fa-solid fa-chart-line w-5 text-center text-emerald-500"></i>
@@ -198,7 +198,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <span>Branch Management</span>
         </a>
         <?php endif; ?>
-        <?php if ($canSettings): ?>
+        <?php if (Rbac::can('settings.manage') && ($sessRoleId === 1)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_settings.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_settings.php') ?>">
             <i class="fa-solid fa-gear w-5 text-center text-slate-400"></i>
             <span>Settings</span>
