@@ -31,6 +31,16 @@ $userRoleName = (string)$roleStmt->fetchColumn();
 if ($action === 'create') {
     Rbac::require_permission('schedule.manage');
 
+    $isBM = ($userRole === 6) || in_array($userRoleName, ['BM', 'Branch Manager'], true);
+    if ($isBM || !in_array($userRole, [1, 5], true)) {
+        http_response_code(403);
+        exit(json_encode([
+            'success' => false,
+            'error' => 'Only Branch HR can create shifts.',
+            'message' => 'Only Branch HR can create shifts.'
+        ]));
+    }
+
     $branchId = (int)($input['branch_id'] ?? ($user['branch_id'] ?? 0));
     $employeeId = (int)($input['employee_id'] ?? 0);
     $shiftDate = trim((string)($input['shift_date'] ?? ''));
