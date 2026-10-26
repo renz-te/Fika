@@ -159,14 +159,62 @@ try {
 
 // 5. Recent Activity Stream (Audit Logs)
 $recentActivities = [];
+$auditWidgetTitle = 'Recent Activity';
+
 try {
-    $actStmt = $pdo->query("
-        SELECT a.id, a.action, a.details, a.created_at, COALESCE(u.username, 'System') AS user_name 
-        FROM audit_logs a 
-        LEFT JOIN users u ON a.user_id = u.id 
-        ORDER BY a.id DESC 
-        LIMIT 5
-    ");
+    $userRoleId = (int)($currentUser['role_id'] ?? 0);
+    $userBranchId = $currentUser['branch_id'] ?? null;
+    $isBm = ($userRoleId === 6);
+    $isAdmin = ($userRoleId === 1);
+
+    if ($isAdmin) {
+        $auditWidgetTitle = 'Global System Logs';
+        $actStmt = $pdo->prepare("
+            SELECT a.id, a.action, a.details, a.created_at, a.branch_id,
+                   COALESCE(u.username, 'System') AS user_name,
+                   COALESCE(TRIM(CONCAT(e.first_name, ' ', e.last_name)), u.username, 'System') AS actor_name,
+                   b.name AS branch_name
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN employees e ON u.employee_id = e.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            ORDER BY a.id DESC
+            LIMIT 10
+        ");
+        $actStmt->execute();
+    } elseif ($isBm || (!empty($userBranchId) && $userRoleId !== 2)) {
+        $auditWidgetTitle = 'Recent Branch Activity';
+        $actStmt = $pdo->prepare("
+            SELECT a.id, a.action, a.details, a.created_at, a.branch_id,
+                   COALESCE(u.username, 'System') AS user_name,
+                   COALESCE(TRIM(CONCAT(e.first_name, ' ', e.last_name)), u.username, 'System') AS actor_name,
+                   b.name AS branch_name
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN employees e ON u.employee_id = e.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            WHERE a.branch_id = ?
+            ORDER BY a.id DESC
+            LIMIT 10
+        ");
+        $actStmt->execute([(int)$userBranchId]);
+    } else {
+        // CHR or Central oversight
+        $auditWidgetTitle = 'Global System Logs';
+        $actStmt = $pdo->prepare("
+            SELECT a.id, a.action, a.details, a.created_at, a.branch_id,
+                   COALESCE(u.username, 'System') AS user_name,
+                   COALESCE(TRIM(CONCAT(e.first_name, ' ', e.last_name)), u.username, 'System') AS actor_name,
+                   b.name AS branch_name
+            FROM audit_logs a
+            LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN employees e ON u.employee_id = e.id
+            LEFT JOIN branches b ON a.branch_id = b.id
+            ORDER BY a.id DESC
+            LIMIT 10
+        ");
+        $actStmt->execute();
+    }
     $recentActivities = $actStmt ? $actStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (Throwable $e) {
     $recentActivities = [];
@@ -442,31 +490,68 @@ $pageTitle = 'HRMS Dashboard';
                     </div>
                 </div>
                 
-                <!-- Recent Activity Logs -->
+                <!-- Audit Stream Logs Widget -->
                 <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-6 flex flex-col">
                     <div class="flex items-center justify-between mb-5">
-                        <h3 class="text-base font-bold text-slate-900">Recent Activity</h3>
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg <?= $isAdmin ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700' ?> flex items-center justify-center font-bold text-xs">
+                                <i class="fa-solid <?= $isAdmin ? 'fa-shield-halved' : 'fa-clock-rotate-left' ?>"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900 leading-tight"><?= e($auditWidgetTitle) ?></h3>
+                                <p class="text-[10px] text-slate-500"><?= $isAdmin ? 'Global 10 Latest Cross-Branch Events' : 'Branch Scope Activity Stream' ?></p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold <?= $isAdmin ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200' ?>">
+                            <span class="w-1.5 h-1.5 rounded-full <?= $isAdmin ? 'bg-purple-500 animate-pulse' : 'bg-emerald-500' ?>"></span>
+                            <?= $isAdmin ? 'Live Global' : 'Live Branch' ?>
+                        </span>
                     </div>
 
-                    <div class="space-y-4 flex-1 overflow-y-auto max-h-[300px]">
+                    <div class="space-y-3 flex-1 overflow-y-auto max-h-[340px] pr-1">
                         <?php if (!empty($recentActivities)): ?>
-                            <?php foreach ($recentActivities as $activity): ?>
-                                <div class="flex items-start gap-3">
-                                    <div class="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 mt-0.5 shrink-0 border border-slate-200">
-                                        <i class="fa-solid fa-bolt text-xs text-indigo-600"></i>
+                            <?php foreach ($recentActivities as $activity): 
+                                $act = strtoupper((string)($activity['action'] ?? ''));
+                                $badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+                                if (str_contains($act, 'REASSIGN') || str_contains($act, 'BRANCH')) {
+                                    $badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+                                } elseif (str_contains($act, 'INVENTORY')) {
+                                    $badgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                                } elseif (str_contains($act, 'SHIFT') || str_contains($act, 'SCHEDULE')) {
+                                    $badgeClass = 'bg-purple-50 text-purple-800 border-purple-200';
+                                } elseif (str_contains($act, 'EMPLOYEE')) {
+                                    $badgeClass = 'bg-blue-50 text-blue-800 border-blue-200';
+                                } elseif (str_contains($act, 'SECURITY') || str_contains($act, 'BLOCKED') || str_contains($act, 'REJECT')) {
+                                    $badgeClass = 'bg-rose-50 text-rose-800 border-rose-200';
+                                }
+                                $initials = strtoupper(substr(preg_replace('/[^a-zA-Z]/', '', $activity['actor_name']) ?: 'SY', 0, 2));
+                            ?>
+                                <div class="p-3 rounded-xl bg-slate-50 hover:bg-slate-100/80 transition-colors border border-slate-100 flex items-start gap-3">
+                                    <!-- Avatar -->
+                                    <div class="w-8 h-8 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs border border-slate-300/50">
+                                        <?= e($initials) ?>
                                     </div>
                                     <div class="min-w-0 flex-1">
-                                        <p class="text-xs font-bold text-slate-800">
-                                            <?= e($activity['user_name']) ?> 
-                                            <span class="font-normal text-slate-600"><?= e($activity['action']) ?></span>
-                                        </p>
+                                        <div class="flex items-center justify-between gap-2 flex-wrap">
+                                            <span class="text-xs font-bold text-slate-900 truncate">
+                                                <?= e($activity['actor_name']) ?>
+                                            </span>
+                                            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-md border <?= $badgeClass ?>">
+                                                <?= e($activity['action']) ?>
+                                            </span>
+                                        </div>
                                         <?php if (!empty($activity['details'])): ?>
-                                            <p class="text-[11px] text-slate-500 truncate mt-0.5" title="<?= e($activity['details']) ?>">
+                                            <p class="text-xs text-slate-700 mt-1 break-words font-medium leading-relaxed">
                                                 <?= e($activity['details']) ?>
                                             </p>
                                         <?php endif; ?>
-                                        <p class="text-[10px] text-slate-400 mt-0.5 font-mono"><?= date('M d, h:i A', strtotime($activity['created_at'])) ?></p>
+                                        <div class="flex items-center gap-2 mt-1.5 text-[10px] text-slate-600 font-medium">
+                                            <span><i class="fa-regular fa-clock mr-1 text-slate-500"></i><?= date('M d, h:i A', strtotime($activity['created_at'])) ?></span>
+                                            <?php if (!empty($activity['branch_name'])): ?>
+                                                <span class="text-slate-400">&bull;</span>
+                                                <span class="inline-flex items-center text-slate-600"><i class="fa-solid fa-store mr-1 text-slate-500"></i><?= e($activity['branch_name']) ?></span>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>

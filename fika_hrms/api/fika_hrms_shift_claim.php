@@ -208,7 +208,7 @@ if ($action === 'drop') {
             $openUpdate = $pdo->prepare("UPDATE open_shifts SET status = 'APPROVED', approved_by = ?, approved_at = NOW() WHERE id = ?");
             $openUpdate->execute([$userId, $openShiftId]);
 
-            Audit::log('SHIFT_CLAIM_APPROVED', "Manager {$userId} approved shift {$openShift['shift_id']} transfer to employee {$claimedBy}", $userId);
+            Audit::log('SHIFT_CLAIM_APPROVED', "Manager {$userId} approved shift {$openShift['shift_id']} transfer to employee {$claimedBy}", $userId, (int)$openShift['branch_id']);
 
             $pdo->commit();
             echo json_encode([
@@ -231,7 +231,7 @@ if ($action === 'drop') {
         ");
         $updateStmt->execute([$openShiftId]);
 
-        Audit::log('SHIFT_CLAIM_REJECTED', "Manager {$userId} rejected shift {$openShift['shift_id']} claim by employee {$claimedBy}", $userId);
+        Audit::log('SHIFT_CLAIM_REJECTED', "Manager {$userId} rejected shift {$openShift['shift_id']} claim by employee {$claimedBy}", $userId, (int)$openShift['branch_id']);
 
         echo json_encode([
             'success' => true,

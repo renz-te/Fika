@@ -202,6 +202,17 @@ try {
         $auditChanges[] = 'PIN';
     }
     
+    $currentUser = Auth::user();
+    $actorId = (int)($currentUser['id'] ?? 0);
+    $actorName = $currentUser['username'] ?? 'User';
+    if (!empty($currentUser['employee_id'])) {
+        $actStmt = $pdo->prepare("SELECT first_name, last_name FROM employees WHERE id = ?");
+        $actStmt->execute([$currentUser['employee_id']]);
+        if ($actEmp = $actStmt->fetch()) {
+            $actorName = trim(($actEmp['first_name'] ?? '') . ' ' . ($actEmp['last_name'] ?? '')) ?: $actorName;
+        }
+    }
+
     if ($id > 0) {
         if (!empty($updateFields)) {
             $updateFields[] = "`updated_at` = NOW()";
@@ -210,13 +221,29 @@ try {
             $pdo->prepare($sql)->execute($params);
             
             if (!empty($auditChanges)) {
-                Audit::log('EMPLOYEE_UPDATED', "Updated Employee #{$id}. Changed fields: " . implode(", ", $auditChanges));
+                Audit::log('EMPLOYEE_UPDATED', "Updated Employee #{$id} ({$firstName} {$lastName}). Changed fields: " . implode(", ", $auditChanges), $actorId, $branchId);
             }
 
             // Synchronize linked user account's branch_id on reassignment
             if ((int)$existing['branch_id'] !== $branchId) {
                 $uStmt = $pdo->prepare("UPDATE users SET branch_id = ? WHERE employee_id = ?");
                 $uStmt->execute([$branchId, $id]);
+
+                // Mutual Audit Trail: Log branch official / employee reassignment with branch_id
+                Audit::log(
+                    'OFFICIAL_REASSIGNED',
+                    "Official reassigned by {$actorName}: {$existing['first_name']} {$existing['last_name']} reassigned to Branch #{$branchId}",
+                    $actorId,
+                    $branchId
+                );
+                if (!empty($existing['branch_id']) && (int)$existing['branch_id'] !== $branchId) {
+                    Audit::log(
+                        'OFFICIAL_REASSIGNED',
+                        "Official reassigned by {$actorName}: {$existing['first_name']} {$existing['last_name']} reassigned from Branch #{$existing['branch_id']} to Branch #{$branchId}",
+                        $actorId,
+                        (int)$existing['branch_id']
+                    );
+                }
             }
         }
         $employeeId = $id;
@@ -235,7 +262,7 @@ try {
         $pdo->prepare($sql)->execute($params);
         $employeeId = $pdo->lastInsertId();
         
-        Audit::log('EMPLOYEE_CREATED', "Created Employee #{$employeeId} (Code: {$employeeCode})");
+        Audit::log('EMPLOYEE_CREATED', "Created Employee #{$employeeId} (Code: {$employeeCode}, Name: {$firstName} {$lastName})", $actorId, $branchId);
     }
     
     $pdo->commit();

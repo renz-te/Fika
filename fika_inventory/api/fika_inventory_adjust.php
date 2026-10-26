@@ -146,7 +146,7 @@ try {
             ]);
             $adjId = (int)$pdo->lastInsertId();
 
-            Audit::log('INVENTORY_ADJUSTMENT_SUBMITTED', "Pending adjustment #{$adjId} of {$quantity} for {$item['item_name']} (Total: " . Money::format($totalCostCents) . ")", $user['id']);
+            Audit::log('INVENTORY_ADJUSTMENT_SUBMITTED', "Pending adjustment #{$adjId} of {$quantity} for {$item['item_name']} (Total: " . Money::format($totalCostCents) . ")", $user['id'], $branchId);
             $pdo->commit();
 
             echo json_encode([
@@ -202,7 +202,7 @@ try {
         ");
         $stmtStockSync->execute([$branchId, $inventoryId, $exactLedgerSum]);
 
-        Audit::log('INVENTORY_ADJUSTMENT_AUTO_APPROVED', "Auto-approved adjustment #{$adjId} of {$quantity} for {$item['item_name']}", $user['id']);
+        Audit::log('INVENTORY_ADJUSTMENT_AUTO_APPROVED', "Auto-approved adjustment #{$adjId} of {$quantity} for {$item['item_name']}", $user['id'], $branchId);
         $pdo->commit();
 
         echo json_encode([
@@ -302,7 +302,7 @@ try {
         ");
         $stmtStockSync->execute([$adj['branch_id'], $adj['inventory_id'], $exactLedgerSum]);
 
-        Audit::log('INVENTORY_ADJUSTMENT_APPROVED', "Adjustment #{$adjId} approved by User {$user['id']}", $user['id']);
+        Audit::log('INVENTORY_ADJUSTMENT_APPROVED', "Adjustment #{$adjId} approved by User {$user['id']}", $user['id'], (int)$adj['branch_id']);
         $pdo->commit();
 
         echo json_encode([
@@ -355,7 +355,7 @@ try {
         $upStmt = $pdo->prepare("UPDATE inventory_adjustments SET status = 'REJECTED', approved_by = ?, approved_at = NOW() WHERE id = ?");
         $upStmt->execute([$user['id'], $adjId]);
 
-        Audit::log('INVENTORY_ADJUSTMENT_REJECTED', "Adjustment #{$adjId} rejected by User {$user['id']}", $user['id']);
+        Audit::log('INVENTORY_ADJUSTMENT_REJECTED', "Adjustment #{$adjId} rejected by User {$user['id']}", $user['id'], (int)$adj['branch_id']);
         $pdo->commit();
 
         echo json_encode([
