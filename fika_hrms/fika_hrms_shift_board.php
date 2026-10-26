@@ -649,7 +649,17 @@ $pageTitle = "Roster & Scheduler";
                                                                 $badgeStyle = 'bg-purple-50 text-purple-800 border-purple-200';
                                                             }
 
-                                                            $canEditThis = ($isBHR || $isAdmin) && $canManage && !in_array($st, ['PENDING_BM', 'PENDING_BA', 'APPROVED'], true);
+                                                            $canEditThis = false;
+                                                            if ($canManage) {
+                                                                if ($isBM) {
+                                                                    // Task 1: BM can only click on shift cards in PENDING_BM status (DRAFT shifts remain locked)
+                                                                    $canEditThis = ($st === 'PENDING_BM');
+                                                                } elseif ($isBHR) {
+                                                                    $canEditThis = in_array($st, ['DRAFT', 'REJECTED'], true);
+                                                                } elseif ($isAdmin) {
+                                                                    $canEditThis = !in_array($st, ['PENDING_BA', 'APPROVED', 'PUBLISHED'], true);
+                                                                }
+                                                            }
                                                         ?>
                                                             <div <?= $canEditThis ? 'onclick=\'openAssignModal(' . $emp['id'] . ', "' . e(addslashes($emp['first_name'] . ' ' . $emp['last_name'])) . '", "' . $dateStr . '", ' . json_encode($sh) . ')\'' : '' ?>
                                                                  class="border rounded-xl p-2 text-xs <?= $canEditThis ? 'cursor-pointer hover:shadow-sm' : '' ?> transition text-left <?= $badgeStyle ?>"
@@ -697,7 +707,7 @@ $pageTitle = "Roster & Scheduler";
         </div>
     </div>
 
-    <?php if (($isBHR || $isAdmin) && $canManage): ?>
+    <?php if (($isBHR || $isAdmin || $isBM) && $canManage): ?>
     <!-- Assign / Edit Shift Modal -->
     <div id="assignModal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
@@ -749,9 +759,11 @@ $pageTitle = "Roster & Scheduler";
                 </div>
 
                 <div class="pt-3 flex items-center justify-between gap-2">
+                    <?php if (!$isBM): ?>
                     <button type="button" onclick="deleteCurrentShift()" id="modalDeleteBtn" class="hidden text-rose-600 hover:text-rose-800 hover:bg-rose-50 font-bold px-3 py-2 rounded-xl text-xs transition">
                         <i class="fa-solid fa-trash-can mr-1"></i> Delete
                     </button>
+                    <?php endif; ?>
                     <div class="flex items-center gap-2 ml-auto">
                         <button type="button" onclick="closeModal('assignModal')" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 text-xs font-semibold hover:bg-slate-50 transition">
                             Cancel
@@ -764,7 +776,9 @@ $pageTitle = "Roster & Scheduler";
             </form>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if (($isBHR || $isAdmin) && $canManage): ?>
     <!-- Quick Add Shift Modal -->
     <div id="addShiftModal" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">

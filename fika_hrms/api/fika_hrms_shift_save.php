@@ -139,10 +139,31 @@ if ($action === 'create') {
 
     Rbac::assert_branch_access($existing['branch_id']);
 
-    // If shift is currently under review, cannot edit without rejecting first
-    if (in_array($existing['status'], ['PENDING_BM', 'PENDING_BA', 'APPROVED'], true)) {
-        http_response_code(400);
-        exit(json_encode(['error' => "Cannot edit shift while in {$existing['status']} review. Please reject or recall first."]));
+    $isBM = ($userRole === 6) || in_array($userRoleName, ['BM', 'Branch Manager'], true);
+
+    if ($isBM) {
+        if ($existing['status'] === 'DRAFT') {
+            http_response_code(403);
+            exit(json_encode([
+                'success' => false,
+                'error' => 'BM cannot edit DRAFT shifts.',
+                'message' => 'BM cannot edit DRAFT shifts.'
+            ]));
+        }
+        if ($existing['status'] !== 'PENDING_BM') {
+            http_response_code(403);
+            exit(json_encode([
+                'success' => false,
+                'error' => "Cannot edit shift while in {$existing['status']} review.",
+                'message' => "Cannot edit shift while in {$existing['status']} review."
+            ]));
+        }
+    } else {
+        // Non-BM (e.g. BHR) cannot edit shifts while in review
+        if (in_array($existing['status'], ['PENDING_BM', 'PENDING_BA', 'APPROVED'], true)) {
+            http_response_code(400);
+            exit(json_encode(['error' => "Cannot edit shift while in {$existing['status']} review. Please reject or recall first."]));
+        }
     }
 
     $targetEmpId = $employeeId ?: (int)$existing['employee_id'];
@@ -196,6 +217,9 @@ if ($action === 'create') {
         }
         Audit::log('SHIFT_EDITED', "Shift {$shiftId} edited: {$reason}", $userId, $existing['branch_id']);
         $newStatus = 'PUBLISHED';
+    } elseif ($existing['status'] === 'PENDING_BM') {
+        // Task 2.3: If the BM edits a shift, its status should remain PENDING_BM
+        $newStatus = 'PENDING_BM';
     } else {
         // Keeps as DRAFT if it was DRAFT or REJECTED
         $newStatus = 'DRAFT';
