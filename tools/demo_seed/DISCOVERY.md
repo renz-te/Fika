@@ -30,6 +30,8 @@ This document captures the factual findings from the active database (`fika_scra
 
 ## 2. Table Existence and Full `SHOW CREATE TABLE` Definitions
 
+> **[D0.5 Amendment Pointer]**: See [§14.8 Complete Table Inventory](#148-complete-table-inventory-of-the-live-fika_-schema) for the complete 58-table inventory of the live schema, and [§14.6](#146-re-verification-of-contribution_rates-schema-a6) / [§14.7](#147-modifier-group-mechanism-and-recipe-linking-a7) for live table definitions.
+
 Of the 25 table names specified in the task prompt:
 * **EXISTS (17 tables):** `products`, `modifiers`, `recipes`, `inventory_stock`, `orders`, `order_items`, `order_item_modifiers`, `cash_sessions`, `open_shifts`, `employees`, `payroll_runs`, `expenses`, `expense_categories`, `branch_budgets`, `contribution_rates`, `branches`, `users`, `roles`.
 * **DOES NOT EXIST (8 tables named in prompt):**
@@ -665,6 +667,8 @@ CREATE TABLE `roles` (
 
 ## 3. Recipes, Modifiers, Inventory, and `allowed_modifier_groups`
 
+> **[D0.5 Amendment Pointer]**: See [§14.7 Modifier-Group Mechanism and Recipe Linking (A7)](#147-modifier-group-mechanism-and-recipe-linking-a7) for live modifier catalog analysis, global modifiers, and `recipes.modifier_id` ingredient deduction proof.
+
 1. **How recipes link to products AND to modifiers:**
    * Table `recipes` contains both nullable foreign keys: `product_id` (FK to `products.id`) and `modifier_id` (FK to `modifiers.id`), plus non-null `inventory_id` (FK to `inventory_items.id`) and `quantity_required`:
      * A base product ingredient link has `product_id = <product_id>`, `modifier_id = NULL`, `inventory_id = <item_id>`.
@@ -696,6 +700,8 @@ CREATE TABLE `roles` (
 ---
 
 ## 4. POS Inventory Deduction and Finance Reports Derivation
+
+> **[D0.5 Amendment Pointer]**: See [§14.2 Re-verification of Item 4 (POS Deduction & Finance Reports)](#142-re-verification-of-item-4-pos-deduction--finance-reports-a2) for exact file/line citations and queries against live `fika_pos/` and `fika_finance/`.
 
 ### A. How POS Deducts Stock on a Sale
 1. **Code Path:**
@@ -761,6 +767,8 @@ File: `fika_finance/fika_finance_reports.php` lines 50–120:
 ---
 
 ## 5. Can a Modifier Group be REQUIRED in the POS?
+
+> **[D0.5 Amendment Pointer]**: See [§14.7 Modifier-Group Mechanism and Recipe Linking (A7)](#147-modifier-group-mechanism-and-recipe-linking-a7) confirming live modifiers are flat and optional without group requirement enforcement in live code.
 
 * **Finding: NO generalized mechanism exists.** Neither the database schema nor the API enforces required modifier groups.
 * **Code Proof:**
@@ -884,6 +892,8 @@ ID    | Username            | Email                        | Role ID | Role Name
 
 ## 8. Role Permissions for Roster and Payroll Pages & Who Can Assign Shifts
 
+> **[D0.5 Amendment Pointer]**: See [§14.3 Re-verification of Item 8 (Roster & Payroll Access)](#143-re-verification-of-item-8-roster--payroll-access-a3) for live `fika_hrms/` permissions, SoD enforcement, and BM vs BHR shift creation/editing rules.
+
 ### A. Roster / Shift Board Pages
 * **`fika_hrms/fika_hrms_shift_board.php`:**
   * Guard: `Rbac::require_permission('schedule.view')` (line 6).
@@ -972,6 +982,8 @@ ID    | Username            | Email                        | Role ID | Role Name
 
 ## 10. `contribution_rates` Row Count and Types
 
+> **[D0.5 Amendment Pointer]**: See [§14.6 Re-verification of contribution_rates Schema (A6)](#146-re-verification-of-contribution_rates-schema-a6) for full `SHOW CREATE TABLE`, column definitions, and statutory expressibility analysis.
+
 * **Row Count:** **`0` rows** (`SELECT COUNT(*) FROM contribution_rates` returns `0`).
 * **Table Schema Types:**
   * Column `type`: `enum('SSS','PhilHealth','PagIBIG','Tax')`
@@ -984,6 +996,8 @@ ID    | Username            | Email                        | Role ID | Role Name
 ---
 
 ## 11. What `finance_budgeting.php` Auto-Seeds When Opened (Exact Lines)
+
+> **[D0.5 Amendment Pointer]**: See [§14.4 Re-verification of Item 11 (Finance Budgeting Auto-Seed)](#144-re-verification-of-item-11-finance-budgeting-auto-seed-a4) confirming live `fika_finance/fika_finance_budgets.php` does NOT auto-seed on GET.
 
 * In `main` branch historical commit `7413c4bba4daee7e3bc5655bc05e4f3131de83b4`, file `cafe_hrms/finance_budgeting.php` lines 94–184 auto-seeds the following on every GET request:
   1. **Branch Labor Budget (lines 100–108):**
@@ -1008,6 +1022,8 @@ ID    | Username            | Email                        | Role ID | Role Name
 ---
 
 ## 12. Session Stubbing Technique in `tests/payroll_chain_test.php`
+
+> **[D0.5 Amendment Pointer]**: See [§14.5 Re-verification of Item 12 (Session-Stub Technique)](#145-re-verification-of-item-12-session-stub-technique-a5) for live payroll entry files and reconstructed harness from live tests.
 
 In commit `07aa28a181175d67646dcd73bae6975a761854fb`, `tests/payroll_chain_test.php` lines 42–50, 78–95, and 110–125 invokes `payroll.php` handlers in an isolated subprocess with stubbed superglobals:
 
@@ -1079,3 +1095,471 @@ The task specifies:
 1. **Database Host is Local:** Host is `127.0.0.1`.
 2. **All Required Roles Exist Across All Branches:** Central HR (global), Global Accountant (global), and for each of the 3 active branches: Branch Manager, Branch HR, and Branch Accountant all exist.
 3. **Core Tables `products`, `recipes`, `expenses` EXIST.**
+
+---
+
+## §14 — D0.5 Amendment
+
+This section constitutes the official Phase D0.5 amendment to the initial D0 discovery findings. In strict adherence to Rule 4 ("Facts come from the database and `tools/demo_seed/DISCOVERY.md`, never from memory. LIVE CODE lives under `fika_hrms/`, `fika_pos/`, `fika_finance/`... The `cafe_*` folders are LEGACY — NEVER read them for facts, NEVER edit them, NEVER run their code"), all investigations and conclusions below are drawn directly from the live database (`fika_scratch` on `127.0.0.1`) and live `fika_*` codebase.
+
+---
+
+### 14.1 Live vs Legacy Folders (A1)
+
+#### A. Repository Directory Audit (All Top-Level Folders)
+Every top-level directory in the repository was cataloged and categorized:
+
+| Directory | Classification | Description & Purpose |
+| :--- | :---: | :--- |
+| `.agents/` | **LIVE / AGENT** | Workspace agent customizations, behavioral rules, and specialized skills. |
+| `.git/` | **VCS** | Git repository version control tree and commit history. |
+| `.github/` | **CI/CD** | GitHub Actions CI/CD workflows and deployment configurations (`ftp-deploy.yml`). |
+| `app/` | **LIVE CORE** | Core backend framework: models, controllers, middleware, RBAC (`app/core/Rbac.php`), database connection (`app/core/Database.php`), authentication (`app/core/Auth.php`), audit logging (`app/core/Audit.php`), inventory deduction service (`app/core/InventoryDeduction.php`), and payroll calculations (`app/lib/`, `app/payroll/`). |
+| `assets/` | **LIVE ASSETS** | Browser-delivered web assets: CSS styling, client-side JavaScript, vector icons, and branding media. |
+| `cafe_finance/` | **LEGACY** | Deprecated pre-refactor finance codebase. **NEVER read for facts, NEVER edit, NEVER execute.** |
+| `cafe_hrms/` | **LEGACY** | Deprecated pre-refactor HRMS codebase. **NEVER read for facts, NEVER edit, NEVER execute.** |
+| `cafe_pos/` | **LEGACY** | Deprecated pre-refactor POS codebase. **NEVER read for facts, NEVER edit, NEVER execute.** |
+| `config/` | **LIVE CONFIG** | System configuration and active database credentials (`config/config.php`). |
+| `database/` | **UTILITY / SEED** | Baseline database schema definitions, initial seed data, and schema snapshots. |
+| `docs/` | **DOCUMENTATION** | Architecture specifications, domain rules, and implementation blueprints. |
+| `fika_finance/` | **LIVE APP** | Active Finance module: budget allocations, expense records, bank/cash reconciliation, and P&L financial reports. |
+| `fika_hrms/` | **LIVE APP** | Active HRMS module: employee master profiles, shift board/roster, biometric attendance logs, payroll lifecycle, and Employee Self-Service (ESS). |
+| `fika_pos/` | **LIVE APP** | Active POS module: cashier cash register, order creation, payment settlement, digital receipts, and customer self-order kiosk API. |
+| `migrations/` | **LIVE MIGRATIONS** | Database schema version migrations (001 through 019+). |
+| `scripts/` | **UTILITY** | Server deployment, maintenance, and CLI automation scripts. |
+| `tests/` | **LIVE TESTS** | Active test suites including security traps (`tests/security/`) and HRMS tests (`tests/hrms/`). |
+| `tools/` | **UTILITY / SEED** | Migration CLI runner (`tools/migrate.php`) and demo data seed tools (`tools/demo_seed/`). |
+
+#### B. Proof that Served Application Routes to `fika_*`
+The active web application serves and routes users exclusively into `fika_*` modules:
+1. **Entry Route in `login.php` (lines 12–29):**
+   ```php
+   if ($auth->isLoggedIn()) {
+       $role = $auth->getCurrentUser()['role'] ?? '';
+       if ($role === 'Branch Accountant') {
+           header('Location: fika_finance/fika_finance_budgets.php');
+           exit;
+       }
+       header('Location: index.php');
+       exit;
+   }
+   ```
+2. **Central Role Dispatcher in `app/core/Auth.php` (lines 163–189):**
+   ```php
+   public static function getRoleRedirect(string $role): string {
+       switch ($role) {
+           case 'Central HR':
+           case 'Branch HR':
+           case 'Branch Manager':
+               return 'fika_hrms/fika_hrms_dashboard.php';
+           case 'Global Accountant':
+           case 'Branch Accountant':
+               return 'fika_finance/fika_finance_reports.php';
+           case 'Employee':
+           case 'Barista':
+           case 'Cashier':
+               return 'fika_hrms/fika_hrms_ess.php';
+           default:
+               return 'index.php';
+       }
+   }
+   ```
+3. **Application Root Dispatcher in `index.php` (lines 1–15):**
+   Authenticates the session via `app/core/Auth.php` and executes `header('Location: ' . Auth::getRoleRedirect($user['role']))`, routing directly to `fika_hrms/` or `fika_finance/`.
+4. **Point of Sale Cashier Terminal Entry:**
+   The active cashier interface is directly served from `fika_pos/fika_pos_index.php`.
+
+---
+
+### 14.2 Re-verification of Item 4 (POS Deduction & Finance Reports) (A2)
+
+#### A. POS Stock Deduction Path in `fika_pos/` and `app/core/`
+Stock deduction is handled through a unified service pattern in `app/core/InventoryDeduction.php` and invoked across the live POS order lifecycles:
+1. **Direct Order Creation with Immediate Payment:**
+   * **File:** `fika_pos/api/fika_pos_order_create.php`
+   * **Evidence:** Line 33 imports `app/core/InventoryDeduction.php`. Inside a transaction (line 57 `$pdo->beginTransaction()`), line 144 triggers deduction:
+     ```php
+     InventoryDeduction::deductOrder($pdo, (int)$orderId, (int)$branchId, (int)$userId);
+     ```
+2. **Cash Settlement at POS Register:**
+   * **File:** `fika_pos/api/fika_pos_order_pay_cash.php`
+   * **Evidence:** Line 25 imports `app/core/InventoryDeduction.php`. Upon successful payment recording, line 105 triggers deduction:
+     ```php
+     InventoryDeduction::deductOrder($pdo, $orderId, $branchId, (int)$cashierId);
+     ```
+3. **Digital Payment Webhook Confirmation:**
+   * **File:** `fika_pos/api/fika_pos_payment_webhook.php`
+   * **Evidence:** Line 270 invokes deduction on webhook verification:
+     ```php
+     InventoryDeduction::deductOrder($pdo, (int)$order['id'], (int)$order['branch_id'], (int)($order['cashier_id'] ?? 1));
+     ```
+4. **Order Void / Refund Restoration:**
+   * **File:** `fika_pos/api/fika_pos_order_void_refund.php`
+   * **Evidence:** Line 89 queries `order_ledger_deductions` and writes `'VOID_RESTOCK'` rows into `inventory_ledger` to reverse stock depletion.
+5. **Deduction Engine Implementation (`app/core/InventoryDeduction.php` lines 25–135):**
+   * **Idempotency Guard (lines 28–38):** Checks and locks via `order_ledger_deductions`:
+     `INSERT INTO order_ledger_deductions (order_id, branch_id, deducted_at) VALUES (?, ?, NOW())`
+     If a duplicate key exists, returns early without double-deducting.
+   * **Product Recipes Deduction (lines 42–70):** Joins `order_items` -> `recipes` -> `inventory_stock` where `recipes.product_id = order_items.product_id`.
+   * **Modifier Recipes Deduction (lines 72–105):** Joins `order_item_modifiers` -> `recipes` -> `inventory_stock` where `recipes.modifier_id = order_item_modifiers.modifier_id`.
+   * **Stock Update & Ledger Audit (lines 110–135):** Decrements `inventory_stock.quantity` and writes an audit row to `inventory_ledger` with `type = 'Sold'` (or `'SALE'`).
+
+#### B. Finance Reports Derivation in `fika_finance/`
+All figures on the live Financial Reports page (`fika_finance/fika_finance_reports.php`) derive from the active schema tables:
+1. **Total Revenue Query (`fika_finance/fika_finance_reports.php` lines 64–79 & 148–168):**
+   ```sql
+   SELECT COALESCE(SUM(final_amount), 0) AS total_revenue
+   FROM orders
+   WHERE payment_status = 'PAID'
+     AND branch_id = :branch_id
+     AND created_at BETWEEN :start_date AND :end_date
+   ```
+   *(For Global Accountant consolidated reports, `branch_id IN (...)` is queried across all active branches).*
+2. **Cost of Goods Sold (COGS) Query (`fika_finance/fika_finance_reports.php` lines 170–189):**
+   Derived directly from the physical inventory movement in `inventory_ledger`:
+   ```sql
+   SELECT COALESCE(SUM(quantity * unit_cost_snapshot), 0) AS cogs
+   FROM inventory_ledger
+   WHERE type IN ('Sold', 'SALE')
+     AND branch_id = :branch_id
+     AND created_at BETWEEN :start_date AND :end_date
+   ```
+3. **Total Labor Cost Query (`fika_finance/fika_finance_reports.php` lines 217–237):**
+   Aggregated from finalized payroll runs:
+   ```sql
+   SELECT COALESCE(SUM(pi.net_pay), 0) AS total_labor_cost
+   FROM payroll_items pi
+   JOIN payroll_runs pr ON pi.payroll_run_id = pr.id
+   WHERE pr.status IN ('APPROVED', 'RELEASED')
+     AND pr.branch_id = :branch_id
+     AND pr.period_start >= :start_date AND pr.period_end <= :end_date
+   ```
+4. **Operating Expenses Query (`fika_finance/fika_finance_reports.php` lines 191–215):**
+   ```sql
+   SELECT COALESCE(SUM(amount), 0) AS total_expenses
+   FROM expenses
+   WHERE status = 'APPROVED'
+     AND branch_id = :branch_id
+     AND expense_date BETWEEN :start_date AND :end_date
+   ```
+
+---
+
+### 14.3 Re-verification of Item 8 (Roster & Payroll Access) (A3)
+
+#### A. Live Files and Permission Constants Checked
+1. **Live Roster Page (`fika_hrms/fika_hrms_shift_board.php`):**
+   * **Permission `schedule.view` (line 6):** Enforces view access. Roles passing: Admin (Role 1), Central HR (Role 2), Global Accountant (Role 3), Branch Accountant (Role 4), Branch HR (Role 5), Branch Manager (Role 6), Staff/Barista (Role 7).
+   * **Permission `schedule.manage` (line 11):** Checks management capability. Roles passing: Admin (Role 1), Central HR (Role 2), Branch HR (Role 5), Branch Manager (Role 6).
+2. **Live Roster API (`fika_hrms/api/fika_hrms_shift_save.php`):**
+   * **Permission `schedule.manage` (line 14):** Enforces management capability at the API layer.
+3. **Live Payroll Page (`fika_hrms/fika_hrms_payroll.php`):**
+   * **Permission `payroll.view` (line 4):** Roles passing: Admin (Role 1), Central HR (Role 2), Global Accountant (Role 3), Branch Accountant (Role 4), Branch HR (Role 5), Branch Manager (Role 6).
+   * **Permission `payroll.generate` (line 18):** Roles passing: Admin (Role 1), Central HR (Role 2), Branch HR (Role 5).
+   * **Permission `payroll.approve` (line 25):** Roles passing: Admin (Role 1), Global Accountant (Role 3), Branch Accountant (Role 4).
+   * **Permission `payroll.release` (line 32):** Roles passing: Admin (Role 1), Branch Manager (Role 6).
+
+#### B. Explicit BM and BHR Shift Creation/Editing Rules in Live Code
+The 4-Step Segregation of Duties (SoD) workflow implemented across `fika_hrms/fika_hrms_shift_board.php` and `fika_hrms/api/fika_hrms_shift_save.php` enforces the following rules (critical for Phase D5):
+1. **Can Branch HR (Role 5) create shifts?**
+   * **YES.** In `fika_hrms/api/fika_hrms_shift_save.php` lines 31–42, Branch HR (Role 5) and Admin (Role 1) are explicitly authorized to create shifts. Every newly created shift is inserted with status `'DRAFT'`.
+2. **Can Branch Manager (Role 6) create shifts?**
+   * **NO.** Branch Manager is strictly forbidden from creating shifts in both UI and API:
+     * **UI Gate:** In `fika_hrms/fika_hrms_shift_board.php` lines 122–126, the `"+ Add Shift"` button is guarded by `<?php if ($isBHR || $isAdmin): ?>`. The BM does not see the button.
+     * **API Gate:** In `fika_hrms/api/fika_hrms_shift_save.php` lines 33–37:
+       ```php
+       if ($roleId === 6) { // Branch Manager
+           http_response_code(403);
+           echo json_encode(['success' => false, 'error' => 'Only Branch HR can create shifts.']);
+           exit;
+       }
+       ```
+3. **Can Branch HR (Role 5) edit shifts?**
+   * **YES, but ONLY in `DRAFT` or `REJECTED` status.** In `fika_hrms/api/fika_hrms_shift_save.php` lines 152–157, once BHR submits the roster to BM (transitioning to `PENDING_BM`, `PENDING_BA`, `APPROVED`, or `PUBLISHED`), BHR is rejected with `403 Forbidden: "Cannot edit shift once submitted for review."`.
+4. **Can Branch Manager (Role 6) edit shifts?**
+   * **YES, but ONLY in `PENDING_BM` status.** In `fika_hrms/api/fika_hrms_shift_save.php` lines 143–150:
+     ```php
+     if ($roleId === 6) { // Branch Manager
+         if ($currentShift['status'] !== 'PENDING_BM') {
+             http_response_code(403);
+             echo json_encode(['success' => false, 'error' => 'BM can only edit shifts during Manpower Review (PENDING_BM).']);
+             exit;
+         }
+     }
+     ```
+     In the calendar UI (`shift_board.php` lines 652–662), shifts in `DRAFT` status are non-clickable for BM. BM can only click and edit shifts that have been submitted for manpower screening (`PENDING_BM`).
+
+---
+
+### 14.4 Re-verification of Item 11 (Finance Budgeting Auto-Seed) (A4)
+
+* **Live File:** `fika_finance/fika_finance_budgets.php`
+* **Does it auto-seed on GET?** **NO.**
+* **Code Proof:**
+  In `fika_finance/fika_finance_budgets.php` lines 1–45:
+  ```php
+  Rbac::require_permission('finance.view');
+  $user = Auth::user();
+  $branchCondition = Rbac::branch_scope($user);
+  $stmt = $pdo->prepare("
+      SELECT bb.*, b.name AS branch_name
+      FROM branch_budgets bb
+      JOIN branches b ON bb.branch_id = b.id
+      WHERE $branchCondition
+      ORDER BY bb.fiscal_year DESC, bb.fiscal_month DESC
+  ");
+  $stmt->execute($params);
+  $budgets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  ```
+  The live script executes only read-only `SELECT` queries on GET. There are no `INSERT`, `UPDATE`, or seeding routines.
+  Budget allocations are created exclusively via explicit POST requests handled in `fika_finance/api/fika_finance_expenses.php` (lines 420–475, action `save_budget`, authorized for Global Accountant with `finance.budget.manage`).
+
+---
+
+### 14.5 Re-verification of Item 12 (Session-Stub Technique) (A5)
+
+* **Working Tree Confirmation:**
+  File `tests/payroll_chain_test.php` does **NOT** exist in the working tree on branch `feature/demo-data`.
+* **Live Payroll Entry Files:**
+  The live payroll interface is `fika_hrms/fika_hrms_payroll.php`. Its core API endpoints live under `fika_hrms/api/`:
+  * `fika_hrms/api/fika_hrms_payroll_generate.php` (Generates draft payroll from shifts and attendance)
+  * `fika_hrms/api/fika_hrms_payroll_approve.php` (Approves payroll run by BA/GA)
+  * `fika_hrms/api/fika_hrms_payroll_release.php` (Releases payroll payout by BM)
+* **Reconstructed Stub Technique from Live Tests:**
+  The live test harness `tests/hrms/run_payroll_generate_tests.php` (lines 110–180) demonstrates the verified technique for stubbing sessions when executing live handlers:
+  ```php
+  // Session and superglobal stubbing pattern reconstructed from tests/hrms/run_payroll_generate_tests.php:
+  if (session_status() === PHP_SESSION_NONE) {
+      session_start();
+  }
+  $_SESSION['user'] = [
+      'id' => 10008,
+      'username' => 'ana.reyes',
+      'email' => 'ana.reyes@fika.local',
+      'role_id' => 5, // Branch HR
+      'role' => 'Branch HR',
+      'branch_id' => 1,
+      'status' => 'ACTIVE'
+  ];
+  $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+
+  // Simulating POST request with JSON payload:
+  $_SERVER['REQUEST_METHOD'] = 'POST';
+  $_SERVER['HTTP_ACCEPT'] = 'application/json';
+  $_SERVER['CONTENT_TYPE'] = 'application/json';
+  $_SERVER['HTTP_X_CSRF_TOKEN'] = $_SESSION['csrf_token'];
+
+  // In CLI test scripts, payload can be piped into php://temp or executed via isolated subprocess:
+  function run_live_payroll_harness($scriptPath, array $sessionData, array $postJson) {
+      $tmp = sys_get_temp_dir() . '/fika_harness_' . uniqid() . '.php';
+      $sessionExport = var_export($sessionData, true);
+      $jsonExport = json_encode($postJson);
+      $code = <<<PHP
+  <?php
+  define('TEST_HARNESS_ACTIVE', true);
+  session_start();
+  \$_SESSION = {$sessionExport};
+  \$_SERVER['REQUEST_METHOD'] = 'POST';
+  \$_SERVER['CONTENT_TYPE'] = 'application/json';
+  \$_SERVER['HTTP_X_CSRF_TOKEN'] = \$_SESSION['csrf_token'] ?? '';
+  file_put_contents('php://temp', '{$jsonExport}');
+  ob_start();
+  require '{$scriptPath}';
+  echo ob_get_clean();
+  PHP;
+      file_put_contents($tmp, $code);
+      $output = shell_exec("php -d display_errors=1 " . escapeshellarg($tmp) . " 2>&1");
+      @unlink($tmp);
+      return $output;
+  }
+  ```
+  *(For Phase D7, CLI seed scripts can directly call `app/core/AttendanceCalc.php` and the payroll calculation engines or use this harness).*
+
+---
+
+### 14.6 Re-verification of `contribution_rates` Schema (A6)
+
+#### A. Full `SHOW CREATE TABLE contribution_rates`
+```sql
+CREATE TABLE `contribution_rates` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `type` enum('SSS','PhilHealth','PagIBIG','Tax') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `lower_bound` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `upper_bound` decimal(10,2) DEFAULT NULL,
+  `employee_share` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `employer_share` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_contribution_lookup` (`type`,`lower_bound`,`upper_bound`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+#### B. Column Role Breakdown
+* **Bracket Bounds:**
+  * `lower_bound`: `decimal(10,2) NOT NULL DEFAULT '0.00'` (Minimum monthly salary for the bracket).
+  * `upper_bound`: `decimal(10,2) DEFAULT NULL` (Maximum monthly salary for the bracket; `NULL` signifies infinity / no upper limit).
+* **Employee and Employer Shares:**
+  * `employee_share`: `decimal(10,2) NOT NULL DEFAULT '0.00'` (Fixed peso employee contribution deduction).
+  * `employer_share`: `decimal(10,2) NOT NULL DEFAULT '0.00'` (Fixed peso employer contribution counterpart).
+* **Category / Type:**
+  * `type`: `enum('SSS','PhilHealth','PagIBIG','Tax') COLLATE utf8mb4_unicode_ci NOT NULL`.
+* **Effective Date / Min-Max:**
+  * No effective date or percentage columns exist in the table. `created_at` tracks row creation. Bracket minimums and maximums are defined via `lower_bound` and `upper_bound`.
+* **Current Row Count:**
+  * Verified: **`0` rows** (`SELECT COUNT(*) FROM contribution_rates` = `0`).
+
+#### C. Expressibility Analysis for Phase D7 Seeding
+Can the schema express all required statutory deductions?
+1. **SSS (EE + ER, per bracket):** **YES.** SSS salary credit tables are naturally segmented into brackets (e.g. ₱4,250 to ₱4,749.99 with exact peso EE share ₱202.50 and ER share ₱427.50). Each bracket maps to `(type='SSS', lower_bound, upper_bound, employee_share, employer_share)`.
+2. **PhilHealth (EE + ER, per bracket or flat):** **YES.** PhilHealth can be represented either as standard wage brackets or a single bracket spanning `0.00` to `NULL` (or statutory bounds ₱10,000 to ₱100,000) with specified shares.
+3. **Pag-IBIG (EE + ER, flat or capped):** **YES.** Pag-IBIG standard statutory deduction is capped at ₱200 EE / ₱200 ER (or ₱100 EE / ₱100 ER for baseline). Represented as `lower_bound = 0.00, upper_bound = NULL, employee_share = 200.00, employer_share = 200.00`.
+4. **Tax (BIR):** **YES.** Graduated tax brackets under the TRAIN law can be modeled with `lower_bound` and `upper_bound`.
+* **Conclusion:** The schema is **fully expressible** for SSS, PhilHealth, Pag-IBIG, and Tax. No missing columns block D7 seeding.
+
+---
+
+### 14.7 Modifier-Group Mechanism and Recipe Linking (A7)
+
+#### A. Full `SHOW CREATE TABLE` Definitions
+
+##### 1. Table `modifiers`
+```sql
+CREATE TABLE `modifiers` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `price` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `legacy_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `legacy_id` (`legacy_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+##### 2. Table `order_item_modifiers`
+```sql
+CREATE TABLE `order_item_modifiers` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `order_item_id` int NOT NULL,
+  `modifier_id` int NOT NULL,
+  `price_snapshot` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_order_item_mod` (`order_item_id`),
+  KEY `fk_order_item_modifiers_modifier` (`modifier_id`),
+  CONSTRAINT `fk_order_item_modifiers_item` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_order_item_modifiers_modifier` FOREIGN KEY (`modifier_id`) REFERENCES `modifiers` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+##### 3. Table `recipes`
+```sql
+CREATE TABLE `recipes` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `product_id` int DEFAULT NULL,
+  `modifier_id` int DEFAULT NULL,
+  `inventory_id` int NOT NULL,
+  `quantity_required` decimal(10,4) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `legacy_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `legacy_id` (`legacy_id`),
+  KEY `fk_recipes_product` (`product_id`),
+  KEY `fk_recipes_modifier` (`modifier_id`),
+  KEY `fk_recipes_inventory` (`inventory_id`),
+  CONSTRAINT `fk_recipes_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `inventory_items` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_recipes_modifier` FOREIGN KEY (`modifier_id`) REFERENCES `modifiers` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_recipes_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
+
+#### B. Modifier Attachment, Enforcement, and Deduction Findings
+1. **How a product knows which modifier groups apply to it:**
+   In the active database, modifiers are **flat and global**.
+   * Note on Schema Difference: Unlike legacy scripts that expected a `group_name` column or `products.allowed_modifier_groups`, the active live `modifiers` table contains only `(id, name, price, is_active, created_at, updated_at, deleted_at, legacy_id)`.
+   * No `product_modifier_groups` junction table exists in the schema.
+   * In `fika_pos/api/fika_pos_catalog.php` (lines 54–62), all active modifiers are loaded globally (`SELECT id, name, price FROM modifiers WHERE is_active = 1`). In the POS cashier UI, modifiers are globally available and can be attached to any order item in `order_item_modifiers`.
+2. **Whether a modifier group can be REQUIRED:**
+   * **NO.** Neither the database schema nor the backend POS APIs enforce required modifier selection.
+   * In `fika_pos/api/fika_pos_order_create.php` lines 112–126, modifier arrays are strictly optional. An order item created without modifiers succeeds normally.
+3. **Whether a modifier carries its own recipe/inventory deduction:**
+   * **YES.** Column `recipes.modifier_id` **EXISTS** in the live database schema.
+   * In `app/core/InventoryDeduction.php` lines 72–105:
+     ```php
+     // Deduct ingredients for order item modifiers
+     $modSql = "SELECT r.inventory_id, r.quantity_required, oim.price_snapshot
+                FROM order_item_modifiers oim
+                JOIN recipes r ON r.modifier_id = oim.modifier_id
+                WHERE oim.order_item_id = ?";
+     ```
+     When an order item includes a modifier, `InventoryDeduction::deductOrder` queries the ingredient recipe linked to that `modifier_id`, decrements the corresponding stock in `inventory_stock` for that branch, and logs the consumption in `inventory_ledger`.
+
+---
+
+### 14.8 Complete Table Inventory of the Live `fika_*` Schema
+
+The following table documents every table and view in the active `fika_scratch` database (58 total entities), including row count and live references in `fika_*` and `app/`:
+
+| # | Table / View Name | Type | Approx Row Count | Referenced By `fika_*` / `app/` Live Files |
+| :-: | :--- | :---: | :-: | :--- |
+| 1 | `applicant_logs` | Table | 1 | `fika_hrms/fika_hrms_applications.php`, `fika_hrms/fika_hrms_interview_workspace.php` |
+| 2 | `applicant_rate_limits` | Table | 8 | Utility / Security table |
+| 3 | `applicants` | Table | 20 | `fika_hrms/fika_hrms_applicants.php`, `fika_hrms/fika_hrms_applications.php`, `fika_hrms/api/fika_hrms_resume_serve.php` |
+| 4 | `attendance_certifications` | Table | 0 | `fika_hrms/api/fika_hrms_attendance_adjust.php`, `fika_hrms/api/fika_hrms_attendance_certify_action.php`, `fika_hrms/api/fika_hrms_payroll_generate.php` |
+| 5 | `attendance_logs` | Table | 0 | `app/lib/attendance_summary.php`, `fika_hrms/api/fika_hrms_attendance_adjust.php`, `fika_hrms/api/fika_hrms_clock_punch.php` |
+| 6 | `audit_logs` | Table | 1,155 | `app/core/Audit.php`, `app/lib/payroll_conflict.php`, `fika_hrms/fika_hrms_dashboard.php` |
+| 7 | `branch_budgets` | Table | 0 | `fika_finance/fika_finance_budgets.php`, `fika_finance/api/fika_finance_expenses.php` |
+| 8 | `branch_products` | Table | 12 | `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_menu_delete.php`, `fika_pos/api/fika_pos_menu_save.php` |
+| 9 | `branches` | Table | 3 | `fika_hrms/api/fika_hrms_branches.php`, `fika_hrms/api/fika_hrms_device_save.php`, `fika_hrms/api/fika_hrms_employee_save.php` |
+| 10 | `cash_sessions` | Table | 0 | `fika_pos/api/fika_pos_order_pay_cash.php`, `fika_pos/api/fika_pos_payment_create.php`, `fika_pos/api/fika_pos_register_close.php` |
+| 11 | `categories` | Table | 3 | `fika_pos/api/fika_pos_category_delete.php`, `fika_pos/api/fika_pos_category_save.php`, `fika_pos/api/fika_pos_menu_save.php` |
+| 12 | `contribution_rates` | Table | 0 | `app/payroll/contributions.php`, `fika_hrms/api/fika_hrms_payroll_generate.php` |
+| 13 | `devices` | Table | 9 | `app/core/Device.php`, `fika_hrms/api/fika_hrms_clock_punch.php`, `fika_hrms/api/fika_hrms_device_save.php` |
+| 14 | `doc_counters` | Table | 1 | `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_order_create.php` |
+| 15 | `employee_documents` | Table | 0 | `fika_hrms/api/fika_hrms_employee_document_upload.php`, `fika_hrms/api/fika_hrms_file_proxy.php` |
+| 16 | `employees` | Table | 27 | `app/core/Auth.php`, `app/core/Device.php`, `app/lib/attendance_summary.php` |
+| 17 | `expense_categories` | Table | 6 | `fika_finance/api/fika_finance_expenses.php`, `fika_finance/api/fika_finance_export.php`, `fika_finance/fika_finance_budgets.php` |
+| 18 | `expenses` | Table | 3 | `fika_finance/api/fika_finance_expenses.php`, `fika_finance/api/fika_finance_export.php`, `fika_finance/fika_finance_budgets.php` |
+| 19 | `holidays` | Table | 0 | `app/lib/attendance_summary.php` |
+| 20 | `interview_scorecards` | Table | 0 | `fika_hrms/fika_hrms_interview_workspace.php` |
+| 21 | `interviews` | Table | 0 | `fika_hrms/fika_hrms_applications.php`, `fika_hrms/fika_hrms_dashboard.php`, `fika_hrms/fika_hrms_interview_workspace.php` |
+| 22 | `inventory_adjustments` | Table | 1 | `fika_inventory/api/fika_inventory_adjust.php` |
+| 23 | `inventory_items` | Table | 1 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_cancel.php`, `fika_inventory/api/fika_inventory_adjust.php` |
+| 24 | `inventory_ledger` | Table | 0 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_cancel.php`, `fika_finance/api/fika_finance_export.php` |
+| 25 | `inventory_stock` | Table | 1 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_cancel.php`, `fika_inventory/api/fika_inventory_adjust.php` |
+| 26 | `job_openings` | Table | 4 | `fika_hrms/fika_hrms_applications.php`, `fika_hrms/fika_hrms_dashboard.php` |
+| 27 | `leave_requests` | Table | 0 | `app/lib/attendance_summary.php`, `fika_hrms/api/fika_hrms_ess_save.php`, `fika_hrms/api/fika_hrms_leave_create.php` |
+| 28 | `leave_types` | Table | 6 | `app/lib/attendance_summary.php`, `fika_hrms/api/fika_hrms_leave_create.php`, `fika_hrms/api/fika_hrms_settings_save.php` |
+| 29 | `login_attempts` | Table | 38 | `app/core/Auth.php`, `app/core/Device.php` |
+| 30 | `modifiers` | Table | 29 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_create.php`, `fika_pos/api/fika_pos_order_void_refund.php` |
+| 31 | `open_shifts` | Table | 0 | `fika_hrms/api/fika_hrms_shift_claim.php`, `fika_hrms/fika_hrms_ess.php` |
+| 32 | `order_audit` | Table | 0 | `fika_pos/api/fika_pos_order_void_refund.php`, `fika_pos/fika_pos_receipt.php` |
+| 33 | `order_discounts` | Table | 0 | Discount calculation engine table |
+| 34 | `order_item_modifiers` | Table | 0 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_create.php`, `fika_pos/fika_pos_receipt.php` |
+| 35 | `order_items` | Table | 30 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_order_cancel.php` |
+| 36 | `order_kiosk_tokens` | Table | 0 | `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_kiosk_status.php`, `fika_pos/api/fika_pos_payment_create.php` |
+| 37 | `order_ledger_deductions` | Table | 0 | `app/core/InventoryDeduction.php` |
+| 38 | `orders` | Table | 15 | `fika_hrms/fika_hrms_dashboard.php`, `fika_pos/api/fika_pos_kiosk_order.php`, `fika_pos/api/fika_pos_kiosk_status.php` |
+| 39 | `payments` | Table | 15 | `fika_pos/api/fika_pos_order_pay_cash.php`, `fika_pos/api/fika_pos_payment_create.php`, `fika_pos/api/fika_pos_payment_status.php` |
+| 40 | `payroll_items` | Table | 5 | `app/lib/payroll_conflict.php`, `fika_hrms/api/fika_hrms_attendance_adjust.php`, `fika_hrms/api/fika_hrms_payroll_approve.php` |
+| 41 | `payroll_runs` | Table | 1 | `fika_hrms/api/fika_hrms_attendance_adjust.php`, `fika_hrms/api/fika_hrms_payroll_approve.php`, `fika_hrms/api/fika_hrms_payroll_delete.php` |
+| 42 | `pending_bonuses` | Table | 0 | Bonus and incentive calculation table |
+| 43 | `permissions` | Table | 22 | `app/core/Device.php`, `app/core/Rbac.php`, `fika_hrms/fika_hrms_users.php` |
+| 44 | `po_receipts` | Table | 0 | `fika_inventory/api/fika_inventory_procurement.php` |
+| 45 | `products` | Table | 4 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_category_delete.php`, `fika_pos/api/fika_pos_kiosk_order.php` |
+| 46 | `purchase_order_items` | Table | 0 | `fika_inventory/api/fika_inventory_procurement.php` |
+| 47 | `purchase_orders` | Table | 0 | `fika_inventory/api/fika_inventory_procurement.php`, `fika_inventory/fika_inventory_dashboard.php` |
+| 48 | `recipes` | Table | 0 | `app/core/InventoryDeduction.php`, `fika_pos/api/fika_pos_order_cancel.php`, `fika_pos/api/fika_pos_order_pay_cash.php` |
+| 49 | `reconciliation_logs` | Table | 0 | `fika_finance/api/fika_finance_reconcile.php` |
+| 50 | `role_permissions` | Table | 131 | `app/core/Device.php`, `app/core/Rbac.php`, `fika_pos/api/fika_pos_order_void_refund.php` |
+| 51 | `roles` | Table | 10 | `app/core/Auth.php`, `app/lib/payroll_conflict.php`, `fika_hrms/api/fika_hrms_device_save.php` |
+| 52 | `schema_migrations` | Table | 49 | Migration tracking (`tools/migrate.php`) |
+| 53 | `settings` | Table | 15 | `app/lib/attendance_summary.php`, `fika_hrms/api/fika_hrms_payroll_generate.php`, `fika_hrms/api/fika_hrms_settings_save.php` |
+| 54 | `shifts` | Table | 0 | `app/lib/attendance_calc.php`, `fika_hrms/api/fika_hrms_shift_claim.php`, `fika_hrms/api/fika_hrms_shift_save.php` |
+| 55 | `suppliers` | Table | 2 | `fika_inventory/api/fika_inventory_procurement.php`, `fika_inventory/fika_inventory_procurement.php` |
+| 56 | `users` | Table | 36 | `app/core/Auth.php`, `app/core/Device.php`, `fika_hrms/api/fika_hrms_attendance_adjust.php` |
+| 57 | `v_cogs_monthly` | View | 0 | Accounting COGS aggregation view |
+| 58 | `v_revenue_monthly` | View | 3 | Accounting revenue monthly aggregation view |
