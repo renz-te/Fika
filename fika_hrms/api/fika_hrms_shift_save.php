@@ -3,7 +3,6 @@ require_once __DIR__ . '/../../app/bootstrap.php';
 header('Content-Type: application/json');
 
 Auth::requireLogin();
-Rbac::require_permission('schedule.view');
 
 $raw = file_get_contents('php://input');
 if (empty($raw) && !empty($GLOBALS['RAW_INPUT'])) {
@@ -22,22 +21,31 @@ global $pdo;
 $action = $input['action'] ?? '';
 $user = Auth::user();
 $userId = (int)($user['id'] ?? 0);
-$userRole = (int)($user['role_id'] ?? 0);
+$userRole = $user['role_id'] ?? 0;
 
 $roleStmt = $pdo->prepare("SELECT name FROM roles WHERE id = ?");
-$roleStmt->execute([$userRole]);
+$roleStmt->execute([(int)$userRole]);
 $userRoleName = (string)$roleStmt->fetchColumn();
 
-if ($action === 'create') {
-    Rbac::require_permission('schedule.manage');
+if ((int)$userRole !== 1) {
+    Rbac::require_permission('schedule.view');
+}
 
-    $isBM = ($userRole === 6) || in_array($userRoleName, ['BM', 'Branch Manager'], true);
-    if ($isBM || !in_array($userRole, [1, 5], true)) {
+if ($action === 'create') {
+    if ((int)$userRole !== 1) {
+        Rbac::require_permission('schedule.manage');
+    }
+
+    // SoD: only Branch HR (5) and Admin (1) may create shifts. BM (6) blocked. Queue 4 will revoke Admin (1).
+    $roleId = (int)$userRole;
+    $isBM = ($roleId === 6) || in_array($userRoleName, ['BM', 'Branch Manager'], true);
+    // QUEUE-4-FOLLOWUP: when Admin loses operational permissions, remove 1 from this allowlist and drop "System Admin" from the error copy.
+    if ($isBM || !in_array($roleId, [1, 5], true)) {
         http_response_code(403);
         exit(json_encode([
             'success' => false,
-            'error' => 'Only Branch HR can create shifts.',
-            'message' => 'Only Branch HR can create shifts.'
+            'error' => 'Only Branch HR or System Admin can create shifts.',
+            'message' => 'Only Branch HR or System Admin can create shifts.'
         ]));
     }
 
