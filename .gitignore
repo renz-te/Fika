@@ -9,3 +9,4 @@ config/config.php
 !app/core/Config.php
 storage/
 app/storage/
+export_out/
