@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 
+$roleId = (int)($_SESSION['user']['role_id'] ?? 0);
+
 // Device Authentication
 $deviceToken = $_GET['device_token'] ?? $_COOKIE['device_token'] ?? null;
 if (!empty($_GET['device_token'])) {
@@ -186,7 +188,23 @@ foreach ($rawModifiers as $m) {
             </div>
         </div>
         <div class="flex items-center space-x-4 text-sm">
-            <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider text-base">--:--</div>
+            <?php if (in_array($roleId, [1, 9], true)): ?>
+            <a href="fika_pos_dashboard.php" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-200 border border-amber-800/60 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5" title="Return to Cashier Dashboard">
+                &larr; <span>Dashboard</span>
+            </a>
+            <div class="flex items-center space-x-1.5 text-xs bg-amber-900/40 border border-amber-800/60 px-2.5 py-1.5 rounded-lg">
+                <label for="kiosk-order-type" class="text-amber-300 font-semibold select-none">Order Type:</label>
+                <select id="kiosk-order-type" onchange="updateOrderTypeDisplay()" class="bg-amber-950/80 text-amber-100 font-bold border border-amber-700/60 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer">
+                    <option value="Dine In" selected>Dine In</option>
+                    <option value="Take Out">Take Out</option>
+                </select>
+            </div>
+            <div class="flex items-center space-x-1.5 text-xs bg-amber-900/40 border border-amber-800/60 px-2.5 py-1.5 rounded-lg">
+                <label for="kiosk-table-num" class="text-amber-300 font-semibold select-none">Table #</label>
+                <input type="text" id="kiosk-table-num" name="table_num" value="1" oninput="updateOrderTypeDisplay()" class="w-12 bg-amber-950/80 text-amber-100 font-bold border border-amber-700/60 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <?php endif; ?>
+            <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider text-base cursor-pointer select-none" title="Exit Code">--:--</div>
         </div>
     </header>
 
@@ -454,7 +472,7 @@ foreach ($rawModifiers as $m) {
         let currentModalProduct = null;
         let modalQty = 1;
 
-        // Hidden Manager Exit Trigger on Order Type / Table #
+        // Hidden Exit Trigger on Digital Clock
         function triggerDeviceExit() {
             const code = prompt("Enter Exit Code:");
             if (code === null || code.trim() === '') {
@@ -467,12 +485,26 @@ foreach ($rawModifiers as $m) {
             }
         }
 
-        ['kiosk-order-type', 'kiosk-table-num', 'cart-order-type'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('click', triggerDeviceExit);
+        const clockDisplayEl = document.getElementById('clock-display');
+        if (clockDisplayEl) {
+            clockDisplayEl.addEventListener('click', triggerDeviceExit);
+        }
+
+        function updateOrderTypeDisplay() {
+            const orderTypeEl = document.getElementById('kiosk-order-type');
+            const tableNumEl = document.getElementById('kiosk-table-num');
+            const cartOrderType = document.getElementById('cart-order-type');
+            if (!cartOrderType) return;
+
+            const type = orderTypeEl ? orderTypeEl.value : 'Dine In';
+            const table = tableNumEl ? (tableNumEl.value.trim() || '1') : '1';
+
+            if (type === 'Take Out') {
+                cartOrderType.innerText = 'Take Out';
+            } else {
+                cartOrderType.innerText = `Dine In (Table #${table})`;
             }
-        });
+        }
 
         // Clock display
         function updateClock() {
@@ -962,6 +994,11 @@ foreach ($rawModifiers as $m) {
             }
             const qrBox = document.getElementById('qr-display-box');
             if (qrBox) qrBox.classList.add('hidden');
+            const orderTypeEl = document.getElementById('kiosk-order-type');
+            if (orderTypeEl) orderTypeEl.value = 'Dine In';
+            const tableNumEl = document.getElementById('kiosk-table-num');
+            if (tableNumEl) tableNumEl.value = '1';
+            updateOrderTypeDisplay();
             clearCart();
             const btnPlace = document.getElementById('btn-place-order');
             if (btnPlace) {
