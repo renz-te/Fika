@@ -183,8 +183,8 @@ foreach ($rawModifiers as $m) {
         <div class="flex items-center space-x-4">
             <div class="bg-amber-500 text-amber-950 font-black text-2xl px-3 py-1 rounded-xl tracking-tighter">FIKA</div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">Self-Service Ordering</h1>
-                <p class="text-xs text-amber-300 font-medium"><?= e($branchName) ?> &bull; <?= e($device['device_name'] ?? 'Kiosk') ?></p>
+                <h1 class="text-xl font-bold tracking-tight"><?= in_array($roleId, [1, 9], true) ? 'POS Cashier Ordering' : 'Self-Service Ordering' ?></h1>
+                <p class="text-xs text-amber-300 font-medium"><?= e($branchName) ?> &bull; <?= e($device['device_name'] ?? (in_array($roleId, [1, 9], true) ? 'Cashier Terminal' : 'Kiosk')) ?></p>
             </div>
         </div>
         <div class="flex items-center space-x-4 text-sm">
@@ -199,9 +199,11 @@ foreach ($rawModifiers as $m) {
                     <option value="Take Out">Take Out</option>
                 </select>
             </div>
-            <div class="flex items-center space-x-1.5 text-xs bg-amber-900/40 border border-amber-800/60 px-2.5 py-1.5 rounded-lg">
-                <label for="kiosk-table-num" class="text-amber-300 font-semibold select-none">Table #</label>
-                <input type="text" id="kiosk-table-num" name="table_num" value="1" oninput="updateOrderTypeDisplay()" class="w-12 bg-amber-950/80 text-amber-100 font-bold border border-amber-700/60 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-amber-500">
+            <?php endif; ?>
+            <?php if ($roleId === 13): ?>
+            <div class="flex items-center space-x-1.5 text-xs bg-amber-900/40 border border-amber-800/60 px-2.5 py-1.5 rounded-lg text-amber-300 font-semibold select-none">
+                <label for="kiosk-table-num" class="select-none">Table #</label>
+                <input type="text" id="kiosk-table-num" name="table_num" value="1" class="w-10 bg-amber-950/80 text-amber-100 font-bold border border-amber-700/60 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-amber-500" readonly>
             </div>
             <?php endif; ?>
             <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider text-base cursor-pointer select-none" title="Exit Code">--:--</div>
@@ -459,15 +461,162 @@ foreach ($rawModifiers as $m) {
         </div>
     </div>
 
+    <!-- Cashier Modal: Payment Selection (Cash or Digital) -->
+    <div id="cashier-pay-select-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
+            <div class="w-16 h-16 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+            </div>
+
+            <div>
+                <span class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full uppercase tracking-wider">
+                    Checkout &bull; <span id="cashier-select-order-num">ORD-000000</span>
+                </span>
+                <h2 class="text-2xl font-black text-slate-900 mt-3 tracking-tight">How is the customer paying?</h2>
+                <p class="text-sm text-slate-500 mt-1">Select payment method to finalize this transaction.</p>
+            </div>
+
+            <div class="bg-amber-50/60 rounded-2xl p-4 border border-amber-200/60 flex justify-between items-center text-left">
+                <span class="text-xs font-bold uppercase text-amber-900">Total Due</span>
+                <span class="text-2xl font-black text-amber-900" id="cashier-select-total-amount">₱0.00</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <button id="btn-select-cash" onclick="openCashierCashModal()"
+                        class="py-4 px-4 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-700/20 transition flex flex-col items-center justify-center space-y-1.5 active:scale-95">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                    <span class="text-base font-black">Pay Cash</span>
+                    <span class="text-[11px] font-normal text-emerald-100">Tender & Change</span>
+                </button>
+
+                <button id="btn-select-digital" onclick="openCashierDigitalModal()"
+                        class="py-4 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/20 transition flex flex-col items-center justify-center space-y-1.5 active:scale-95">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                    </svg>
+                    <span class="text-base font-black">Pay Digital</span>
+                    <span class="text-[11px] font-normal text-blue-100">GCash / Maya QR</span>
+                </button>
+            </div>
+
+            <div class="pt-2">
+                <button type="button" onclick="closeCashierPaySelectModal()" class="w-full py-2.5 text-xs text-slate-500 hover:text-slate-700 font-semibold transition">
+                    Cancel / Keep in Active Queue
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cashier Modal: Cash Tendered & Change -->
+    <div id="cashier-cash-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center pb-4 border-b border-slate-100">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">Cash Payment</h3>
+                    <p class="text-xs text-slate-500" id="cashier-cash-order-num">ORD-000000</p>
+                </div>
+                <button onclick="closeCashierCashModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">&times;</button>
+            </div>
+
+            <div class="bg-amber-50/60 rounded-2xl p-4 border border-amber-200/60 flex justify-between items-center">
+                <span class="text-xs font-bold uppercase text-amber-900">Total Due</span>
+                <span class="text-2xl font-black text-amber-900" id="cashier-cash-amount-due">₱0.00</span>
+            </div>
+
+            <div class="space-y-2">
+                <label for="cashier-tendered-input" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Cash Tendered</label>
+                <div class="relative">
+                    <span class="absolute left-4 top-3 text-slate-400 font-bold">₱</span>
+                    <input type="number" step="0.01" id="cashier-tendered-input" oninput="calculateCashierChange()" placeholder="0.00"
+                           class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-3 text-lg font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <!-- Quick Amount Buttons -->
+                <div class="grid grid-cols-4 gap-2 pt-1" id="cashier-quick-amount-buttons"></div>
+            </div>
+
+            <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex justify-between items-center">
+                <span class="text-xs font-bold uppercase text-slate-500">Change</span>
+                <span class="text-xl font-black text-slate-900" id="cashier-modal-change-due">₱0.00</span>
+            </div>
+
+            <div id="cashier-insufficient-error" class="hidden text-xs font-bold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 flex items-center space-x-2">
+                <svg class="w-4 h-4 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <span>Insufficient amount</span>
+            </div>
+
+            <div id="cashier-pay-error" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200"></div>
+
+            <button id="btn-cashier-complete-payment" onclick="submitCashierCashPayment()"
+                    class="w-full py-4 bg-amber-800 hover:bg-amber-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-amber-800/30 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                Complete Payment
+            </button>
+        </div>
+    </div>
+
+    <!-- Cashier Modal: Digital QR Payment -->
+    <div id="cashier-digital-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100">
+                <div class="text-left">
+                    <h3 class="text-lg font-bold text-slate-900">Digital Payment</h3>
+                    <p class="text-xs text-slate-500" id="cashier-digital-order-num">ORD-000000</p>
+                </div>
+                <button onclick="closeCashierDigitalModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">&times;</button>
+            </div>
+
+            <div class="bg-blue-50/70 rounded-2xl p-4 border border-blue-200/60 flex justify-between items-center text-left">
+                <span class="text-xs font-bold uppercase text-blue-900">Total Due</span>
+                <span class="text-2xl font-black text-blue-900" id="cashier-digital-amount-due">₱0.00</span>
+            </div>
+
+            <div id="cashier-digital-qr-wrapper" class="space-y-4">
+                <p class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-center space-x-1.5">
+                    <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                    <span>Scan with GCash or Maya</span>
+                </p>
+                <div class="flex justify-center">
+                    <div id="cashier-digital-qrcode" class="p-3 bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center min-w-[200px] min-h-[200px]"></div>
+                </div>
+                <div class="text-xs text-slate-500 font-medium">Customer scans QR code on this screen with mobile phone</div>
+                <a id="cashier-digital-checkout-link" href="#" target="_blank" class="inline-block text-xs text-blue-600 hover:text-blue-700 font-bold underline">
+                    Open Checkout on this screen &rarr;
+                </a>
+            </div>
+
+            <div id="cashier-digital-paid-banner" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-emerald-800 space-y-2">
+                <div class="font-black text-xl text-emerald-700 flex items-center justify-center space-x-2">
+                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>PAYMENT RECEIVED!</span>
+                </div>
+                <p class="text-xs text-emerald-600">Printing receipt now...</p>
+            </div>
+
+            <div class="pt-2">
+                <button type="button" onclick="closeCashierDigitalModal()" class="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
+                    Close / Return
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const DEVICE_TOKEN = <?= json_encode($device['device_token']) ?>;
         const DEVICE_EXIT_PIN = <?= json_encode($deviceExitPin) ?>;
         const MODIFIERS = <?= json_encode($modifiersCatalog) ?>;
+        const CURRENT_ROLE_ID = <?= (int)$roleId ?>;
+        const CSRF_TOKEN = <?= json_encode(Csrf::getToken()) ?>;
 
         let cart = {}; // { itemKey: { key, id, name, basePriceCents, modifierIds, modifierNames, priceCents, qty } }
         let currentOrderId = null;
         let currentKioskToken = null;
+        let currentOrderNumber = null;
+        let currentOrderTotal = 0;
         let pollTimer = null;
+        let cashierDigitalPollTimer = null;
 
         let currentModalProduct = null;
         let modalQty = 1;
@@ -497,12 +646,11 @@ foreach ($rawModifiers as $m) {
             if (!cartOrderType) return;
 
             const type = orderTypeEl ? orderTypeEl.value : 'Dine In';
-            const table = tableNumEl ? (tableNumEl.value.trim() || '1') : '1';
-
-            if (type === 'Take Out') {
-                cartOrderType.innerText = 'Take Out';
+            if (tableNumEl) {
+                const table = tableNumEl.value.trim() || '1';
+                cartOrderType.innerText = type === 'Take Out' ? 'Take Out' : `Dine In (Table #${table})`;
             } else {
-                cartOrderType.innerText = `Dine In (Table #${table})`;
+                cartOrderType.innerText = type;
             }
         }
 
@@ -837,7 +985,7 @@ foreach ($rawModifiers as $m) {
             return text.replace(/[&<>"']/g, function(m) { return map[m]; });
         }
 
-        // Submit Kiosk Order (Dine-in / Take-out queue ticket)
+        // Submit Kiosk Order (Dine-in / Take-out queue ticket vs Cashier immediate checkout)
         async function submitKioskOrder() {
             const items = Object.values(cart).map(i => ({
                 id: i.id,
@@ -870,17 +1018,27 @@ foreach ($rawModifiers as $m) {
 
                 currentOrderId = data.order_id;
                 currentKioskToken = data.kiosk_token;
-
-                // Show success screen with queue ticket (bypassing online payment gateway)
-                document.getElementById('modal-order-number').innerText = data.order_number;
-                document.getElementById('modal-total-amount').innerText = '₱' + parseFloat(data.total_amount).toFixed(2);
-                document.getElementById('paid-badge').classList.add('hidden');
-                document.getElementById('order-modal').classList.remove('hidden');
+                currentOrderNumber = data.order_number;
+                currentOrderTotal = parseFloat(data.total_amount);
 
                 clearCart();
 
-                // Start polling status
-                startStatusPolling();
+                // Differentiate checkout flow: Role 13 (Kiosk) vs Role 9 / 1 (Cashier / Admin)
+                if (CURRENT_ROLE_ID === 9 || CURRENT_ROLE_ID === 1) {
+                    // Cashier flow: Open Payment Selection Modal (Pay Cash / Pay Digital)
+                    document.getElementById('cashier-select-order-num').innerText = currentOrderNumber;
+                    document.getElementById('cashier-select-total-amount').innerText = '₱' + currentOrderTotal.toFixed(2);
+                    document.getElementById('cashier-pay-select-modal').classList.remove('hidden');
+                } else {
+                    // Kiosk flow: Show Queue Ticket Generated modal
+                    document.getElementById('modal-order-number').innerText = currentOrderNumber;
+                    document.getElementById('modal-total-amount').innerText = '₱' + currentOrderTotal.toFixed(2);
+                    document.getElementById('paid-badge').classList.add('hidden');
+                    document.getElementById('order-modal').classList.remove('hidden');
+
+                    // Start polling status
+                    startStatusPolling();
+                }
 
             } catch (err) {
                 alert('Order error: ' + err.message);
@@ -889,6 +1047,226 @@ foreach ($rawModifiers as $m) {
             }
         }
 
+        // --- CASHIER CASH PAYMENT LOGIC ---
+        function openCashierCashModal() {
+            document.getElementById('cashier-pay-select-modal').classList.add('hidden');
+            
+            document.getElementById('cashier-cash-order-num').innerText = currentOrderNumber;
+            document.getElementById('cashier-cash-amount-due').innerText = '₱' + currentOrderTotal.toFixed(2);
+            document.getElementById('cashier-tendered-input').value = '';
+            document.getElementById('cashier-pay-error').classList.add('hidden');
+
+            buildCashierQuickButtons(currentOrderTotal);
+            calculateCashierChange();
+
+            document.getElementById('cashier-cash-modal').classList.remove('hidden');
+        }
+
+        function closeCashierCashModal() {
+            document.getElementById('cashier-cash-modal').classList.add('hidden');
+            document.getElementById('cashier-pay-select-modal').classList.remove('hidden');
+        }
+
+        function closeCashierPaySelectModal() {
+            document.getElementById('cashier-pay-select-modal').classList.add('hidden');
+            resetKioskSession();
+        }
+
+        function buildCashierQuickButtons(due) {
+            const container = document.getElementById('cashier-quick-amount-buttons');
+            const round50 = Math.ceil(due / 50) * 50;
+            const round100 = Math.ceil(due / 100) * 100;
+            const round500 = Math.ceil(due / 500) * 500;
+
+            const amounts = Array.from(new Set([due, round50, round100, round500])).sort((a, b) => a - b);
+            let html = '';
+            amounts.slice(0, 4).forEach(amt => {
+                html += `<button type="button" onclick="setCashierTendered(${amt})" class="py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 transition">₱${amt.toFixed(2)}</button>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function setCashierTendered(amt) {
+            document.getElementById('cashier-tendered-input').value = amt.toFixed(2);
+            calculateCashierChange();
+        }
+
+        function calculateCashierChange() {
+            const val = document.getElementById('cashier-tendered-input').value;
+            const tendered = parseFloat(val);
+            const changeEl = document.getElementById('cashier-modal-change-due');
+            const errEl = document.getElementById('cashier-insufficient-error');
+            const btn = document.getElementById('btn-cashier-complete-payment');
+
+            if (isNaN(tendered) || val.trim() === '' || tendered < currentOrderTotal) {
+                changeEl.innerText = 'Insufficient amount';
+                changeEl.className = 'text-xl font-black text-rose-600';
+                if (errEl) errEl.classList.remove('hidden');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } else {
+                const change = tendered - currentOrderTotal;
+                changeEl.innerText = '₱' + change.toFixed(2);
+                changeEl.className = 'text-xl font-black text-emerald-600';
+                if (errEl) errEl.classList.add('hidden');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        }
+
+        async function submitCashierCashPayment() {
+            const tendered = parseFloat(document.getElementById('cashier-tendered-input').value) || 0;
+            if (tendered < currentOrderTotal) {
+                const errDiv = document.getElementById('cashier-pay-error');
+                errDiv.innerText = 'Amount tendered is less than amount due.';
+                errDiv.classList.remove('hidden');
+                return;
+            }
+
+            const btn = document.getElementById('btn-cashier-complete-payment');
+            btn.disabled = true;
+            btn.innerText = 'Processing...';
+
+            try {
+                const res = await fetch('api/fika_pos_order_pay_cash.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({
+                        order_id: currentOrderId,
+                        amount_paid: tendered,
+                        mark_completed: true,
+                        idempotency_key: 'PAY-' + currentOrderId + '-' + Date.now()
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Payment failed.');
+                }
+
+                const paidOrderId = currentOrderId;
+                document.getElementById('cashier-cash-modal').classList.add('hidden');
+
+                // Automatically open receipt and trigger print
+                const receiptWin = window.open(`fika_pos_receipt.php?order_id=${paidOrderId}&autoprint=1`, '_blank');
+                if (receiptWin) {
+                    receiptWin.focus();
+                }
+
+                resetKioskSession();
+            } catch (err) {
+                const errDiv = document.getElementById('cashier-pay-error');
+                errDiv.innerText = err.message;
+                errDiv.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerText = 'Complete Payment';
+            }
+        }
+
+        // --- CASHIER DIGITAL PAYMENT LOGIC ---
+        async function openCashierDigitalModal() {
+            document.getElementById('cashier-pay-select-modal').classList.add('hidden');
+            
+            document.getElementById('cashier-digital-order-num').innerText = currentOrderNumber;
+            document.getElementById('cashier-digital-amount-due').innerText = '₱' + currentOrderTotal.toFixed(2);
+            document.getElementById('cashier-digital-paid-banner').classList.add('hidden');
+            document.getElementById('cashier-digital-qr-wrapper').classList.remove('hidden');
+
+            const qrContainer = document.getElementById('cashier-digital-qrcode');
+            qrContainer.innerHTML = '<span class="text-xs text-slate-400 animate-pulse">Generating QR...</span>';
+
+            document.getElementById('cashier-digital-modal').classList.remove('hidden');
+
+            try {
+                const res = await fetch('api/fika_pos_payment_create.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN,
+                        'X-Kiosk-Token': currentKioskToken || ''
+                    },
+                    body: JSON.stringify({
+                        order_id: currentOrderId,
+                        method: 'gcash'
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to initialize digital payment.');
+                }
+
+                qrContainer.innerHTML = '';
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(qrContainer, {
+                        text: data.checkout_url,
+                        width: 190,
+                        height: 190,
+                        colorDark: "#0f172a",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                } else {
+                    qrContainer.innerHTML = `<img src="${data.qr_code_url || ''}" alt="QR Code" class="w-48 h-48 rounded-xl border border-slate-200">`;
+                }
+
+                document.getElementById('cashier-digital-checkout-link').href = data.checkout_url;
+
+                // Start polling payment status
+                startCashierDigitalPolling(currentOrderId);
+
+            } catch (e) {
+                alert('Digital Payment Error: ' + e.message);
+                closeCashierDigitalModal();
+            }
+        }
+
+        function closeCashierDigitalModal() {
+            if (cashierDigitalPollTimer) {
+                clearInterval(cashierDigitalPollTimer);
+                cashierDigitalPollTimer = null;
+            }
+            document.getElementById('cashier-digital-modal').classList.add('hidden');
+            document.getElementById('cashier-pay-select-modal').classList.remove('hidden');
+        }
+
+        function startCashierDigitalPolling(orderId) {
+            if (cashierDigitalPollTimer) clearInterval(cashierDigitalPollTimer);
+            cashierDigitalPollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch(`api/fika_pos_payment_status.php?order_id=${orderId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.is_paid) {
+                            clearInterval(cashierDigitalPollTimer);
+                            cashierDigitalPollTimer = null;
+                            document.getElementById('cashier-digital-qr-wrapper').classList.add('hidden');
+                            document.getElementById('cashier-digital-paid-banner').classList.remove('hidden');
+                            
+                            // Automatically open receipt
+                            const receiptWin = window.open(`fika_pos_receipt.php?order_id=${orderId}&autoprint=1`, '_blank');
+                            if (receiptWin) {
+                                receiptWin.focus();
+                            }
+
+                            setTimeout(() => {
+                                document.getElementById('cashier-digital-modal').classList.add('hidden');
+                                resetKioskSession();
+                            }, 2000);
+                        }
+                    }
+                } catch (e) {}
+            }, 2500);
+        }
+
+        // --- KIOSK DIGITAL PAYMENT LOGIC ---
         async function initiateDigitalPayment(method) {
             if (!currentOrderId || !currentKioskToken) return;
 
@@ -979,9 +1357,17 @@ foreach ($rawModifiers as $m) {
         function resetKioskSession() {
             if (pollTimer) clearInterval(pollTimer);
             pollTimer = null;
+            if (cashierDigitalPollTimer) clearInterval(cashierDigitalPollTimer);
+            cashierDigitalPollTimer = null;
             currentOrderId = null;
             currentKioskToken = null;
-            document.getElementById('order-modal').classList.add('hidden');
+            currentOrderNumber = null;
+            currentOrderTotal = 0;
+            document.getElementById('order-modal')?.classList.add('hidden');
+            document.getElementById('cashier-pay-select-modal')?.classList.add('hidden');
+            document.getElementById('cashier-cash-modal')?.classList.add('hidden');
+            document.getElementById('cashier-digital-modal')?.classList.add('hidden');
+
             const gcashBtn = document.getElementById('btn-pay-gcash');
             if (gcashBtn) {
                 gcashBtn.disabled = false;
