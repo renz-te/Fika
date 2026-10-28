@@ -1,6 +1,17 @@
 <?php
 require __DIR__ . '/../app/bootstrap.php';
 // No Auth::requireLogin() because this is a standalone device terminal screen
+
+global $pdo;
+
+$branchId = null;
+if (Auth::check()) {
+    $branchId = Auth::user()['branch_id'] ?? null;
+}
+
+$stmtPin = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'device_exit_pin' AND (branch_id = ? OR branch_id IS NULL) ORDER BY branch_id DESC LIMIT 1");
+$stmtPin->execute([$branchId]);
+$deviceExitPin = (string)($stmtPin->fetchColumn() ?: '123456');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -39,7 +50,7 @@ require __DIR__ . '/../app/bootstrap.php';
         <!-- Left Side: Time and Info -->
         <div class="w-1/2 bg-blue-700 text-white p-12 flex flex-col justify-center">
             <h1 class="text-5xl font-extrabold mb-2 text-blue-100 tracking-tight">Fika Time Clock</h1>
-            <div id="liveTime" class="text-7xl font-bold mb-4">00:00</div>
+            <div id="liveTime" class="text-7xl font-bold mb-4 cursor-pointer select-none">00:00</div>
             <div id="liveDate" class="text-2xl text-blue-200 mb-8">Loading date...</div>
             <p class="text-lg text-blue-300">Enter your Employee Code and PIN to securely clock in or out. The system will automatically detect your current shift status.</p>
         </div>
@@ -77,6 +88,21 @@ require __DIR__ . '/../app/bootstrap.php';
         }
         setInterval(updateClock, 1000);
         updateClock();
+
+        const DEVICE_EXIT_PIN = <?= json_encode($deviceExitPin) ?>;
+
+        // Hidden Manager Exit Trigger on Clock Display
+        document.getElementById('liveTime').addEventListener('click', function () {
+            const code = prompt("Enter Exit Code:");
+            if (code === null || code.trim() === '') {
+                return;
+            }
+            if (code.trim() === DEVICE_EXIT_PIN) {
+                window.location.href = '../login.php?logout=1';
+            } else {
+                alert("Invalid Code");
+            }
+        });
 
         // Setup & LocalStorage
         const getDeviceData = () => {

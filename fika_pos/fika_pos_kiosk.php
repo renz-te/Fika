@@ -11,6 +11,25 @@ $device = Device::getDevice($deviceToken);
 
 global $pdo;
 
+// Fallback: If device token not provided, try resolving from authenticated session user
+if (!$device && Auth::check()) {
+    $sessUser = Auth::user();
+    if (!empty($sessUser['id'])) {
+        $devStmt = $pdo->prepare("SELECT id, branch_id, device_name, device_token, status FROM devices WHERE user_id = ? AND status = 'Active' AND deleted_at IS NULL LIMIT 1");
+        $devStmt->execute([$sessUser['id']]);
+        $device = $devStmt->fetch();
+        if ($device && !empty($device['device_token'])) {
+            setcookie('device_token', $device['device_token'], time() + (86400 * 365), '/');
+        }
+    }
+}
+
+// Fetch device exit pin for hidden manager logout trigger
+$kioskBranchId = $device ? (int)$device['branch_id'] : (Auth::check() ? (Auth::user()['branch_id'] ?? null) : null);
+$stmtPin = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'device_exit_pin' AND (branch_id = ? OR branch_id IS NULL) ORDER BY branch_id DESC LIMIT 1");
+$stmtPin->execute([$kioskBranchId]);
+$deviceExitPin = (string)($stmtPin->fetchColumn() ?: '123456');
+
 // If device not authenticated, display device setup pairing screen
 if (!$device) {
     ?>
@@ -26,12 +45,12 @@ if (!$device) {
     </head>
     <body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-6">
         <div class="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700 text-center">
-            <div class="inline-flex p-4 bg-amber-900/40 text-amber-500 rounded-2xl mb-6">
+            <div id="setup-kiosk-icon" class="inline-flex p-4 bg-amber-900/40 text-amber-500 rounded-2xl mb-6 cursor-pointer select-none">
                 <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                 </svg>
             </div>
-            <h1 class="text-2xl font-black text-amber-500 tracking-wider uppercase mb-2">Fika Kiosk Terminal</h1>
+            <h1 id="setup-kiosk-title" class="text-2xl font-black text-amber-500 tracking-wider uppercase mb-2 cursor-pointer select-none">Fika Kiosk Terminal</h1>
             <p class="text-slate-400 text-sm mb-6">This terminal is not yet paired or authenticated. Enter the secure Device Token configured in admin settings.</p>
             
             <form method="GET" action="" class="space-y-4">
@@ -48,6 +67,20 @@ if (!$device) {
                 Self-service kiosks require a valid token linked to an active branch device.
             </div>
         </div>
+        <script>
+            const DEVICE_EXIT_PIN = <?= json_encode($deviceExitPin) ?>;
+            function triggerSetupExit() {
+                const code = prompt("Enter Exit Code:");
+                if (code === null || code.trim() === '') return;
+                if (code.trim() === DEVICE_EXIT_PIN) {
+                    window.location.href = '../login.php?logout=1';
+                } else {
+                    alert("Invalid Code");
+                }
+            }
+            document.getElementById('setup-kiosk-icon')?.addEventListener('click', triggerSetupExit);
+            document.getElementById('setup-kiosk-title')?.addEventListener('click', triggerSetupExit);
+        </script>
     </body>
     </html>
     <?php
@@ -110,7 +143,13 @@ foreach ($products as $p) {
                 <p class="text-xs text-amber-300 font-medium"><?= e($branchName) ?> &bull; <?= e($device['device_name'] ?? 'Kiosk') ?></p>
             </div>
         </div>
-        <div class="flex items-center space-x-6 text-sm">
+        <div class="flex items-center space-x-4 text-sm">
+            <div id="kiosk-order-type" class="text-xs bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/60 px-3 py-1.5 rounded-lg font-semibold tracking-wide cursor-pointer select-none transition">
+                Order Type: <span class="text-amber-100 font-bold">Dine In</span>
+            </div>
+            <div id="kiosk-table-num" class="text-xs bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/60 px-3 py-1.5 rounded-lg font-semibold tracking-wide cursor-pointer select-none transition">
+                Table #<span class="text-amber-100 font-bold">1</span>
+            </div>
             <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider">--:--</div>
             <button onclick="confirmReset()" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-300 px-3 py-1.5 rounded-lg transition">
                 Reset
@@ -176,7 +215,7 @@ foreach ($products as $p) {
             <div class="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
                 <div>
                     <h2 class="text-lg font-bold text-slate-900">Your Order</h2>
-                    <p class="text-xs text-slate-500"><span id="cart-item-count">0</span> items</p>
+                    <p class="text-xs text-slate-500"><span id="cart-item-count">0</span> items &bull; <span id="cart-order-type" class="cursor-pointer select-none text-amber-800 font-medium hover:underline">Dine In (Table #1)</span></p>
                 </div>
                 <button onclick="clearCart()" class="text-xs text-rose-600 hover:text-rose-700 font-semibold px-2 py-1 rounded">
                     Clear All
@@ -278,10 +317,31 @@ foreach ($products as $p) {
 
     <script>
         const DEVICE_TOKEN = <?= json_encode($device['device_token']) ?>;
+        const DEVICE_EXIT_PIN = <?= json_encode($deviceExitPin) ?>;
         let cart = {}; // { prodId: { id, name, priceCents, qty } }
         let currentOrderId = null;
         let currentKioskToken = null;
         let pollTimer = null;
+
+        // Hidden Manager Exit Trigger on Order Type / Table #
+        function triggerDeviceExit() {
+            const code = prompt("Enter Exit Code:");
+            if (code === null || code.trim() === '') {
+                return;
+            }
+            if (code.trim() === DEVICE_EXIT_PIN) {
+                window.location.href = '../login.php?logout=1';
+            } else {
+                alert("Invalid Code");
+            }
+        }
+
+        ['kiosk-order-type', 'kiosk-table-num', 'cart-order-type'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('click', triggerDeviceExit);
+            }
+        });
 
         // Clock display
         function updateClock() {
