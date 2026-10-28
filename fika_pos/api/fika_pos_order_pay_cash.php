@@ -92,14 +92,17 @@ try {
         $sessionId = $sessStmt->fetchColumn() ?: null;
     }
 
+    $markCompleted = !empty($input['mark_completed']);
+    $targetOrderStatus = $markCompleted ? 'COMPLETED' : 'PAID';
+
     $pdo->prepare("
         UPDATE orders 
-        SET order_status = 'PAID', 
+        SET order_status = ?, 
             payment_status = 'PAID', 
             cashier_id = COALESCE(cashier_id, ?), 
             pos_session_id = COALESCE(pos_session_id, ?) 
         WHERE id = ?
-    ")->execute([$user['id'], $sessionId, $orderId]);
+    ")->execute([$targetOrderStatus, $user['id'], $sessionId, $orderId]);
 
     // 6. Write to Inventory Ledger (Recipes deduction with idempotency)
     InventoryDeduction::deductOrder($orderId, (int)$order['branch_id'], $user['id'], $order['order_number']);

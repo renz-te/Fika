@@ -384,6 +384,12 @@ $csrfToken = Csrf::getToken();
             }
             window.print();
         }
+
+        <?php if (!empty($_GET['autoprint'])): ?>
+        window.addEventListener('load', function() {
+            setTimeout(triggerPrint, 350);
+        });
+        <?php endif; ?>
     </script>
 </body>
 </html>

@@ -186,24 +186,7 @@ foreach ($rawModifiers as $m) {
             </div>
         </div>
         <div class="flex items-center space-x-4 text-sm">
-            <?php 
-            $currentUserRoleId = (int)(Auth::user()['role_id'] ?? 0);
-            if (Auth::check() && in_array($currentUserRoleId, [1, 9], true)): 
-            ?>
-            <a href="fika_pos_dashboard.php" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-200 border border-amber-800/60 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5" title="Return to Cashier Dashboard">
-                &larr; <span>Dashboard</span>
-            </a>
-            <?php endif; ?>
-            <div id="kiosk-order-type" class="text-xs bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/60 px-3 py-1.5 rounded-lg font-semibold tracking-wide cursor-pointer select-none transition">
-                Order Type: <span class="text-amber-100 font-bold">Dine In</span>
-            </div>
-            <div id="kiosk-table-num" class="text-xs bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/60 px-3 py-1.5 rounded-lg font-semibold tracking-wide cursor-pointer select-none transition">
-                Table #<span class="text-amber-100 font-bold">1</span>
-            </div>
-            <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider">--:--</div>
-            <button onclick="confirmReset()" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-300 px-3 py-1.5 rounded-lg transition">
-                Reset
-            </button>
+            <div id="clock-display" class="font-mono text-amber-200 font-semibold tracking-wider text-base">--:--</div>
         </div>
     </header>
 
@@ -446,8 +429,12 @@ foreach ($rawModifiers as $m) {
                 <p class="text-xs text-emerald-600">Your order has been sent to the kitchen and is now being prepared.</p>
             </div>
 
-            <div class="pt-2">
-                <button id="btn-start-new-order" onclick="resetKioskSession()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
+            <div class="pt-2 flex flex-col sm:flex-row gap-3">
+                <button id="btn-print-ticket" onclick="printQueueTicket()" class="flex-1 py-3 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded-xl transition flex items-center justify-center space-x-2 shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    <span>Print Ticket</span>
+                </button>
+                <button id="btn-start-new-order" onclick="resetKioskSession()" class="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
                     Start New Order
                 </button>
             </div>
@@ -986,6 +973,10 @@ foreach ($rawModifiers as $m) {
                     </svg>
                 `;
             }
+        }
+
+        function printQueueTicket() {
+            window.print();
         }
 
         function confirmReset() {

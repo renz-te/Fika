@@ -345,7 +345,7 @@ $csrfToken = Csrf::getToken();
     </main>
 
     <!-- Cash Payment Modal -->
-    <div id="payment-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div id="cash-payment-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
             <div class="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div>
@@ -356,12 +356,12 @@ $csrfToken = Csrf::getToken();
             </div>
 
             <div class="bg-amber-50/60 rounded-2xl p-4 border border-amber-200/60 flex justify-between items-center">
-                <span class="text-xs font-bold uppercase text-amber-900">Amount Due</span>
+                <span class="text-xs font-bold uppercase text-amber-900">Total Due</span>
                 <span class="text-2xl font-black text-amber-900" id="modal-amount-due">₱0.00</span>
             </div>
 
             <div class="space-y-2">
-                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Amount Tendered</label>
+                <label for="tendered-input" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider">Cash Tendered</label>
                 <div class="relative">
                     <span class="absolute left-4 top-3 text-slate-400 font-bold">₱</span>
                     <input type="number" step="0.01" id="tendered-input" oninput="calculateChange()" placeholder="0.00"
@@ -376,11 +376,16 @@ $csrfToken = Csrf::getToken();
                 <span class="text-xl font-black text-slate-900" id="modal-change-due">₱0.00</span>
             </div>
 
+            <div id="insufficient-amount-error" class="hidden text-xs font-bold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 flex items-center space-x-2">
+                <i class="fa-solid fa-circle-exclamation text-rose-500"></i>
+                <span id="insufficient-text">Insufficient amount</span>
+            </div>
+
             <div id="payment-error" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200"></div>
 
-            <button id="btn-confirm-payment" onclick="submitCashPayment()"
-                    class="w-full py-4 bg-amber-800 hover:bg-amber-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-amber-800/30 transition active:scale-95">
-                Confirm & Pay
+            <button id="btn-complete-payment" onclick="submitCashPayment()"
+                    class="w-full py-4 bg-amber-800 hover:bg-amber-700 text-white font-bold text-base rounded-2xl shadow-lg shadow-amber-800/30 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                Complete Payment
             </button>
         </div>
     </div>
@@ -551,18 +556,20 @@ $csrfToken = Csrf::getToken();
 
             document.getElementById('modal-order-number').innerText = orderNumber;
             document.getElementById('modal-amount-due').innerText = '₱' + selectedOrderDue.toFixed(2);
-            document.getElementById('tendered-input').value = selectedOrderDue.toFixed(2);
+            document.getElementById('tendered-input').value = '';
             document.getElementById('payment-error').classList.add('hidden');
             
             // Build quick amount buttons
             buildQuickButtons(selectedOrderDue);
             calculateChange();
 
-            document.getElementById('payment-modal').classList.remove('hidden');
+            const modal = document.getElementById('cash-payment-modal') || document.getElementById('payment-modal');
+            if (modal) modal.classList.remove('hidden');
         }
 
         function closePayModal() {
-            document.getElementById('payment-modal').classList.add('hidden');
+            const modal = document.getElementById('cash-payment-modal') || document.getElementById('payment-modal');
+            if (modal) modal.classList.add('hidden');
             selectedOrderId = null;
         }
 
@@ -586,15 +593,29 @@ $csrfToken = Csrf::getToken();
         }
 
         function calculateChange() {
-            const tendered = parseFloat(document.getElementById('tendered-input').value) || 0;
-            const change = tendered - selectedOrderDue;
+            const val = document.getElementById('tendered-input').value;
+            const tendered = parseFloat(val);
             const changeEl = document.getElementById('modal-change-due');
-            if (change >= 0) {
+            const errEl = document.getElementById('insufficient-amount-error');
+            const btn = document.getElementById('btn-complete-payment') || document.getElementById('btn-confirm-payment');
+
+            if (isNaN(tendered) || val.trim() === '' || tendered < selectedOrderDue) {
+                changeEl.innerText = 'Insufficient amount';
+                changeEl.className = 'text-xl font-black text-rose-600';
+                if (errEl) errEl.classList.remove('hidden');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            } else {
+                const change = tendered - selectedOrderDue;
                 changeEl.innerText = '₱' + change.toFixed(2);
                 changeEl.className = 'text-xl font-black text-emerald-600';
-            } else {
-                changeEl.innerText = 'Insufficient';
-                changeEl.className = 'text-xl font-black text-rose-600';
+                if (errEl) errEl.classList.add('hidden');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
             }
         }
 
@@ -605,9 +626,11 @@ $csrfToken = Csrf::getToken();
                 return;
             }
 
-            const btn = document.getElementById('btn-confirm-payment');
-            btn.disabled = true;
-            btn.innerText = 'Processing...';
+            const btn = document.getElementById('btn-complete-payment') || document.getElementById('btn-confirm-payment');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Processing...';
+            }
 
             try {
                 const res = await fetch('api/fika_pos_order_pay_cash.php', {
@@ -619,6 +642,7 @@ $csrfToken = Csrf::getToken();
                     body: JSON.stringify({
                         order_id: selectedOrderId,
                         amount_paid: tendered,
+                        mark_completed: true,
                         idempotency_key: 'PAY-' + selectedOrderId + '-' + Date.now()
                     })
                 });
@@ -630,14 +654,20 @@ $csrfToken = Csrf::getToken();
 
                 const paidOrderId = selectedOrderId;
                 closePayModal();
-                if (confirm(`Payment successful! Change: ₱${data.change}\n\nWould you like to print the receipt now?`)) {
-                    window.open(`fika_pos_receipt.php?order_id=${paidOrderId}`, '_blank');
+
+                // Automatically open receipt and trigger print
+                const receiptWin = window.open(`fika_pos_receipt.php?order_id=${paidOrderId}&autoprint=1`, '_blank');
+                if (receiptWin) {
+                    receiptWin.focus();
                 }
+
                 location.reload();
             } catch (err) {
                 showPayError(err.message);
-                btn.disabled = false;
-                btn.innerText = 'Confirm & Pay';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = 'Complete Payment';
+                }
             }
         }
 
