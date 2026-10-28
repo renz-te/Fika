@@ -82,7 +82,8 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 
     <!-- Navigation Links -->
     <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        <!-- Personal Section (Always visible) -->
+        <!-- Personal Section (Always visible except for Cashier Terminal) -->
+        <?php if ((int)($_SESSION['user']['role_id'] ?? 0) !== 9): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">PERSONAL</div>
         <a href="<?= $url('fika_hrms', 'fika_hrms_ess.php') ?>#dashboard" id="sideNav-dashboard" class="side-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition">
             <i class="fa-solid fa-chart-pie w-5 text-center text-amber-500"></i>
@@ -104,6 +105,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
             <i class="fa-solid fa-user-gear w-5 text-center text-amber-500"></i>
             <span>My Profile</span>
         </a>
+        <?php endif; ?>
 
         <!-- Management Sections (Hidden from regular STAFF and Head Baristas) -->
         <?php if ($showMgmt): ?>
