@@ -6,73 +6,124 @@ Auth::requireLogin();
 Rbac::require_permission('pos.access');
 
 $user = Auth::user();
-$branchId = $user['branch_id'] ?? 1;
+$roleId = (int)($_SESSION['user']['role_id'] ?? 0);
+$isCashier = in_array($roleId, [1, 9], true);
+$branchId = $_SESSION['user']['branch_id'] ?? 1; 
 
 global $pdo;
 
-// 1. Fetch Kiosk Order Age Limit Setting (default 60 minutes)
-$stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'kiosk_order_age_limit_minutes'");
-$stmt->execute();
-$ageLimitMinutes = (int)($stmt->fetchColumn() ?: 60);
+$stmtDemo = $pdo->prepare("SELECT DATE(MAX(created_at)) FROM orders WHERE branch_id = ?");
+$stmtDemo->execute([$branchId]);
+$demoDate = $stmtDemo->fetchColumn() ?: date('Y-m-d');
 
-// 2. Fetch Active Register Session
 $activeSession = null;
-if ($branchId) {
-    $sessStmt = $pdo->prepare("SELECT * FROM cash_sessions WHERE branch_id = ? AND status = 'OPEN' ORDER BY id DESC LIMIT 1");
-    $sessStmt->execute([$branchId]);
-    $activeSession = $sessStmt->fetch();
-    if ($activeSession) {
-        $_SESSION['pos_session_id'] = $activeSession['id'];
-    }
-}
-
-// 3. Fetch Pending Unpaid Orders (Newest First)
 $orders = [];
-if ($branchId) {
-    $orderSql = "
-        SELECT o.id, o.order_number, o.branch_id, o.total_amount, o.final_amount,
-               o.order_status, o.payment_status, o.created_at, o.pos_session_id, o.cashier_id,
-               TIMESTAMPDIFF(MINUTE, o.created_at, NOW()) AS age_minutes,
-               (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', p.name) SEPARATOR ', ')
-                FROM order_items oi
-                JOIN products p ON p.id = oi.product_id
-                WHERE oi.order_id = o.id) AS items_summary
-        FROM orders o
-        WHERE o.branch_id = ? 
-          AND o.payment_status = 'UNPAID'
-          AND o.order_status != 'CANCELLED'
-        ORDER BY o.created_at DESC
-    ";
-    $orderStmt = $pdo->prepare($orderSql);
-    $orderStmt->execute([$branchId]);
-    $orders = $orderStmt->fetchAll();
-
-    // 4. Fetch Recent Paid Orders (for receipt printing)
-    $recentPaidSql = "
-        SELECT o.id, o.order_number, o.branch_id, o.final_amount, o.order_status, o.payment_status, o.created_at,
-               (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', p.name) SEPARATOR ', ')
-                FROM order_items oi
-                JOIN products p ON p.id = oi.product_id
-                WHERE oi.order_id = o.id) AS items_summary
-        FROM orders o
-        WHERE o.branch_id = ? 
-          AND o.payment_status = 'PAID'
-        ORDER BY o.created_at DESC
-        LIMIT 6
-    ";
-    $recentPaidStmt = $pdo->prepare($recentPaidSql);
-    $recentPaidStmt->execute([$branchId]);
-    $recentPaidOrders = $recentPaidStmt->fetchAll();
-}
-
 $activeOrders = [];
 $agedOrders = [];
+$recentPaidOrders = [];
+$ageLimitMinutes = 60;
 
-foreach ($orders as $ord) {
-    if ((int)$ord['age_minutes'] > $ageLimitMinutes) {
-        $agedOrders[] = $ord;
-    } else {
-        $activeOrders[] = $ord;
+if ($isCashier) {
+    // 1. Fetch Kiosk Order Age Limit Setting (default 60 minutes)
+    $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'kiosk_order_age_limit_minutes'");
+    $stmt->execute();
+    $ageLimitMinutes = (int)($stmt->fetchColumn() ?: 60);
+
+    // 2. Fetch Active Register Session
+    if ($branchId) {
+        $sessStmt = $pdo->prepare("SELECT * FROM cash_sessions WHERE branch_id = ? AND status = 'OPEN' ORDER BY id DESC LIMIT 1");
+        $sessStmt->execute([$branchId]);
+        $activeSession = $sessStmt->fetch();
+        if ($activeSession) {
+            $_SESSION['pos_session_id'] = $activeSession['id'];
+        }
+    }
+
+    // 3. Fetch Pending Unpaid Orders (Newest First)
+    if ($branchId) {
+        $orderSql = "
+            SELECT o.id, o.order_number, o.branch_id, o.total_amount, o.final_amount,
+                   o.order_status, o.payment_status, o.created_at, o.pos_session_id, o.cashier_id,
+                   TIMESTAMPDIFF(MINUTE, o.created_at, NOW()) AS age_minutes,
+                   (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', p.name) SEPARATOR ', ')
+                    FROM order_items oi
+                    JOIN products p ON p.id = oi.product_id
+                    WHERE oi.order_id = o.id) AS items_summary
+            FROM orders o
+            WHERE o.branch_id = ? 
+              AND o.payment_status = 'UNPAID'
+              AND o.order_status != 'CANCELLED'
+            ORDER BY o.created_at DESC
+        ";
+        $orderStmt = $pdo->prepare($orderSql);
+        $orderStmt->execute([$branchId]);
+        $orders = $orderStmt->fetchAll();
+
+        // 4. Fetch Recent Paid Orders (for receipt printing)
+        $recentPaidSql = "
+            SELECT o.id, o.order_number, o.branch_id, o.final_amount, o.order_status, o.payment_status, o.created_at,
+                   (SELECT GROUP_CONCAT(CONCAT(oi.quantity, 'x ', p.name) SEPARATOR ', ')
+                    FROM order_items oi
+                    JOIN products p ON p.id = oi.product_id
+                    WHERE oi.order_id = o.id) AS items_summary
+            FROM orders o
+            WHERE o.branch_id = ? 
+              AND o.payment_status = 'PAID'
+            ORDER BY o.created_at DESC
+            LIMIT 6
+        ";
+        $recentPaidStmt = $pdo->prepare($recentPaidSql);
+        $recentPaidStmt->execute([$branchId]);
+        $recentPaidOrders = $recentPaidStmt->fetchAll();
+    }
+
+    foreach ($orders as $ord) {
+        if ((int)$ord['age_minutes'] > $ageLimitMinutes) {
+            $agedOrders[] = $ord;
+        } else {
+            $activeOrders[] = $ord;
+        }
+    }
+} else {
+    // Branch Manager (Role 6) Business Intelligence Metrics
+    // 1. Today's Revenue: SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE branch_id=? AND payment_status='PAID' AND DATE(created_at)=?
+    $stmt1 = $pdo->prepare("SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE branch_id=? AND payment_status='PAID' AND DATE(created_at)=?");
+    $stmt1->execute([$branchId, $demoDate]);
+    $bmTodayRev = (float)$stmt1->fetchColumn();
+
+    // 2. Monthly Revenue: SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE branch_id=? AND payment_status='PAID' AND MONTH(created_at)=MONTH(?) AND YEAR(created_at)=YEAR(?)
+    $stmt2 = $pdo->prepare("SELECT COALESCE(SUM(final_amount), 0) FROM orders WHERE branch_id=? AND payment_status='PAID' AND MONTH(created_at)=MONTH(?) AND YEAR(created_at)=YEAR(?)");
+    $stmt2->execute([$branchId, $demoDate, $demoDate]);
+    $bmMonthlyRev = (float)$stmt2->fetchColumn();
+
+    // 3. Completed Orders: SELECT COUNT(id) FROM orders WHERE branch_id=? AND order_status='COMPLETED' AND DATE(created_at)=?
+    $stmt3 = $pdo->prepare("SELECT COUNT(id) FROM orders WHERE branch_id=? AND order_status='COMPLETED' AND DATE(created_at)=?");
+    $stmt3->execute([$branchId, $demoDate]);
+    $bmCompletedOrders = (int)$stmt3->fetchColumn();
+
+    // 4. Low Stock Alerts: SELECT COUNT(s.id) FROM inventory_stock s JOIN inventory_items i ON s.inventory_id = i.id WHERE s.branch_id=? AND s.current_stock <= s.low_stock_threshold
+    try {
+        $stmt4 = $pdo->prepare("SELECT COUNT(s.id) FROM inventory_stock s JOIN inventory_items i ON s.inventory_id = i.id WHERE s.branch_id=? AND s.current_stock <= s.low_stock_threshold");
+        $stmt4->execute([$branchId]);
+        $bmLowStockAlerts = (int)$stmt4->fetchColumn();
+    } catch (\Throwable $e) {
+        $bmLowStockAlerts = 0;
+    }
+
+    // Row 2, Column 1: Top Selling Products
+    // SELECT p.name, SUM(oi.quantity) as qty FROM order_items oi JOIN products p ON oi.product_id = p.id JOIN orders o ON oi.order_id = o.id WHERE o.branch_id=? AND o.payment_status='PAID' AND MONTH(o.created_at)=MONTH(?) GROUP BY p.name ORDER BY qty DESC LIMIT 5
+    $stmtTop = $pdo->prepare("SELECT p.name, SUM(oi.quantity) as qty FROM order_items oi JOIN products p ON oi.product_id = p.id JOIN orders o ON oi.order_id = o.id WHERE o.branch_id=? AND o.payment_status='PAID' AND MONTH(o.created_at)=MONTH(?) GROUP BY p.name ORDER BY qty DESC LIMIT 5");
+    $stmtTop->execute([$branchId, $demoDate]);
+    $bmTopProducts = $stmtTop->fetchAll();
+
+    // Row 2, Column 2: Low Stock Warnings
+    // SELECT i.item_name AS name, s.current_stock, s.low_stock_threshold AS reorder_level FROM inventory_stock s JOIN inventory_items i ON s.inventory_id = i.id WHERE s.branch_id=? AND s.current_stock <= s.low_stock_threshold ORDER BY s.current_stock ASC LIMIT 5
+    try {
+        $stmtLow = $pdo->prepare("SELECT i.item_name AS name, s.current_stock, s.low_stock_threshold AS reorder_level FROM inventory_stock s JOIN inventory_items i ON s.inventory_id = i.id WHERE s.branch_id=? AND s.current_stock <= s.low_stock_threshold ORDER BY s.current_stock ASC LIMIT 5");
+        $stmtLow->execute([$branchId]);
+        $bmLowStockItems = $stmtLow->fetchAll();
+    } catch (\Throwable $e) {
+        $bmLowStockItems = [];
     }
 }
 
@@ -83,7 +134,7 @@ $csrfToken = Csrf::getToken();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cashier Dashboard - Fika POS</title>
+    <title><?= $isCashier ? 'Cashier Dashboard' : 'Executive BI Dashboard' ?> - Fika POS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -104,28 +155,35 @@ $csrfToken = Csrf::getToken();
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16 items-center">
                     <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 rounded-xl bg-amber-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
-                            <i class="fa-solid fa-cash-register text-base"></i>
+                        <div class="w-10 h-10 rounded-xl <?= $isCashier ? 'bg-amber-600' : 'bg-indigo-600' ?> flex items-center justify-center text-white font-black text-xl shadow-sm">
+                            <i class="<?= $isCashier ? 'fa-solid fa-cash-register' : 'fa-solid fa-chart-line' ?> text-base"></i>
                         </div>
                         <div>
-                            <h1 class="font-bold text-lg text-slate-900 leading-tight">POS Cashier Dashboard</h1>
-                            <p class="text-xs text-slate-500">Live order queue, cash drawers, and terminal reconciliation</p>
+                            <h1 class="font-bold text-lg text-slate-900 leading-tight"><?= $isCashier ? 'POS Cashier Dashboard' : 'POS Executive BI Dashboard' ?></h1>
+                            <p class="text-xs text-slate-500"><?= $isCashier ? 'Live order queue, cash drawers, and terminal reconciliation' : 'Real-time branch business intelligence & performance metrics' ?></p>
                         </div>
                     </div>
                     <div class="flex items-center space-x-6 text-sm">
                         <div class="text-right">
-                            <span class="font-bold text-slate-900 block"><?= e($user['username'] ?? 'Cashier') ?></span>
-                            <span class="text-xs text-slate-500">Branch #<?= e($branchId ?? 'HQ') ?></span>
+                            <span class="font-bold text-slate-900 block"><?= e($user['username'] ?? ($isCashier ? 'Cashier' : 'Branch Manager')) ?></span>
+                            <span class="text-xs text-slate-500">Branch #<?= e($branchId ?? 'HQ') ?> <?= !$isCashier ? '&bull; <span class="text-indigo-600 font-semibold">Executive View</span>' : '' ?></span>
                         </div>
-                        <?php if ($activeSession): ?>
-                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
-                                Register Shift Open (#<?= e($activeSession['id']) ?>)
-                            </div>
+                        <?php if ($isCashier): ?>
+                            <?php if ($activeSession): ?>
+                                <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
+                                    Register Shift Open (#<?= e($activeSession['id']) ?>)
+                                </div>
+                            <?php else: ?>
+                                <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+                                    <span class="w-2 h-2 rounded-full bg-rose-500 mr-2"></span>
+                                    Register Closed
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
-                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
-                                <span class="w-2 h-2 rounded-full bg-rose-500 mr-2"></span>
-                                Register Closed
+                            <div class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                <span class="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
+                                As of <?= date('M d, Y', strtotime($demoDate)) ?>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -134,6 +192,7 @@ $csrfToken = Csrf::getToken();
         </header>
 
         <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 flex-1 w-full space-y-6">
+        <?php if ($isCashier): ?>
         
         <!-- Shift Warning if not open -->
         <?php if (!$activeSession): ?>
@@ -342,8 +401,226 @@ $csrfToken = Csrf::getToken();
                 </div>
             <?php endif; ?>
         </div>
+        <?php else: ?>
+        <!-- ========================================== -->
+        <!-- Branch Manager BI Executive View (Read-Only) -->
+        <!-- ========================================== -->
+        
+        <!-- Header Banner -->
+        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 font-black text-2xl shadow-inner">
+                    <i class="fa-solid fa-chart-pie"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h2 class="text-xl md:text-2xl font-black tracking-tight text-white">Branch Executive Overview</h2>
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 tracking-wider">Read Only</span>
+                    </div>
+                    <p class="text-xs text-slate-300 mt-1">Live business intelligence, sales velocity, and inventory health for Branch #<?= e($branchId) ?></p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-right">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-200 block">Reporting Demo Date</span>
+                    <span class="text-sm font-extrabold text-white flex items-center justify-end space-x-1.5">
+                        <i class="fa-regular fa-calendar-check text-indigo-300 text-xs"></i>
+                        <span><?= date('F j, Y', strtotime($demoDate)) ?></span>
+                    </span>
+                </div>
+                <button onclick="location.reload()" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition active:scale-95" title="Refresh Dashboard">
+                    <i class="fa-solid fa-rotate text-sm"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Row 1: 4 KPI Cards (Grid 4 Columns) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <!-- Card 1: Today's Revenue -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Revenue</span>
+                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg border border-amber-100">
+                        <i class="fa-solid fa-peso-sign"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+                        ₱<?= number_format($bmTodayRev, 2) ?>
+                    </div>
+                    <div class="flex items-center space-x-1.5 text-xs text-slate-500">
+                        <i class="fa-regular fa-clock text-slate-400"></i>
+                        <span>As of <?= date('M d, Y', strtotime($demoDate)) ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Monthly Revenue -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Monthly Revenue</span>
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg border border-indigo-100">
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+                        ₱<?= number_format($bmMonthlyRev, 2) ?>
+                    </div>
+                    <div class="flex items-center space-x-1.5 text-xs text-slate-500">
+                        <i class="fa-regular fa-calendar text-slate-400"></i>
+                        <span>Month of <?= date('F Y', strtotime($demoDate)) ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Completed Orders -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Completed Orders</span>
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg border border-emerald-100">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+                        <?= number_format($bmCompletedOrders) ?>
+                    </div>
+                    <div class="flex items-center space-x-1.5 text-xs text-emerald-600 font-semibold">
+                        <i class="fa-solid fa-check-double text-emerald-500"></i>
+                        <span>Paid & fulfilled today</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4: Low Stock Alerts -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Low Stock Alerts</span>
+                    <div class="w-10 h-10 rounded-xl <?= $bmLowStockAlerts > 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-500 border border-slate-100' ?> flex items-center justify-center font-bold text-lg">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-2xl lg:text-3xl font-black <?= $bmLowStockAlerts > 0 ? 'text-rose-600' : 'text-slate-900' ?> tracking-tight">
+                        <?= number_format($bmLowStockAlerts) ?>
+                    </div>
+                    <div class="flex items-center space-x-1.5 text-xs <?= $bmLowStockAlerts > 0 ? 'text-rose-600 font-semibold' : 'text-slate-500' ?>">
+                        <i class="fa-solid <?= $bmLowStockAlerts > 0 ? 'fa-circle-exclamation text-rose-500' : 'fa-shield-halved text-emerald-500' ?>"></i>
+                        <span><?= $bmLowStockAlerts > 0 ? 'Items below reorder level' : 'All stock levels healthy' ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 2: 2 Column Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Column 1: Top Selling Products -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
+                                <i class="fa-solid fa-trophy text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-base text-slate-900">Top Selling Products</h3>
+                                <p class="text-xs text-slate-500">Bestselling items for <?= date('F Y', strtotime($demoDate)) ?></p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                            Top 5
+                        </span>
+                    </div>
+
+                    <?php if (empty($bmTopProducts)): ?>
+                        <div class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-mug-hot text-3xl mb-2 text-slate-300"></i>
+                            <p class="text-sm font-semibold">No sales recorded this month.</p>
+                        </div>
+                    <?php else: 
+                        $topMaxQty = (float)($bmTopProducts[0]['qty'] ?? 1);
+                        if ($topMaxQty <= 0) $topMaxQty = 1;
+                    ?>
+                        <div class="space-y-4">
+                            <?php foreach ($bmTopProducts as $idx => $prod): 
+                                $qty = (float)$prod['qty'];
+                                $pct = round(($qty / $topMaxQty) * 100);
+                            ?>
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between text-sm">
+                                    <div class="flex items-center space-x-2.5">
+                                        <span class="w-6 h-6 rounded-lg <?= $idx === 0 ? 'bg-amber-100 text-amber-800 font-black' : 'bg-slate-100 text-slate-600 font-bold' ?> text-xs flex items-center justify-center">
+                                            #<?= $idx + 1 ?>
+                                        </span>
+                                        <span class="font-bold text-slate-800"><?= e($prod['name']) ?></span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="font-black text-slate-900"><?= number_format($qty) ?></span>
+                                        <span class="text-xs text-slate-400 font-medium">sold</span>
+                                    </div>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                    <div class="bg-gradient-to-r <?= $idx === 0 ? 'from-amber-500 to-amber-600' : 'from-indigo-500 to-indigo-600' ?> h-2.5 rounded-full transition-all duration-500" style="width: <?= $pct ?>%"></div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Column 2: Low Stock Warnings -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-black">
+                                <i class="fa-solid fa-boxes-stacked text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-base text-slate-900">Low Stock Warnings</h3>
+                                <p class="text-xs text-slate-500">Items at or below reorder threshold</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold <?= !empty($bmLowStockItems) ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200' ?>">
+                            <?= !empty($bmLowStockItems) ? count($bmLowStockItems) . ' Warnings' : 'Healthy' ?>
+                        </span>
+                    </div>
+
+                    <?php if (empty($bmLowStockItems)): ?>
+                        <div class="p-8 text-center text-slate-500 flex flex-col items-center justify-center">
+                            <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl mb-3 border border-emerald-100">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                            <p class="text-sm font-bold text-slate-800">Inventory Levels Healthy</p>
+                            <p class="text-xs text-slate-400 mt-1">No items are currently below their configured reorder thresholds.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="divide-y divide-slate-100">
+                            <?php foreach ($bmLowStockItems as $item): ?>
+                            <div class="py-3 flex items-center justify-between first:pt-0 last:pb-0">
+                                <div>
+                                    <h4 class="font-bold text-sm text-slate-900"><?= e($item['name']) ?></h4>
+                                    <div class="text-xs text-rose-600 font-bold mt-0.5 flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-triangle-exclamation text-rose-500 text-[11px]"></i>
+                                        <span>Current: <?= e($item['current_stock']) ?> &bull; Reorder Level: <?= e($item['reorder_level']) ?></span>
+                                    </div>
+                                </div>
+                                <span class="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-200">
+                                    Low Stock
+                                </span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
     </main>
 
+    <?php if ($isCashier): ?>
     <!-- Cash Payment Modal -->
     <div id="cash-payment-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
@@ -708,6 +985,7 @@ $csrfToken = Csrf::getToken();
             .catch(e => alert('Error opening register: ' + e.message));
         }
     </script>
+    <?php endif; ?>
     </div>
 </body>
 </html>
