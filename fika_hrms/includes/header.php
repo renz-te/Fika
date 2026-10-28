@@ -161,6 +161,13 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         </a>
         <?php endif; ?>
 
+        <?php if (in_array((int)($_SESSION['user']['role_id'] ?? 0), [1, 6], true)): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_devices.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_devices.php') ?>">
+            <i class="fa-solid fa-server w-5 text-center text-cyan-400"></i>
+            <span>System Accounts</span>
+        </a>
+        <?php endif; ?>
+
         <?php else: ?>
 
         <!-- 1. HR MODULES Group -->
@@ -238,9 +245,9 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <!-- 5. SYSTEM & SETTINGS Group -->
         <?php if ($canUsers || $canSystemAccounts || $canSettings || $canBranches): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">SYSTEM &amp; SETTINGS</div>
-        <?php if ($canSystemAccounts): ?>
+        <?php if (in_array((int)($_SESSION['user']['role_id'] ?? 0), [1, 6], true)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_devices.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_devices.php') ?>">
-            <i class="fa-solid fa-tablet-screen-button w-5 text-center text-cyan-400"></i>
+            <i class="fa-solid fa-server w-5 text-center text-cyan-400"></i>
             <span>System Accounts</span>
         </a>
         <?php endif; ?>
