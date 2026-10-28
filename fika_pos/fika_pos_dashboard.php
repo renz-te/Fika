@@ -96,6 +96,12 @@ if ($isCashier) {
     $stmt2->execute([$branchId, $demoDate, $demoDate]);
     $bmMonthlyRev = (float)$stmt2->fetchColumn();
 
+    // Monthly COGS & Gross Profit
+    $stmtCogs = $pdo->prepare("SELECT COALESCE(SUM(ABS(quantity) * unit_cost_snapshot), 0) FROM inventory_ledger WHERE branch_id=? AND type IN ('SALE', 'Sold') AND MONTH(created_at)=MONTH(?) AND YEAR(created_at)=YEAR(?)");
+    $stmtCogs->execute([$branchId, $demoDate, $demoDate]);
+    $bmMonthlyCogs = (float)$stmtCogs->fetchColumn();
+    $bmGrossProfit = $bmMonthlyRev - $bmMonthlyCogs;
+
     // 3. Completed Orders: SELECT COUNT(id) FROM orders WHERE branch_id=? AND order_status='COMPLETED' AND DATE(created_at)=?
     $stmt3 = $pdo->prepare("SELECT COUNT(id) FROM orders WHERE branch_id=? AND order_status='COMPLETED' AND DATE(created_at)=?");
     $stmt3->execute([$branchId, $demoDate]);
@@ -434,80 +440,118 @@ $csrfToken = Csrf::getToken();
             </div>
         </div>
 
-        <!-- Row 1: 4 KPI Cards (Grid 4 Columns) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <!-- Row 1: 6 KPI Cards (Grid cols-1 md:grid-cols-3 lg:grid-cols-6) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <!-- Card 1: Today's Revenue -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
-                <div class="flex items-center justify-between mb-4">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Revenue</span>
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg border border-amber-100">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-base border border-amber-100">
                         <i class="fa-solid fa-peso-sign"></i>
                     </div>
                 </div>
                 <div class="space-y-1">
-                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+                    <div class="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
                         ₱<?= number_format($bmTodayRev, 2) ?>
                     </div>
-                    <div class="flex items-center space-x-1.5 text-xs text-slate-500">
+                    <div class="flex items-center space-x-1 text-xs text-slate-500">
                         <i class="fa-regular fa-clock text-slate-400"></i>
-                        <span>As of <?= date('M d, Y', strtotime($demoDate)) ?></span>
+                        <span>As of <?= date('M d', strtotime($demoDate)) ?></span>
                     </div>
                 </div>
             </div>
 
             <!-- Card 2: Monthly Revenue -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
-                <div class="flex items-center justify-between mb-4">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Monthly Revenue</span>
-                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg border border-indigo-100">
+                    <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base border border-indigo-100">
+                        <i class="fa-solid fa-receipt"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
+                        ₱<?= number_format($bmMonthlyRev, 2) ?>
+                    </div>
+                    <div class="flex items-center space-x-1 text-xs text-slate-500">
+                        <i class="fa-regular fa-calendar text-slate-400"></i>
+                        <span><?= date('M Y', strtotime($demoDate)) ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Monthly COGS -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Monthly COGS</span>
+                    <div class="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold text-base border border-orange-100">
+                        <i class="fa-solid fa-boxes-stacked"></i>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
+                        ₱<?= number_format($bmMonthlyCogs, 2) ?>
+                    </div>
+                    <div class="flex items-center space-x-1 text-xs text-orange-600 font-semibold">
+                        <i class="fa-solid fa-arrow-trend-down text-orange-500"></i>
+                        <span>Cost of sales</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4: Monthly Gross Profit -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-emerald-200/80 hover:shadow-md transition bg-gradient-to-br from-white to-emerald-50/20">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold uppercase tracking-wider text-emerald-800">Gross Profit</span>
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base border border-emerald-100">
                         <i class="fa-solid fa-chart-line"></i>
                     </div>
                 </div>
                 <div class="space-y-1">
-                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
-                        ₱<?= number_format($bmMonthlyRev, 2) ?>
+                    <div class="text-xl lg:text-2xl font-black text-emerald-600 tracking-tight">
+                        ₱<?= number_format($bmGrossProfit, 2) ?>
                     </div>
-                    <div class="flex items-center space-x-1.5 text-xs text-slate-500">
-                        <i class="fa-regular fa-calendar text-slate-400"></i>
-                        <span>Month of <?= date('F Y', strtotime($demoDate)) ?></span>
+                    <div class="flex items-center space-x-1 text-xs text-emerald-600 font-bold">
+                        <i class="fa-solid fa-arrow-trend-up text-emerald-500"></i>
+                        <span><?= $bmMonthlyRev > 0 ? round(($bmGrossProfit / $bmMonthlyRev) * 100, 1) : 0 ?>% margin</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Card 3: Completed Orders -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
-                <div class="flex items-center justify-between mb-4">
+            <!-- Card 5: Completed Orders -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Completed Orders</span>
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg border border-emerald-100">
+                    <div class="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold text-base border border-teal-100">
                         <i class="fa-solid fa-circle-check"></i>
                     </div>
                 </div>
                 <div class="space-y-1">
-                    <div class="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+                    <div class="text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
                         <?= number_format($bmCompletedOrders) ?>
                     </div>
-                    <div class="flex items-center space-x-1.5 text-xs text-emerald-600 font-semibold">
-                        <i class="fa-solid fa-check-double text-emerald-500"></i>
-                        <span>Paid & fulfilled today</span>
+                    <div class="flex items-center space-x-1 text-xs text-teal-600 font-semibold">
+                        <i class="fa-solid fa-check-double text-teal-500"></i>
+                        <span>Paid today</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Card 4: Low Stock Alerts -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 hover:shadow-md transition">
-                <div class="flex items-center justify-between mb-4">
+            <!-- Card 6: Low Stock Alerts -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Low Stock Alerts</span>
-                    <div class="w-10 h-10 rounded-xl <?= $bmLowStockAlerts > 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-500 border border-slate-100' ?> flex items-center justify-center font-bold text-lg">
+                    <div class="w-9 h-9 rounded-xl <?= $bmLowStockAlerts > 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-500 border border-slate-100' ?> flex items-center justify-center font-bold text-base">
                         <i class="fa-solid fa-triangle-exclamation"></i>
                     </div>
                 </div>
                 <div class="space-y-1">
-                    <div class="text-2xl lg:text-3xl font-black <?= $bmLowStockAlerts > 0 ? 'text-rose-600' : 'text-slate-900' ?> tracking-tight">
+                    <div class="text-xl lg:text-2xl font-black <?= $bmLowStockAlerts > 0 ? 'text-rose-600' : 'text-slate-900' ?> tracking-tight">
                         <?= number_format($bmLowStockAlerts) ?>
                     </div>
-                    <div class="flex items-center space-x-1.5 text-xs <?= $bmLowStockAlerts > 0 ? 'text-rose-600 font-semibold' : 'text-slate-500' ?>">
+                    <div class="flex items-center space-x-1 text-xs <?= $bmLowStockAlerts > 0 ? 'text-rose-600 font-semibold' : 'text-slate-500' ?>">
                         <i class="fa-solid <?= $bmLowStockAlerts > 0 ? 'fa-circle-exclamation text-rose-500' : 'fa-shield-halved text-emerald-500' ?>"></i>
-                        <span><?= $bmLowStockAlerts > 0 ? 'Items below reorder level' : 'All stock levels healthy' ?></span>
+                        <span><?= $bmLowStockAlerts > 0 ? 'Reorder needed' : 'Stock healthy' ?></span>
                     </div>
                 </div>
             </div>
