@@ -174,7 +174,7 @@ class Auth {
         }
 
         if (in_array($roleId, [9], true) || in_array($upperRole, ['CASHIER TERMINAL', 'CASHIER'], true)) {
-            return 'fika_pos/fika_pos_kiosk.php';
+            return 'fika_pos/fika_pos_dashboard.php';
         }
 
         // Admins, CHR, Branch HR & Branch Managers always go to HRMS management dashboard

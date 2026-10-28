@@ -100,7 +100,7 @@ $categories = $catStmt->fetchAll();
 
 // Fetch active products available for this branch
 $prodStmt = $pdo->prepare("
-    SELECT p.id, p.name, p.category, p.price, p.price_cents, p.image_url, p.description,
+    SELECT p.id, p.name, p.category, p.price, p.price_cents, p.image_path,
            bp.is_active AS branch_active
     FROM products p
     LEFT JOIN branch_products bp ON bp.product_id = p.id AND bp.branch_id = ?
@@ -113,10 +113,13 @@ $prodStmt->execute([$branchId]);
 $products = $prodStmt->fetchAll();
 
 $groupedProducts = [];
-foreach ($products as $p) {
+foreach ($products as &$p) {
+    $p['image_url'] = $p['image_path'] ?? null;
+    $p['description'] = null;
     $cat = $p['category'] ?: 'Other';
     $groupedProducts[$cat][] = $p;
 }
+unset($p);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -144,6 +147,11 @@ foreach ($products as $p) {
             </div>
         </div>
         <div class="flex items-center space-x-4 text-sm">
+            <?php if (Auth::check()): ?>
+            <a href="fika_pos_dashboard.php" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-200 border border-amber-800/60 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5" title="Return to Cashier Dashboard">
+                &larr; <span>Dashboard</span>
+            </a>
+            <?php endif; ?>
             <div id="kiosk-order-type" class="text-xs bg-amber-900/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/60 px-3 py-1.5 rounded-lg font-semibold tracking-wide cursor-pointer select-none transition">
                 Order Type: <span class="text-amber-100 font-bold">Dine In</span>
             </div>
@@ -188,8 +196,11 @@ foreach ($products as $p) {
                          onclick="addToCart(<?= (int)$prod['id'] ?>, '<?= e(addslashes($prod['name'])) ?>', <?= $priceCents ?>)">
                         
                         <div class="aspect-square bg-amber-50 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
-                            <?php if (!empty($prod['image_url'])): ?>
-                                <img src="<?= e($prod['image_url']) ?>" alt="<?= e($prod['name']) ?>" class="object-cover w-full h-full">
+                            <?php 
+                            $imgSrc = !empty($prod['image_path']) ? $prod['image_path'] : (!empty($prod['image_url']) ? $prod['image_url'] : null);
+                            if (!empty($imgSrc)): 
+                            ?>
+                                <img src="<?= e($imgSrc) ?>" alt="<?= e($prod['name']) ?>" class="object-cover w-full h-full">
                             <?php else: ?>
                                 <span class="text-3xl font-black text-amber-800/30">FIKA</span>
                             <?php endif; ?>
