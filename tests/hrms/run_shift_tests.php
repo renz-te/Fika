@@ -87,7 +87,7 @@ global $pdo;
 // 0. Cleanup fixture IDs
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
 $pdo->exec("DELETE FROM role_permissions WHERE role_id IN (9201, 9202);");
-$pdo->exec("DELETE FROM users WHERE id IN (9201, 9202, 9203, 9204);");
+$pdo->exec("DELETE FROM users WHERE id IN (9201, 9202, 9203, 9204, 9205);");
 $pdo->exec("DELETE FROM open_shifts WHERE branch_id IN (9201, 9202);");
 $pdo->exec("DELETE FROM shifts WHERE branch_id IN (9201, 9202);");
 $pdo->exec("DELETE FROM leave_requests WHERE employee_id IN (9201, 9202, 9203);");
@@ -98,12 +98,9 @@ $pdo->exec("DELETE FROM roles WHERE id IN (9201, 9202);");
 // 1. Branches
 $pdo->exec("INSERT INTO branches (id, name) VALUES (9201, 'Shift Branch 1'), (9202, 'Shift Branch 2');");
 
-// 2. Roles & Permissions
-$pdo->exec("INSERT INTO roles (id, name) VALUES (9201, 'Shift BM'), (9202, 'Shift Staff');");
+// 2. Roles & Permissions (Staff role fixture)
+$pdo->exec("INSERT INTO roles (id, name) VALUES (9202, 'Shift Staff');");
 $pdo->exec("INSERT INTO role_permissions (role_id, permission_name) VALUES 
-    (9201, 'schedule.view'),
-    (9201, 'schedule.manage'),
-    (9201, 'schedule.claim'),
     (9202, 'schedule.view'),
     (9202, 'schedule.claim');");
 
@@ -113,20 +110,28 @@ $pdo->exec("INSERT INTO employees (id, employee_code, first_name, last_name, ema
     (9202, 'EMP_SH_B', 'Bob', 'Shift', 'bob@shift.local', 9201, 'ACTIVE'),
     (9203, 'EMP_SH_C', 'Charlie', 'Shift', 'charlie@shift.local', 9202, 'ACTIVE');");
 
-// 4. Users
+// 4. Users (BHR = Role 5, BM = Role 6, Staff = Role 9202)
 $passHash = password_hash('Pass123456', PASSWORD_DEFAULT);
 $pdo->exec("INSERT INTO users (id, username, password, role_id, employee_id, branch_id) VALUES 
-    (9201, 'bm_user', '{$passHash}', 9201, 9201, 9201),
+    (9201, 'bm_user', '{$passHash}', 6, 9201, 9201),
     (9202, 'emp_a_user', '{$passHash}', 9202, 9201, 9201),
     (9203, 'emp_b_user', '{$passHash}', 9202, 9202, 9201),
-    (9204, 'emp_c_user', '{$passHash}', 9202, 9203, 9202);");
+    (9204, 'emp_c_user', '{$passHash}', 9202, 9203, 9202),
+    (9205, 'bhr_user', '{$passHash}', 5, NULL, 9201);");
 
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
 
 $sessionBM = [
     'id' => 9201,
-    'role_id' => 9201,
+    'role_id' => 6,
     'employee_id' => 9201,
+    'branch_id' => 9201
+];
+
+$sessionBHR = [
+    'id' => 9205,
+    'role_id' => 5,
+    'employee_id' => null,
     'branch_id' => 9201
 ];
 
@@ -152,10 +157,10 @@ $sessionEmpC = [
 ];
 
 // =========================================================================
-// Case 1: BM creates a shift for Employee A. Employee A sees it in ESS.
+// Case 1: BHR creates a shift for Employee A. Employee A sees it in ESS.
 // =========================================================================
 $targetDate1 = date('Y-m-d', strtotime('+1 day'));
-$resCreate1 = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
+$resCreate1 = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBHR, [], [
     'action' => 'create',
     'branch_id' => 9201,
     'employee_id' => 9201,
@@ -168,6 +173,9 @@ $resCreate1 = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, 
 $createJson1 = json_decode($resCreate1['output'], true);
 $shiftId1 = (int)($createJson1['shift_id'] ?? 0);
 
+// Publish shift so it is visible in ESS
+$pdo->exec("UPDATE shifts SET status = 'PUBLISHED' WHERE id = {$shiftId1}");
+
 $resEssA1 = runEndpoint('fika_hrms/fika_hrms_ess.php', $sessionEmpA);
 $case1Passed = ($resCreate1['code'] === 200)
     && ($shiftId1 > 0)
@@ -175,16 +183,16 @@ $case1Passed = ($resCreate1['code'] === 200)
     && (strpos($resEssA1['output'], '08:00 AM') !== false);
 
 assertTest(
-    "Case 1: BM creates a shift for Employee A. Employee A sees it in ESS",
+    "Case 1: BHR creates a shift for Employee A. Employee A sees it in ESS",
     $case1Passed,
     "Failed to create or view shift: HTTP {$resCreate1['code']}, Output: {$resCreate1['output']}"
 );
 
 // =========================================================================
-// Case 2: BM assigns an overlapping shift to Employee A -> 400 error.
+// Case 2: BHR assigns an overlapping shift to Employee A -> 400 error.
 // =========================================================================
 // Existing shift: 08:00 to 16:00 on $targetDate1. Attempting 12:00 to 20:00 (overlaps)
-$resOverlap = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
+$resOverlap = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBHR, [], [
     'action' => 'create',
     'branch_id' => 9201,
     'employee_id' => 9201,
@@ -198,7 +206,7 @@ $case2Passed = ($resOverlap['code'] === 400)
     && (strpos($resOverlap['output'], 'Overlapping shift exists.') !== false);
 
 assertTest(
-    "Case 2: BM assigns an overlapping shift to Employee A -> 400 error",
+    "Case 2: BHR assigns an overlapping shift to Employee A -> 400 error",
     $case2Passed,
     "Expected HTTP 400 Overlapping shift exists. Got HTTP {$resOverlap['code']}, Output: {$resOverlap['output']}"
 );
@@ -207,7 +215,7 @@ assertTest(
 // Case 3: DRAFT shift does NOT appear in ESS until published.
 // =========================================================================
 $targetDateDraft = date('Y-m-d', strtotime('+2 days'));
-$resCreateDraft = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
+$resCreateDraft = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBHR, [], [
     'action' => 'create',
     'branch_id' => 9201,
     'employee_id' => 9201,
@@ -224,7 +232,10 @@ $draftShiftId = (int)($draftJson['shift_id'] ?? 0);
 $resEssDraftBefore = runEndpoint('fika_hrms/fika_hrms_ess.php', $sessionEmpA);
 $hiddenInEss = (strpos($resEssDraftBefore['output'], date('l, M d, Y', strtotime($targetDateDraft))) === false);
 
-// Publish the draft shift
+// Budget approve the shift so BM can publish it
+$pdo->exec("UPDATE shifts SET status = 'APPROVED' WHERE id = {$draftShiftId}");
+
+// Publish the draft shift via BM
 $resPublish = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
     'action' => 'publish',
     'shift_id' => $draftShiftId
@@ -243,12 +254,12 @@ assertTest(
 );
 
 // =========================================================================
-// Case 4: BM for Branch 1 cannot schedule shifts for Branch 2 (403).
+// Case 4: BHR for Branch 1 cannot schedule shifts for Branch 2 (403).
 // =========================================================================
 $targetDateBranch2 = date('Y-m-d', strtotime('+3 days'));
-$resCrossBranch = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
+$resCrossBranch = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBHR, [], [
     'action' => 'create',
-    'branch_id' => 9202, // Branch 2 (BM is assigned to Branch 9201)
+    'branch_id' => 9202, // Branch 2 (BHR is assigned to Branch 9201)
     'employee_id' => 9203, // Employee C (belongs to Branch 9202)
     'shift_date' => $targetDateBranch2,
     'start_time' => '08:00',
@@ -258,7 +269,7 @@ $resCrossBranch = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $session
 $case4Passed = ($resCrossBranch['code'] === 403);
 
 assertTest(
-    "Case 4: BM for Branch 1 cannot schedule shifts for Branch 2 (403)",
+    "Case 4: BHR for Branch 1 cannot schedule shifts for Branch 2 (403)",
     $case4Passed,
     "Expected HTTP 403. Got HTTP {$resCrossBranch['code']}, Output: {$resCrossBranch['output']}"
 );
@@ -323,8 +334,8 @@ $leaveDate = date('Y-m-d', strtotime('+5 days'));
 $pdo->exec("INSERT INTO leave_requests (employee_id, type, date_from, date_to, days, reason, status) VALUES 
     (9201, 'VACATION', '{$leaveDate}', '{$leaveDate}', 1, 'Approved Vacation', 'APPROVED');");
 
-// 2. BM attempts to assign shift on $leaveDate to Employee A
-$resLeaveConflict = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBM, [], [
+// 2. BHR attempts to assign shift on $leaveDate to Employee A
+$resLeaveConflict = runEndpoint('fika_hrms/api/fika_hrms_shift_save.php', $sessionBHR, [], [
     'action' => 'create',
     'branch_id' => 9201,
     'employee_id' => 9201,
@@ -346,7 +357,7 @@ assertTest(
 // 0. Cleanup fixture data
 $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
 $pdo->exec("DELETE FROM role_permissions WHERE role_id IN (9201, 9202);");
-$pdo->exec("DELETE FROM users WHERE id IN (9201, 9202, 9203, 9204);");
+$pdo->exec("DELETE FROM users WHERE id IN (9201, 9202, 9203, 9204, 9205);");
 $pdo->exec("DELETE FROM open_shifts WHERE branch_id IN (9201, 9202);");
 $pdo->exec("DELETE FROM shifts WHERE branch_id IN (9201, 9202);");
 $pdo->exec("DELETE FROM leave_requests WHERE employee_id IN (9201, 9202, 9203);");
