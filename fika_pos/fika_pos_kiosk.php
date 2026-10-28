@@ -166,6 +166,7 @@ foreach ($rawModifiers as $m) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Self-Service Kiosk - Fika Coffee</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -421,16 +422,21 @@ foreach ($rawModifiers as $m) {
                 <button id="btn-pay-gcash" onclick="initiateDigitalPayment('gcash')" 
                         class="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                    <span>Pay with GCash / E-Wallet</span>
+                    <span>Pay via GCash / Maya</span>
                 </button>
 
                 <div id="qr-display-box" class="hidden bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3">
-                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wider">Scan QR Code to Pay</p>
+                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-center space-x-1.5">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                        <span>Scan QR Code with GCash or Maya</span>
+                    </p>
                     <div class="flex justify-center">
-                        <img id="qr-image" src="" alt="GCash QR Code" class="w-48 h-48 rounded-xl border border-slate-200 shadow-sm bg-white p-2">
+                        <div id="kiosk-qrcode" class="p-3 bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center min-w-[200px] min-h-[200px]"></div>
+                        <img id="qr-image" src="" alt="Payment QR Code" class="hidden w-48 h-48 rounded-xl border border-slate-200 shadow-sm bg-white p-2">
                     </div>
+                    <div class="text-[11px] text-slate-500 font-medium">Scan using your mobile phone camera or e-wallet app</div>
                     <a id="qr-direct-link" href="#" target="_blank" class="inline-block text-xs text-blue-600 hover:text-blue-700 font-bold underline">
-                        Open Checkout on this device &rarr;
+                        Open Checkout on this screen &rarr;
                     </a>
                 </div>
             </div>
@@ -889,18 +895,36 @@ foreach ($rawModifiers as $m) {
                     throw new Error(data.error || 'Digital payment temporarily unavailable.');
                 }
 
-                // Show QR code
-                document.getElementById('qr-image').src = data.qr_code_url;
+                // Render QR code dynamically
+                const qrContainer = document.getElementById('kiosk-qrcode');
+                qrContainer.innerHTML = '';
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(qrContainer, {
+                        text: data.checkout_url,
+                        width: 190,
+                        height: 190,
+                        colorDark: "#0f172a",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                    document.getElementById('qr-image').classList.add('hidden');
+                    qrContainer.classList.remove('hidden');
+                } else if (data.qr_code_url) {
+                    document.getElementById('qr-image').src = data.qr_code_url;
+                    document.getElementById('qr-image').classList.remove('hidden');
+                    qrContainer.classList.add('hidden');
+                }
+
                 document.getElementById('qr-direct-link').href = data.checkout_url;
                 document.getElementById('qr-display-box').classList.remove('hidden');
                 gcashBtn.classList.add('hidden');
 
             } catch (err) {
-                // Do not disrupt the queue ticket with an alert popup; show inline note
                 console.warn('Digital payment notice:', err.message);
                 gcashBtn.disabled = false;
-                gcashBtn.innerHTML = `<span>Digital Payment Unavailable - Pay at Counter</span>`;
-                gcashBtn.className = "w-full py-3.5 bg-slate-200 text-slate-700 font-bold rounded-2xl transition cursor-not-allowed text-xs";
+                gcashBtn.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg><span>Pay via GCash / Maya</span>`;
+                gcashBtn.className = "w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-2";
+                alert('Digital Payment Notice: ' + err.message);
             }
         }
 
@@ -946,7 +970,7 @@ foreach ($rawModifiers as $m) {
                 gcashBtn.className = "w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-2";
                 gcashBtn.innerHTML = `
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                    <span>Pay with GCash / E-Wallet</span>
+                    <span>Pay via GCash / Maya</span>
                 `;
             }
             const qrBox = document.getElementById('qr-display-box');

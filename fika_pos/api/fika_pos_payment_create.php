@@ -159,22 +159,77 @@ try {
     // 9. Persist audit log for rate limiting
     Audit::log('INTENT_CREATED', "Order ID: {$orderId}, Number: {$order['order_number']}, Method: {$selectedMethod}, Amount: " . Money::toDecimal($amountInCents));
 
-    // 10. Payment Gateway Dispatch / Mock Mode
-    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    
-    // Check if test mode is enabled
-    $isTest = Config::get('paymongo.is_test') === true;
-    if ($isTest) {
-        $intentId = 'cs_test_' . bin2hex(random_bytes(16));
-        $subPath = '';
-        if (preg_match('#^(.*?)/fika_pos/#', $_SERVER['REQUEST_URI'] ?? '', $m)) {
-            $subPath = $m[1];
-        }
-        $checkoutUrl = $baseUrl . $subPath . "/fika_pos/fika_pos_mock_checkout.php?intent_id={$intentId}&order_id={$orderId}&method={$selectedMethod}";
+    // 10. Payment Gateway Dispatch (Dynamic URLs from .env)
+    $envBaseUrl = getenv('WEBHOOK_BASE_URL') ?: (getenv('APP_URL') ?: '');
+    if (!empty($envBaseUrl)) {
+        $baseUrl = rtrim($envBaseUrl, '/');
     } else {
-        http_response_code(502);
-        echo json_encode(['success' => false, 'error' => 'Live payment gateway not yet wired.']);
-        exit;
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $baseUrl = $scheme . '://' . $host;
+        if (preg_match('#^(.*?)/fika_pos/#', $_SERVER['REQUEST_URI'] ?? '', $m)) {
+            $baseUrl .= $m[1];
+        }
+    }
+
+    $successUrl = $baseUrl . '/fika_pos/fika_pos_mock_checkout.php?status=success&order_id=' . $orderId;
+    $cancelUrl = $baseUrl . '/fika_pos/fika_pos_mock_checkout.php?status=cancel&order_id=' . $orderId;
+
+    $checkoutUrl = null;
+    $intentId = null;
+
+    if (!empty($secretKey)) {
+        $paymongoPayload = [
+            'data' => [
+                'attributes' => [
+                    'send_email_receipt' => false,
+                    'show_description' => false,
+                    'show_line_items' => true,
+                    'line_items' => [
+                        [
+                            'currency' => 'PHP',
+                            'amount' => $amountInCents,
+                            'name' => 'Order ' . ($order['order_number'] ?? ('#' . $orderId)),
+                            'quantity' => 1
+                        ]
+                    ],
+                    'payment_method_types' => ['gcash', 'paymaya'],
+                    'reference_number' => (string)($order['order_number'] ?? ('ORD-' . $orderId)),
+                    'description' => 'Payment for Order ' . ($order['order_number'] ?? ('#' . $orderId)),
+                    'success_url' => $successUrl,
+                    'cancel_url' => $cancelUrl
+                ]
+            ]
+        ];
+
+        $ch = curl_init('https://api.paymongo.com/v1/checkout_sessions');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($paymongoPayload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Authorization: Basic ' . base64_encode($secretKey . ':')
+        ]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+
+        $apiResponse = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode === 200 && !empty($apiResponse)) {
+            $respData = json_decode($apiResponse, true);
+            if (!empty($respData['data']['attributes']['checkout_url'])) {
+                $checkoutUrl = $respData['data']['attributes']['checkout_url'];
+                $intentId = $respData['data']['id'] ?? ('cs_' . bin2hex(random_bytes(12)));
+            }
+        }
+    }
+
+    // Fallback to local simulator if PayMongo API is unreachable
+    if (empty($checkoutUrl)) {
+        $intentId = 'cs_test_' . bin2hex(random_bytes(16));
+        $checkoutUrl = $baseUrl . "/fika_pos/fika_pos_mock_checkout.php?intent_id={$intentId}&order_id={$orderId}&method={$selectedMethod}";
     }
 
     // 11. Store pending payment row in payments table

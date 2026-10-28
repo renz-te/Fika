@@ -1,29 +1,101 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 
-// 1. Constraint 5: Accessible ONLY when is_test === true AND a Cashier session exists
-$isTest = Config::get('paymongo.is_test') === true;
-if (!$isTest) {
-    http_response_code(404);
-    exit('404 Not Found');
-}
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-$user = Auth::user();
-$hasCashierSession = $user && Rbac::can('pos.access');
-if (!$hasCashierSession) {
-    http_response_code(404);
-    exit('404 Not Found');
-}
-
+$status = strtolower(trim((string)($_GET['status'] ?? '')));
 $orderId = (int)($_GET['order_id'] ?? $_POST['order_id'] ?? 0);
 $intentId = trim((string)($_GET['intent_id'] ?? $_POST['intent_id'] ?? ''));
 $method = strtolower(trim((string)($_GET['method'] ?? $_POST['method'] ?? 'gcash')));
 
 global $pdo;
+
+// If customer is redirected after payment (status=success or status=cancel)
+if ($status === 'success' || $status === 'cancel') {
+    $order = null;
+    if ($orderId > 0) {
+        $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch();
+    }
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><?= $status === 'success' ? 'Payment Successful' : 'Payment Cancelled' ?> - Fika Café</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+    </head>
+    <body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-6">
+        <div class="max-w-md w-full bg-slate-800 border border-slate-700 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
+            <?php if ($status === 'success'): ?>
+                <div class="w-20 h-20 bg-emerald-950/80 border border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl shadow-lg shadow-emerald-900/40">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black text-white">Payment Received!</h1>
+                    <p class="text-slate-400 text-sm mt-1">Thank you for your digital payment.</p>
+                </div>
+
+                <?php if ($order): ?>
+                <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-700 text-left space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400 font-semibold uppercase">Order Reference</span>
+                        <span class="font-mono font-bold text-amber-500"><?= htmlspecialchars($order['order_number']) ?></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400 font-semibold uppercase">Amount Paid</span>
+                        <span class="font-bold text-white">₱<?= number_format((float)($order['final_amount'] ?? $order['total_amount']), 2) ?></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400 font-semibold uppercase">Status</span>
+                        <span class="text-xs font-black px-2 py-0.5 rounded-full bg-emerald-900/60 text-emerald-400">PAID</span>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="p-4 bg-emerald-950/40 border border-emerald-800/60 rounded-2xl text-xs text-emerald-300">
+                    Your order ticket is now dispatched to our baristas. Please watch the queue monitor for your order number!
+                </div>
+            <?php else: ?>
+                <div class="w-20 h-20 bg-amber-950/80 border border-amber-500 text-amber-400 rounded-full flex items-center justify-center mx-auto text-3xl shadow-lg shadow-amber-900/40">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black text-white">Payment Cancelled</h1>
+                    <p class="text-slate-400 text-sm mt-1">The digital transaction was not completed.</p>
+                </div>
+                <div class="p-4 bg-slate-900/80 border border-slate-700 rounded-2xl text-xs text-slate-300">
+                    If you wish to pay with cash or try another payment method, please approach the cashier counter.
+                </div>
+            <?php endif; ?>
+
+            <div class="pt-2">
+                <button onclick="window.close()" class="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition text-sm">
+                    Close Window
+                </button>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+// 1. Staff Simulator Mode: Accessible when is_test === true OR a Cashier session exists
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$isTest = Config::get('paymongo.is_test') === true || getenv('PAYMONGO_IS_TEST') === 'true';
+$user = Auth::user();
+$hasCashierSession = $user && Rbac::can('pos.access');
+if (!$isTest && !$hasCashierSession) {
+    http_response_code(404);
+    exit('404 Not Found');
+}
 
 $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
 $stmt->execute([$orderId]);

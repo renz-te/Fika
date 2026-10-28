@@ -85,6 +85,7 @@ $csrfToken = Csrf::getToken();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cashier Dashboard - Fika POS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
@@ -400,17 +401,25 @@ $csrfToken = Csrf::getToken();
                 <span class="text-2xl font-black text-blue-900" id="digital-amount-due">₱0.00</span>
             </div>
 
-            <div id="digital-qr-wrapper" class="space-y-3">
-                <div class="flex justify-center">
-                    <img id="digital-qr-img" src="" alt="Payment QR Code" class="w-48 h-48 rounded-2xl border border-slate-200 shadow-sm p-2 bg-white">
+            <div id="digital-qr-wrapper" class="space-y-4">
+                <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
+                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center justify-center space-x-1.5">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                        <span>Customer Scan QR (GCash / Maya)</span>
+                    </p>
+                    <div class="flex justify-center">
+                        <div id="cashier-qrcode" class="p-3 bg-white rounded-2xl border border-slate-200 shadow-sm flex items-center justify-center min-w-[210px] min-h-[210px]"></div>
+                        <img id="digital-qr-img" src="" alt="Payment QR Code" class="hidden w-48 h-48 rounded-2xl border border-slate-200 shadow-sm p-2 bg-white">
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-2 font-medium">Turn screen toward customer to scan</p>
                 </div>
-                <div class="flex items-center justify-center space-x-2 text-xs font-bold text-amber-600 bg-amber-50 py-2 rounded-xl border border-amber-200">
+                <div class="flex items-center justify-center space-x-2 text-xs font-bold text-amber-600 bg-amber-50 py-2.5 rounded-xl border border-amber-200">
                     <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
                     <span>Waiting for customer payment confirmation...</span>
                 </div>
-                <div class="pt-2 flex justify-center">
+                <div class="pt-1 flex justify-center">
                     <a id="digital-checkout-link" href="#" target="_blank" class="text-xs font-bold text-blue-600 hover:text-blue-800 underline">
-                        Open Customer Checkout Simulator &rarr;
+                        Open Customer Checkout Link &rarr;
                     </a>
                 </div>
             </div>
@@ -464,7 +473,26 @@ $csrfToken = Csrf::getToken();
                     throw new Error(data.error || 'Failed to create digital checkout.');
                 }
 
-                document.getElementById('digital-qr-img').src = data.qr_code_url;
+                // Render dynamic QR Code using qrcode.js
+                const qrContainer = document.getElementById('cashier-qrcode');
+                qrContainer.innerHTML = '';
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(qrContainer, {
+                        text: data.checkout_url,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#0f172a",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                    document.getElementById('digital-qr-img').classList.add('hidden');
+                    qrContainer.classList.remove('hidden');
+                } else if (data.qr_code_url) {
+                    document.getElementById('digital-qr-img').src = data.qr_code_url;
+                    document.getElementById('digital-qr-img').classList.remove('hidden');
+                    qrContainer.classList.add('hidden');
+                }
+
                 document.getElementById('digital-checkout-link').href = data.checkout_url;
                 document.getElementById('digital-modal').classList.remove('hidden');
 
