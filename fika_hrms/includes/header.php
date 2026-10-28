@@ -67,6 +67,12 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         : 'text-slate-300 hover:text-white hover:bg-slate-800 transition';
 };
 ?>
+<?php
+// Role 13 (Kiosk Terminal) is a customer-facing tablet interface: do not render sidebar
+if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
+    return;
+}
+?>
 <!-- Sidebar Navigation -->
 <aside id="appSidebar" class="w-64 bg-slate-900 text-slate-200 flex flex-col flex-shrink-0 border-r border-slate-800 z-20 h-screen sticky top-0 overflow-y-auto transition-all duration-300 ease-in-out">
     <!-- Brand Header -->
@@ -82,6 +88,7 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
 
     <!-- Navigation Links -->
     <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+        <?php if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) { return; } ?>
         <!-- Personal Section (Always visible except for Cashier Terminal) -->
         <?php if ((int)($_SESSION['user']['role_id'] ?? 0) !== 9): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">PERSONAL</div>

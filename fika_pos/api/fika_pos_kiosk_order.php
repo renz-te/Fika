@@ -61,11 +61,22 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, NOW())
     ");
 
+    $modStmt = $pdo->prepare("
+        INSERT INTO order_item_modifiers (order_item_id, modifier_id, price_snapshot, created_at) 
+        VALUES (?, ?, ?, NOW())
+    ");
+
     $prodLookup = $pdo->prepare("
         SELECT p.*, bp.is_active AS branch_active 
         FROM products p
         LEFT JOIN branch_products bp ON bp.product_id = p.id AND bp.branch_id = ?
         WHERE p.id = ? AND p.deleted_at IS NULL
+    ");
+
+    $modLookup = $pdo->prepare("
+        SELECT id, name, price, is_active 
+        FROM modifiers 
+        WHERE id = ? AND deleted_at IS NULL
     ");
 
     foreach ($input['items'] as $item) {
@@ -88,17 +99,43 @@ try {
             ? (int)$product['price_cents']
             : Money::toCentavos($product['price']);
 
-        $lineTotalCentavos = $basePriceCentavos * $qty;
+        $itemUnitCentavos = $basePriceCentavos;
+        $modIds = $item['modifier_ids'] ?? $item['modifiers'] ?? [];
+        $validMods = [];
+
+        if (!empty($modIds) && is_array($modIds)) {
+            foreach ($modIds as $mId) {
+                $mId = (int)$mId;
+                if ($mId <= 0) continue;
+                $modLookup->execute([$mId]);
+                $mod = $modLookup->fetch();
+                if ($mod && (int)$mod['is_active'] === 1) {
+                    $mPriceCentavos = Money::toCentavos($mod['price']);
+                    $itemUnitCentavos += $mPriceCentavos;
+                    $validMods[] = [
+                        'id' => $mId,
+                        'price_decimal' => Money::toDecimal($mPriceCentavos)
+                    ];
+                }
+            }
+        }
+
+        $lineTotalCentavos = $itemUnitCentavos * $qty;
         $totalAmountCentavos += $lineTotalCentavos;
 
         $itemStmt->execute([
             $orderId,
             $prodId,
             $qty,
-            Money::toDecimal($basePriceCentavos),
-            $basePriceCentavos,
+            Money::toDecimal($itemUnitCentavos),
+            $itemUnitCentavos,
             Money::toDecimal($lineTotalCentavos)
         ]);
+        $orderItemId = (int)$pdo->lastInsertId();
+
+        foreach ($validMods as $vm) {
+            $modStmt->execute([$orderItemId, $vm['id'], $vm['price_decimal']]);
+        }
     }
 
     if ($totalAmountCentavos <= 0) {

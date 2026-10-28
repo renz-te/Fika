@@ -120,6 +120,44 @@ foreach ($products as &$p) {
     $groupedProducts[$cat][] = $p;
 }
 unset($p);
+
+// Fetch active modifiers for customer kiosk modifier modal
+$modStmt = $pdo->query("SELECT id, name, price FROM modifiers WHERE is_active = 1 AND deleted_at IS NULL ORDER BY id ASC");
+$rawModifiers = $modStmt->fetchAll();
+
+$modifiersCatalog = [
+    'cold_sizes' => [],
+    'hot_sizes' => [],
+    'addons' => [],
+    'sugar' => [],
+    'ice' => []
+];
+
+foreach ($rawModifiers as $m) {
+    $mName = (string)$m['name'];
+    $mPrice = (float)$m['price'];
+    $mPriceCents = Money::toCentavos($mPrice);
+    $entry = [
+        'id' => (int)$m['id'],
+        'name' => $mName,
+        'price' => $mPrice,
+        'priceCents' => $mPriceCents
+    ];
+
+    if ($mName === 'Size: M (Cold)' || $mName === 'Size: L (Cold)') {
+        $entry['label'] = ($mName === 'Size: M (Cold)') ? 'Medium (16oz)' : 'Large (22oz)';
+        $modifiersCatalog['cold_sizes'][] = $entry;
+    } elseif ($mName === 'Size: M (Hot)' || $mName === 'Size: L (Hot)') {
+        $entry['label'] = ($mName === 'Size: M (Hot)') ? 'Medium (12oz)' : 'Large (16oz)';
+        $modifiersCatalog['hot_sizes'][] = $entry;
+    } elseif (in_array($mName, ['Extra Espresso Shot', 'Pearls', 'Whipped Cream', 'Caramel Drizzle'], true)) {
+        $modifiersCatalog['addons'][] = $entry;
+    } elseif (in_array($mName, ['Less Sugar', 'Extra Sugar'], true)) {
+        $modifiersCatalog['sugar'][] = $entry;
+    } elseif (in_array($mName, ['Less Ice', 'No Ice', 'Extra Ice'], true)) {
+        $modifiersCatalog['ice'][] = $entry;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -147,7 +185,10 @@ unset($p);
             </div>
         </div>
         <div class="flex items-center space-x-4 text-sm">
-            <?php if (Auth::check()): ?>
+            <?php 
+            $currentUserRoleId = (int)(Auth::user()['role_id'] ?? 0);
+            if (Auth::check() && in_array($currentUserRoleId, [1, 9], true)): 
+            ?>
             <a href="fika_pos_dashboard.php" class="text-xs bg-amber-900/60 hover:bg-amber-900 text-amber-200 border border-amber-800/60 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5" title="Return to Cashier Dashboard">
                 &larr; <span>Dashboard</span>
             </a>
@@ -193,7 +234,7 @@ unset($p);
                     ?>
                     <div class="product-card bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all p-4 flex flex-col justify-between cursor-pointer active:scale-95"
                          data-category="<?= e($prod['category']) ?>"
-                         onclick="addToCart(<?= (int)$prod['id'] ?>, '<?= e(addslashes($prod['name'])) ?>', <?= $priceCents ?>)">
+                         onclick="openModifierModal(<?= (int)$prod['id'] ?>, '<?= e(addslashes($prod['name'])) ?>', <?= $priceCents ?>, '<?= e(addslashes($prod['category'])) ?>')">
                         
                         <div class="aspect-square bg-amber-50 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
                             <?php 
@@ -213,7 +254,8 @@ unset($p);
 
                         <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                             <span class="text-lg font-black text-slate-900">₱<?= $priceFormatted ?></span>
-                            <span class="w-8 h-8 rounded-full bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg hover:bg-amber-200">+</span>
+                            <span class="w-8 h-8 rounded-full bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg hover:bg-amber-200"
+                                  onclick="event.stopPropagation(); openModifierModal(<?= (int)$prod['id'] ?>, '<?= e(addslashes($prod['name'])) ?>', <?= $priceCents ?>, '<?= e(addslashes($prod['category'])) ?>')">+</span>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -264,6 +306,86 @@ unset($p);
                 </button>
             </div>
         </aside>
+    </div>
+
+    <!-- Modal: Modifier Selection Modal -->
+    <div id="modifier-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-left">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
+                <div>
+                    <span id="mod-modal-category" class="text-xs font-bold uppercase tracking-wider text-amber-700">Category</span>
+                    <h3 id="mod-modal-title" class="text-xl font-black text-slate-900 leading-tight">Product Name</h3>
+                    <span id="mod-modal-base-price" class="text-sm font-semibold text-slate-500">₱0.00</span>
+                </div>
+                <button onclick="closeModifierModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 flex items-center justify-center text-lg font-bold">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Scrollable Body -->
+            <div class="flex-1 overflow-y-auto py-4 space-y-5 text-left hide-scrollbar">
+                
+                <!-- Size Section (Radio buttons: M, L) -->
+                <div id="mod-section-size">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Size (Required)</label>
+                    <div class="grid grid-cols-2 gap-3" id="mod-size-options">
+                        <!-- Populated dynamically: M (0.00) / L (+20.00) -->
+                    </div>
+                </div>
+
+                <!-- Add-ons Section (Checkboxes: Extra Shot, Pearls, etc.) -->
+                <div id="mod-section-addons">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Add-ons</label>
+                    <div class="space-y-2" id="mod-addon-options">
+                        <!-- Populated dynamically: Extra Shot, Pearls, Whipped Cream, Caramel Drizzle -->
+                    </div>
+                </div>
+
+                <!-- Sugar/Ice Controls (Dropdowns or checkboxes) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Sugar Level -->
+                    <div id="mod-section-sugar">
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Sugar Level</label>
+                        <select id="mod-sugar-select" onchange="calculateModalTotal()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                            <option value="" data-price="0">Normal Sugar (100%)</option>
+                            <?php foreach ($modifiersCatalog['sugar'] as $s): ?>
+                            <option value="<?= $s['id'] ?>" data-price="<?= $s['priceCents'] ?>"><?= e($s['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- Ice Level (Cold only) -->
+                    <div id="mod-section-ice">
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ice Level</label>
+                        <select id="mod-ice-select" onchange="calculateModalTotal()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                            <option value="" data-price="0">Normal Ice (Default)</option>
+                            <?php foreach ($modifiersCatalog['ice'] as $ic): ?>
+                            <option value="<?= $ic['id'] ?>" data-price="<?= $ic['priceCents'] ?>"><?= e($ic['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quantity in Modal -->
+                <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Quantity</span>
+                    <div class="flex items-center space-x-3">
+                        <button type="button" onclick="changeModalQty(-1)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm">-</button>
+                        <span id="mod-modal-qty" class="w-6 text-center font-bold text-slate-900 text-base">1</span>
+                        <button type="button" onclick="changeModalQty(1)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-sm">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer: Add To Cart Button -->
+            <div class="pt-4 border-t border-slate-100 shrink-0">
+                <button id="mod-modal-submit" onclick="submitModalToCart()" class="w-full py-4 bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-2xl shadow-lg shadow-amber-800/30 transition flex items-center justify-between px-6">
+                    <span>Add to Cart</span>
+                    <span id="mod-modal-total-btn" class="font-black text-lg">₱0.00</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Modal: Order In Progress / Pay At Counter -->
@@ -319,7 +441,7 @@ unset($p);
             </div>
 
             <div class="pt-2">
-                <button onclick="resetKioskSession()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
+                <button id="btn-start-new-order" onclick="resetKioskSession()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition">
                     Start New Order
                 </button>
             </div>
@@ -329,10 +451,15 @@ unset($p);
     <script>
         const DEVICE_TOKEN = <?= json_encode($device['device_token']) ?>;
         const DEVICE_EXIT_PIN = <?= json_encode($deviceExitPin) ?>;
-        let cart = {}; // { prodId: { id, name, priceCents, qty } }
+        const MODIFIERS = <?= json_encode($modifiersCatalog) ?>;
+
+        let cart = {}; // { itemKey: { key, id, name, basePriceCents, modifierIds, modifierNames, priceCents, qty } }
         let currentOrderId = null;
         let currentKioskToken = null;
         let pollTimer = null;
+
+        let currentModalProduct = null;
+        let modalQty = 1;
 
         // Hidden Manager Exit Trigger on Order Type / Table #
         function triggerDeviceExit() {
@@ -381,21 +508,243 @@ unset($p);
             });
         }
 
+        // Modifier Modal Logic
+        function openModifierModal(prodId, prodName, basePriceCents, category) {
+            currentModalProduct = {
+                id: prodId,
+                name: prodName,
+                basePriceCents: basePriceCents,
+                category: category || ''
+            };
+            modalQty = 1;
+
+            document.getElementById('mod-modal-category').innerText = category || 'Menu Item';
+            document.getElementById('mod-modal-title').innerText = prodName;
+            document.getElementById('mod-modal-base-price').innerText = '₱' + (basePriceCents / 100).toFixed(2);
+            document.getElementById('mod-modal-qty').innerText = '1';
+
+            const isPastry = /pastr/i.test(category);
+            const isHot = /hot/i.test(category) || /hot/i.test(prodName);
+            
+            const sizeSection = document.getElementById('mod-section-size');
+            const addonsSection = document.getElementById('mod-section-addons');
+            const sugarSection = document.getElementById('mod-section-sugar');
+            const iceSection = document.getElementById('mod-section-ice');
+            const sizeContainer = document.getElementById('mod-size-options');
+            const addonContainer = document.getElementById('mod-addon-options');
+
+            if (isPastry) {
+                sizeSection.classList.add('hidden');
+                addonsSection.classList.add('hidden');
+                sugarSection.classList.add('hidden');
+                iceSection.classList.add('hidden');
+            } else {
+                sizeSection.classList.remove('hidden');
+                addonsSection.classList.remove('hidden');
+                sugarSection.classList.remove('hidden');
+                if (isHot) {
+                    iceSection.classList.add('hidden');
+                } else {
+                    iceSection.classList.remove('hidden');
+                }
+
+                // Render Size Options (Radio buttons: M, L)
+                const sizes = isHot ? MODIFIERS.hot_sizes : MODIFIERS.cold_sizes;
+                let sizeHtml = '';
+                sizes.forEach((s, idx) => {
+                    const checked = idx === 0 ? 'checked' : '';
+                    const priceText = s.priceCents > 0 ? `+₱${(s.priceCents / 100).toFixed(2)}` : 'Included';
+                    sizeHtml += `
+                        <label class="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition">
+                            <div class="flex items-center space-x-2.5">
+                                <input type="radio" name="mod_size" value="${s.id}" data-price="${s.priceCents}" data-name="${escapeHtml(s.name)}" ${checked} onchange="calculateModalTotal()" class="w-4 h-4 text-amber-600 focus:ring-amber-500">
+                                <span class="text-sm font-bold text-slate-800">${escapeHtml(s.label || s.name)}</span>
+                            </div>
+                            <span class="text-xs font-semibold text-slate-500">${priceText}</span>
+                        </label>
+                    `;
+                });
+                sizeContainer.innerHTML = sizeHtml;
+
+                // Render Add-ons (Checkboxes: Extra Shot, Pearls, etc.)
+                let addonHtml = '';
+                MODIFIERS.addons.forEach(a => {
+                    addonHtml += `
+                        <label class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition">
+                            <div class="flex items-center space-x-2.5">
+                                <input type="checkbox" name="mod_addon" value="${a.id}" data-price="${a.priceCents}" data-name="${escapeHtml(a.name)}" onchange="calculateModalTotal()" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
+                                <span class="text-sm font-semibold text-slate-800">${escapeHtml(a.name)}</span>
+                            </div>
+                            <span class="text-xs font-bold text-amber-900">+₱${(a.priceCents / 100).toFixed(2)}</span>
+                        </label>
+                    `;
+                });
+                addonContainer.innerHTML = addonHtml;
+
+                // Reset Sugar dropdown
+                const sugarSelect = document.getElementById('mod-sugar-select');
+                if (sugarSelect) sugarSelect.selectedIndex = 0;
+
+                // Reset Ice dropdown
+                const iceSelect = document.getElementById('mod-ice-select');
+                if (iceSelect) iceSelect.selectedIndex = 0;
+            }
+
+            calculateModalTotal();
+            document.getElementById('modifier-modal').classList.remove('hidden');
+        }
+
+        function closeModifierModal() {
+            currentModalProduct = null;
+            document.getElementById('modifier-modal').classList.add('hidden');
+        }
+
+        function changeModalQty(delta) {
+            modalQty += delta;
+            if (modalQty < 1) modalQty = 1;
+            document.getElementById('mod-modal-qty').innerText = modalQty;
+            calculateModalTotal();
+        }
+
+        function calculateModalTotal() {
+            if (!currentModalProduct) return;
+            let unitCents = currentModalProduct.basePriceCents;
+
+            const isPastry = /pastr/i.test(currentModalProduct.category);
+            if (!isPastry) {
+                // Size
+                const selectedSize = document.querySelector('input[name="mod_size"]:checked');
+                if (selectedSize) {
+                    unitCents += parseInt(selectedSize.dataset.price || '0', 10);
+                }
+
+                // Add-ons
+                document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
+                    unitCents += parseInt(cb.dataset.price || '0', 10);
+                });
+
+                // Sugar
+                const sugarSelect = document.getElementById('mod-sugar-select');
+                if (sugarSelect && sugarSelect.value) {
+                    const opt = sugarSelect.options[sugarSelect.selectedIndex];
+                    unitCents += parseInt(opt.dataset.price || '0', 10);
+                }
+
+                // Ice
+                const iceSelect = document.getElementById('mod-ice-select');
+                if (iceSelect && iceSelect.value && !document.getElementById('mod-section-ice').classList.contains('hidden')) {
+                    const opt = iceSelect.options[iceSelect.selectedIndex];
+                    unitCents += parseInt(opt.dataset.price || '0', 10);
+                }
+            }
+
+            const totalCents = unitCents * modalQty;
+            document.getElementById('mod-modal-total-btn').innerText = '₱' + (totalCents / 100).toFixed(2);
+        }
+
+        function submitModalToCart() {
+            if (!currentModalProduct) return;
+
+            const modifierIds = [];
+            const modifierNames = [];
+            let modPriceCents = 0;
+
+            const isPastry = /pastr/i.test(currentModalProduct.category);
+            if (!isPastry) {
+                // Size
+                const selectedSize = document.querySelector('input[name="mod_size"]:checked');
+                if (selectedSize) {
+                    const mId = parseInt(selectedSize.value, 10);
+                    modifierIds.push(mId);
+                    modifierNames.push(selectedSize.dataset.name);
+                    modPriceCents += parseInt(selectedSize.dataset.price || '0', 10);
+                }
+
+                // Add-ons
+                document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
+                    const mId = parseInt(cb.value, 10);
+                    modifierIds.push(mId);
+                    modifierNames.push(cb.dataset.name);
+                    modPriceCents += parseInt(cb.dataset.price || '0', 10);
+                });
+
+                // Sugar
+                const sugarSelect = document.getElementById('mod-sugar-select');
+                if (sugarSelect && sugarSelect.value) {
+                    const mId = parseInt(sugarSelect.value, 10);
+                    const opt = sugarSelect.options[sugarSelect.selectedIndex];
+                    modifierIds.push(mId);
+                    modifierNames.push(opt.text);
+                    modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                }
+
+                // Ice
+                const iceSelect = document.getElementById('mod-ice-select');
+                if (iceSelect && iceSelect.value && !document.getElementById('mod-section-ice').classList.contains('hidden')) {
+                    const mId = parseInt(iceSelect.value, 10);
+                    const opt = iceSelect.options[iceSelect.selectedIndex];
+                    modifierIds.push(mId);
+                    modifierNames.push(opt.text);
+                    modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                }
+            }
+
+            // Combine into unique cart key
+            const sortedModIds = modifierIds.slice().sort((a, b) => a - b);
+            const itemKey = `${currentModalProduct.id}_${sortedModIds.join('-')}`;
+            const unitPriceCents = currentModalProduct.basePriceCents + modPriceCents;
+
+            if (cart[itemKey]) {
+                cart[itemKey].qty += modalQty;
+            } else {
+                cart[itemKey] = {
+                    key: itemKey,
+                    id: currentModalProduct.id,
+                    name: currentModalProduct.name,
+                    basePriceCents: currentModalProduct.basePriceCents,
+                    modifierIds: sortedModIds,
+                    modifierNames: modifierNames,
+                    priceCents: unitPriceCents,
+                    qty: modalQty
+                };
+            }
+
+            closeModifierModal();
+            renderCart();
+        }
+
         // Cart Actions
         function addToCart(id, name, priceCents) {
-            if (cart[id]) {
-                cart[id].qty++;
+            const itemKey = `${id}_`;
+            if (cart[itemKey]) {
+                cart[itemKey].qty++;
             } else {
-                cart[id] = { id, name, priceCents, qty: 1 };
+                cart[itemKey] = {
+                    key: itemKey,
+                    id: id,
+                    name: name,
+                    basePriceCents: priceCents,
+                    modifierIds: [],
+                    modifierNames: [],
+                    priceCents: priceCents,
+                    qty: 1
+                };
             }
             renderCart();
         }
 
-        function updateQty(id, delta) {
-            if (!cart[id]) return;
-            cart[id].qty += delta;
-            if (cart[id].qty <= 0) {
-                delete cart[id];
+        function updateQty(itemKey, delta) {
+            if (!cart[itemKey]) {
+                const found = Object.values(cart).find(i => i.id == itemKey);
+                if (found) {
+                    itemKey = found.key;
+                } else {
+                    return;
+                }
+            }
+            cart[itemKey].qty += delta;
+            if (cart[itemKey].qty <= 0) {
+                delete cart[itemKey];
             }
             renderCart();
         }
@@ -429,16 +778,21 @@ unset($p);
                     totalCents += lineCents;
                     totalCount += item.qty;
 
+                    const modHtml = item.modifierNames && item.modifierNames.length > 0
+                        ? `<p class="text-[11px] text-amber-800 font-medium mt-0.5 leading-snug">${escapeHtml(item.modifierNames.join(', '))}</p>`
+                        : '';
+
                     html += `
-                        <div class="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
+                        <div class="flex items-start justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
                             <div class="flex-1 mr-3">
                                 <h4 class="text-sm font-bold text-slate-900 leading-snug">${escapeHtml(item.name)}</h4>
-                                <span class="text-xs text-amber-900 font-semibold">₱${(item.priceCents / 100).toFixed(2)}</span>
+                                ${modHtml}
+                                <span class="text-xs text-slate-700 font-bold mt-1 inline-block">₱${(item.priceCents / 100).toFixed(2)}</span>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <button onclick="updateQty(${item.id}, -1)" class="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center text-sm">-</button>
+                                <button onclick="updateQty('${item.key}', -1)" class="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center text-sm">-</button>
                                 <span class="w-5 text-center text-sm font-bold text-slate-900">${item.qty}</span>
-                                <button onclick="updateQty(${item.id}, 1)" class="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center text-sm">+</button>
+                                <button onclick="updateQty('${item.key}', 1)" class="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center text-sm">+</button>
                             </div>
                         </div>
                     `;
@@ -458,9 +812,16 @@ unset($p);
             return text.replace(/[&<>"']/g, function(m) { return map[m]; });
         }
 
-        // Submit Kiosk Order
+        // Submit Kiosk Order (Dine-in / Take-out queue ticket)
         async function submitKioskOrder() {
-            const items = Object.values(cart).map(i => ({ id: i.id, qty: i.qty }));
+            const items = Object.values(cart).map(i => ({
+                id: i.id,
+                product_id: i.id,
+                qty: i.qty,
+                quantity: i.qty,
+                modifier_ids: i.modifierIds || [],
+                modifiers: i.modifierIds || []
+            }));
             if (items.length === 0) return;
 
             const btn = document.getElementById('btn-place-order');
@@ -485,7 +846,7 @@ unset($p);
                 currentOrderId = data.order_id;
                 currentKioskToken = data.kiosk_token;
 
-                // Open modal
+                // Show success screen with queue ticket (bypassing online payment gateway)
                 document.getElementById('modal-order-number').innerText = data.order_number;
                 document.getElementById('modal-total-amount').innerText = '₱' + parseFloat(data.total_amount).toFixed(2);
                 document.getElementById('paid-badge').classList.add('hidden');
@@ -508,7 +869,7 @@ unset($p);
 
             const gcashBtn = document.getElementById('btn-pay-gcash');
             gcashBtn.disabled = true;
-            gcashBtn.innerHTML = '<span class="animate-pulse">Generating payment link...</span>';
+            gcashBtn.innerHTML = '<span class="animate-pulse">Connecting to digital payment...</span>';
 
             try {
                 const res = await fetch('api/fika_pos_payment_create.php', {
@@ -525,7 +886,7 @@ unset($p);
 
                 const data = await res.json();
                 if (!res.ok) {
-                    throw new Error(data.error || 'Failed to initiate digital payment.');
+                    throw new Error(data.error || 'Digital payment temporarily unavailable.');
                 }
 
                 // Show QR code
@@ -535,9 +896,11 @@ unset($p);
                 gcashBtn.classList.add('hidden');
 
             } catch (err) {
-                alert('Payment gateway error: ' + err.message);
+                // Do not disrupt the queue ticket with an alert popup; show inline note
+                console.warn('Digital payment notice:', err.message);
                 gcashBtn.disabled = false;
-                gcashBtn.innerHTML = `<span>Pay with GCash / E-Wallet</span>`;
+                gcashBtn.innerHTML = `<span>Digital Payment Unavailable - Pay at Counter</span>`;
+                gcashBtn.className = "w-full py-3.5 bg-slate-200 text-slate-700 font-bold rounded-2xl transition cursor-not-allowed text-xs";
             }
         }
 
@@ -572,10 +935,33 @@ unset($p);
 
         function resetKioskSession() {
             if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
             currentOrderId = null;
             currentKioskToken = null;
             document.getElementById('order-modal').classList.add('hidden');
+            const gcashBtn = document.getElementById('btn-pay-gcash');
+            if (gcashBtn) {
+                gcashBtn.disabled = false;
+                gcashBtn.classList.remove('hidden');
+                gcashBtn.className = "w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-2";
+                gcashBtn.innerHTML = `
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    <span>Pay with GCash / E-Wallet</span>
+                `;
+            }
+            const qrBox = document.getElementById('qr-display-box');
+            if (qrBox) qrBox.classList.add('hidden');
             clearCart();
+            const btnPlace = document.getElementById('btn-place-order');
+            if (btnPlace) {
+                btnPlace.disabled = true;
+                btnPlace.innerHTML = `
+                    <span>Place Order</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                    </svg>
+                `;
+            }
         }
 
         function confirmReset() {
