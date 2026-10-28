@@ -62,6 +62,131 @@ $action = $inputData['action'] ?? $_GET['action'] ?? '';
 $isJson = (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
     || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'));
 
+// Helper to save exit pin in settings
+$saveExitPin = function(string $pin, ?int $bId, int $userId) use ($pdo) {
+    if ($bId === null) {
+        $check = $pdo->prepare("SELECT id FROM settings WHERE setting_key = 'device_exit_pin' AND branch_id IS NULL LIMIT 1");
+        $check->execute();
+        $existingId = $check->fetchColumn();
+        if ($existingId) {
+            $upd = $pdo->prepare("UPDATE settings SET setting_value = ?, updated_by = ?, updated_at = NOW() WHERE id = ?");
+            $upd->execute([$pin, $userId, $existingId]);
+        } else {
+            $ins = $pdo->prepare("INSERT INTO settings (setting_key, setting_value, branch_id, updated_by, updated_at) VALUES ('device_exit_pin', ?, NULL, ?, NOW())");
+            $ins->execute([$pin, $userId]);
+        }
+    } else {
+        $upsert = $pdo->prepare("
+            INSERT INTO settings (setting_key, setting_value, branch_id, updated_by, updated_at)
+            VALUES ('device_exit_pin', ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by), updated_at = NOW()
+        ");
+        $upsert->execute([$pin, $bId, $userId]);
+    }
+};
+
+// Handle device update (Edit Device and Exit PIN)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['update_device', 'edit_device'], true)) {
+    Rbac::require_permission('devices.manage');
+
+    $token = $inputData['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!Csrf::verify($token)) {
+        http_response_code(403);
+        die(json_encode(["error" => "Invalid security token. Please refresh and try again."]));
+    }
+
+    $deviceId = (int)($inputData['device_id'] ?? 0);
+    $deviceName = trim($inputData['device_name'] ?? '');
+    $macAddress = trim($inputData['mac_address'] ?? '');
+    $status = trim($inputData['status'] ?? 'Active');
+    $exitPin = isset($inputData['exit_pin']) ? trim((string)$inputData['exit_pin']) : (isset($inputData['terminal_exit_pin']) ? trim((string)$inputData['terminal_exit_pin']) : null);
+
+    if ($deviceId <= 0) {
+        $error = 'Device ID is required.';
+        if ($isJson) {
+            http_response_code(400);
+            die(json_encode(["error" => $error]));
+        }
+    } else {
+        $devStmt = $pdo->prepare("SELECT id, branch_id, device_name, status FROM devices WHERE id = ? AND deleted_at IS NULL LIMIT 1");
+        $devStmt->execute([$deviceId]);
+        $existingDev = $devStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$existingDev) {
+            $error = 'Device not found.';
+            if ($isJson) {
+                http_response_code(404);
+                die(json_encode(["error" => $error]));
+            }
+        } elseif ($isBM && (int)$existingDev['branch_id'] !== $bmBranchId) {
+            Audit::log('SECURITY_CROSS_BRANCH_DEVICE_BLOCKED', "BM user {$currentUser['id']} attempted to update device {$deviceId} from branch {$existingDev['branch_id']}");
+            http_response_code(403);
+            die(json_encode(["error" => "Forbidden. Branch scope mismatch. Cannot edit device for another branch."]));
+        } elseif ($exitPin !== null && $exitPin !== '' && !preg_match('/^\d{4,8}$/', $exitPin)) {
+            $error = 'Terminal Exit PIN must be between 4 and 8 numeric digits.';
+            if ($isJson) {
+                http_response_code(400);
+                die(json_encode(["error" => $error]));
+            }
+        } else {
+            $effectiveBranchId = (int)$existingDev['branch_id'];
+
+            try {
+                $pdo->beginTransaction();
+
+                $updFields = [];
+                $updParams = [];
+                if ($deviceName !== '') {
+                    $updFields[] = "device_name = ?";
+                    $updParams[] = $deviceName;
+                }
+                if (isset($inputData['mac_address'])) {
+                    $updFields[] = "mac_address = ?";
+                    $updParams[] = $macAddress ?: null;
+                }
+                if (in_array($status, ['Active', 'Inactive', 'Maintenance'], true)) {
+                    $updFields[] = "status = ?";
+                    $updParams[] = $status;
+                }
+                if (!empty($updFields)) {
+                    $updFields[] = "updated_at = NOW()";
+                    $updParams[] = $deviceId;
+                    $pdo->prepare("UPDATE devices SET " . implode(', ', $updFields) . " WHERE id = ?")->execute($updParams);
+                }
+
+                if ($exitPin !== null && $exitPin !== '') {
+                    $targetBranchId = $effectiveBranchId;
+                    if (!$isBM && isset($inputData['is_global']) && filter_var($inputData['is_global'], FILTER_VALIDATE_BOOLEAN)) {
+                        $targetBranchId = null;
+                    }
+                    $saveExitPin($exitPin, $targetBranchId, (int)$currentUser['id']);
+                }
+
+                $pdo->commit();
+                $success = "Device '{$existingDev['device_name']}' and terminal exit PIN updated successfully.";
+                if ($isJson) {
+                    header('Content-Type: application/json');
+                    die(json_encode([
+                        "success" => true,
+                        "device_id" => $deviceId,
+                        "exit_pin" => $exitPin,
+                        "message" => $success
+                    ]));
+                }
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $error = 'Failed to update device: ' . $e->getMessage();
+                if ($isJson) {
+                    http_response_code(500);
+                    die(json_encode(["error" => $error]));
+                }
+            }
+        }
+    }
+}
+
 // Handle device enrollment
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device', 'add_device', 'create_device'], true)) {
     Rbac::require_permission('devices.manage');
@@ -77,6 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
     $deviceToken = trim($inputData['device_token'] ?? '');
     $systemRole = trim($inputData['system_role'] ?? '');
     $status = 'Active';
+    $exitPin = isset($inputData['exit_pin']) ? trim((string)$inputData['exit_pin']) : (isset($inputData['terminal_exit_pin']) ? trim((string)$inputData['terminal_exit_pin']) : null);
 
     // Auto-infer system role if missing (for test backward compatibility)
     if ($systemRole === '') {
@@ -107,6 +233,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
 
     if ($deviceName === '') {
         $error = 'Device Name is required.';
+        if ($isJson) {
+            http_response_code(400);
+            die(json_encode(["error" => $error]));
+        }
+    } elseif ($exitPin !== null && $exitPin !== '' && !preg_match('/^\d{4,8}$/', $exitPin)) {
+        $error = 'Terminal Exit PIN must be between 4 and 8 numeric digits.';
         if ($isJson) {
             http_response_code(400);
             die(json_encode(["error" => $error]));
@@ -195,6 +327,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
                 $insDevice->execute([$effectiveBranchId, $newUserId, $deviceName, $macAddress ?: null, $deviceToken]);
                 $newDeviceId = (int)$pdo->lastInsertId();
 
+                // 7. Update terminal exit PIN if provided
+                if ($exitPin !== null && $exitPin !== '') {
+                    $targetBranchId = $effectiveBranchId;
+                    if (!$isBM && isset($inputData['is_global']) && filter_var($inputData['is_global'], FILTER_VALIDATE_BOOLEAN)) {
+                        $targetBranchId = null;
+                    }
+                    $saveExitPin($exitPin, $targetBranchId, (int)$currentUser['id']);
+                }
+
                 $pdo->commit();
 
                 $success = "Hardware device enrolled successfully. System account '{$generatedUsername}' created.";
@@ -206,6 +347,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['enroll_device',
                         "user_id" => $newUserId,
                         "username" => $generatedUsername,
                         "device_token" => $deviceToken,
+                        "exit_pin" => $exitPin,
                         "message" => $success
                     ]));
                 }
@@ -246,6 +388,20 @@ $sql = "
 $stmt = $pdo->prepare($sql);
 $stmt->execute($branchParams);
 $devices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Fetch all device exit PINs (branch-scoped and global fallback)
+$pinStmt = $pdo->query("SELECT branch_id, setting_value FROM settings WHERE setting_key = 'device_exit_pin'");
+$pinRows = $pinStmt ? $pinStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+$branchPins = [];
+$globalPin = '123456';
+foreach ($pinRows as $pr) {
+    if ($pr['branch_id'] === null) {
+        $globalPin = (string)$pr['setting_value'];
+    } else {
+        $branchPins[(int)$pr['branch_id']] = (string)$pr['setting_value'];
+    }
+}
+$defaultEnrollPin = $isBM ? ($branchPins[$bmBranchId] ?? $globalPin) : $globalPin;
 
 // Counts
 $totalDevices = count($devices);
@@ -363,7 +519,7 @@ $csrfToken = Csrf::getToken();
                 <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                     <div>
                         <h2 class="text-base font-bold text-slate-900">Registered System Devices</h2>
-                        <p class="text-xs text-slate-500 mt-0.5">Authorised terminal tokens and physical MAC bindings</p>
+                        <p class="text-xs text-slate-500 mt-0.5">Authorised terminal tokens, exit PINs, and physical MAC bindings</p>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
@@ -379,21 +535,25 @@ $csrfToken = Csrf::getToken();
                                 <th class="px-6 py-3.5">Device Name</th>
                                 <th class="px-6 py-3.5">System Account</th>
                                 <th class="px-6 py-3.5">Device Token</th>
+                                <th class="px-6 py-3.5">Terminal Exit PIN</th>
                                 <th class="px-6 py-3.5">Assigned Branch</th>
                                 <th class="px-6 py-3.5">MAC Address</th>
                                 <th class="px-6 py-3.5">Status</th>
                                 <th class="px-6 py-3.5">Registered Date</th>
+                                <th class="px-6 py-3.5 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-sm">
                             <?php if (empty($devices)): ?>
                                 <tr>
-                                    <td colspan="7" class="px-6 py-8 text-center text-slate-400">
+                                    <td colspan="9" class="px-6 py-8 text-center text-slate-400">
                                         No system devices registered for this branch.
                                     </td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach ($devices as $dev): ?>
+                                <?php foreach ($devices as $dev): 
+                                    $devPin = $branchPins[(int)$dev['branch_id']] ?? $globalPin;
+                                ?>
                                     <tr class="hover:bg-slate-50/80 transition-colors">
                                         <td class="px-6 py-4 font-bold text-slate-900 flex items-center gap-3">
                                             <div class="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center text-sm">
@@ -422,6 +582,14 @@ $csrfToken = Csrf::getToken();
                                                 <?= e($dev['device_token'] ?: '—') ?>
                                             </code>
                                         </td>
+                                        <td class="px-6 py-4">
+                                            <div class="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
+                                                <span class="font-mono text-xs font-bold text-slate-700 tracking-wider" id="pin-display-<?= (int)$dev['id'] ?>">••••••</span>
+                                                <button type="button" onclick="togglePin(<?= (int)$dev['id'] ?>, '<?= e($devPin) ?>')" class="text-slate-400 hover:text-cyan-600 transition" title="Show / Hide PIN">
+                                                    <i id="pin-icon-<?= (int)$dev['id'] ?>" class="fa-solid fa-eye text-xs"></i>
+                                                </button>
+                                            </div>
+                                        </td>
                                         <td class="px-6 py-4 text-slate-600 font-medium">
                                             <span class="inline-flex items-center gap-1.5">
                                                 <i class="fa-solid fa-location-dot text-xs text-slate-400"></i>
@@ -444,6 +612,25 @@ $csrfToken = Csrf::getToken();
                                         </td>
                                         <td class="px-6 py-4 text-xs text-slate-500">
                                             <?= date('M d, Y', strtotime($dev['created_at'])) ?>
+                                        </td>
+                                        <td class="px-6 py-4 text-right">
+                                            <?php if (!$isBM || (int)$dev['branch_id'] === $bmBranchId): ?>
+                                                <button type="button" onclick="openEditModal(<?= htmlspecialchars(json_encode([
+                                                    'id' => (int)$dev['id'],
+                                                    'device_name' => $dev['device_name'],
+                                                    'branch_id' => (int)$dev['branch_id'],
+                                                    'branch_name' => $dev['branch_name'] ?: ('Branch #' . $dev['branch_id']),
+                                                    'mac_address' => $dev['mac_address'] ?? '',
+                                                    'device_token' => $dev['device_token'] ?? '',
+                                                    'status' => $dev['status'] ?? 'Active',
+                                                    'exit_pin' => $devPin,
+                                                ]), ENT_QUOTES, 'UTF-8') ?>)" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-cyan-50 hover:text-cyan-700 text-slate-700 rounded-lg text-xs font-bold border border-slate-200 transition">
+                                                    <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+                                                    <span>Edit</span>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-slate-300 text-xs font-mono">—</span>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -471,13 +658,20 @@ $csrfToken = Csrf::getToken();
                 <!-- Helper Text -->
                 <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-xl flex items-start gap-2.5 text-xs text-cyan-900">
                     <i class="fa-solid fa-circle-info text-cyan-600 mt-0.5 text-sm shrink-0"></i>
-                    <p class="leading-relaxed font-medium">Credentials will be generated automatically based on the branch and role.</p>
+                    <p class="leading-relaxed font-medium">Credentials and device tokens will be generated automatically based on the branch and role.</p>
                 </div>
 
                 <!-- Device Name -->
                 <div>
                     <label for="enrollDeviceName" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Name <span class="text-rose-500">*</span></label>
                     <input type="text" name="device_name" id="enrollDeviceName" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none" placeholder="e.g. Counter Terminal 2 (POS-02)">
+                </div>
+
+                <!-- Terminal Exit PIN -->
+                <div>
+                    <label for="enrollExitPin" class="block text-xs font-bold uppercase text-slate-600 mb-1">Terminal Exit PIN <span class="text-rose-500">*</span></label>
+                    <input type="text" name="exit_pin" id="enrollExitPin" required maxlength="8" pattern="\d{4,8}" value="<?= e($defaultEnrollPin) ?>" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none font-mono" placeholder="e.g. 123456">
+                    <p class="text-[11px] text-slate-400 mt-1">4-8 digit manager PIN required to exit terminal hardware screens (Clock & Kiosk).</p>
                 </div>
 
                 <!-- System Role -->
@@ -515,7 +709,7 @@ $csrfToken = Csrf::getToken();
                             <span class="ml-auto text-[10px] font-bold uppercase tracking-wider text-cyan-700 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded">Enforced</span>
                         </div>
                     <?php else: ?>
-                        <select name="branch_id" id="enrollBranchId" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                        <select name="branch_id" id="enrollBranchId" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none bg-white font-medium">
                             <?php foreach ($allBranches as $b): ?>
                                 <option value="<?= (int)$b['id'] ?>"><?= e($b['name']) ?></option>
                             <?php endforeach; ?>
@@ -535,6 +729,71 @@ $csrfToken = Csrf::getToken();
         </div>
     </div>
 
+    <!-- Edit Device Modal -->
+    <div id="editModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-900 text-lg">Edit System Device & PIN</h3>
+                <button type="button" onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600 transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form method="POST" action="fika_hrms_devices.php" class="p-6 space-y-4">
+                <input type="hidden" name="action" value="update_device">
+                <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+                <input type="hidden" name="device_id" id="editDeviceId" value="">
+
+                <!-- Device Name -->
+                <div>
+                    <label for="editDeviceName" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Name <span class="text-rose-500">*</span></label>
+                    <input type="text" name="device_name" id="editDeviceName" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                </div>
+
+                <!-- Terminal Exit PIN -->
+                <div>
+                    <label for="editExitPin" class="block text-xs font-bold uppercase text-slate-600 mb-1">Terminal Exit PIN <span class="text-rose-500">*</span></label>
+                    <input type="text" name="exit_pin" id="editExitPin" required maxlength="8" pattern="\d{4,8}" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none font-mono" placeholder="e.g. 123456">
+                    <p class="text-[11px] text-slate-400 mt-1">4-8 digit manager PIN to safely unlock and exit physical Clock & Kiosk terminals.</p>
+                </div>
+
+                <!-- Device Status -->
+                <div>
+                    <label for="editStatus" class="block text-xs font-bold uppercase text-slate-600 mb-1">Device Status <span class="text-rose-500">*</span></label>
+                    <select name="status" id="editStatus" required class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none bg-white font-medium">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                        <option value="Maintenance">Maintenance</option>
+                    </select>
+                </div>
+
+                <!-- MAC Address -->
+                <div>
+                    <label for="editMacAddress" class="block text-xs font-bold uppercase text-slate-600 mb-1">MAC Address (Optional)</label>
+                    <input type="text" name="mac_address" id="editMacAddress" class="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-cyan-500 focus:outline-none font-mono" placeholder="00:1A:2B:3C:4D:5E">
+                </div>
+
+                <!-- Assigned Branch -->
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Assigned Branch</label>
+                    <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-solid fa-store text-cyan-600 text-xs"></i>
+                        <span id="editBranchNameText">—</span>
+                    </div>
+                    <input type="hidden" name="branch_id" id="editBranchId" value="">
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeEditModal()" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 text-sm font-medium transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-sm font-bold shadow-sm transition">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
     function openEnrollModal() {
         document.getElementById('enrollModal').classList.remove('hidden');
@@ -542,6 +801,37 @@ $csrfToken = Csrf::getToken();
 
     function closeEnrollModal() {
         document.getElementById('enrollModal').classList.add('hidden');
+    }
+
+    function openEditModal(dev) {
+        document.getElementById('editDeviceId').value = dev.id;
+        document.getElementById('editDeviceName').value = dev.device_name;
+        document.getElementById('editExitPin').value = dev.exit_pin || '123456';
+        document.getElementById('editStatus').value = dev.status || 'Active';
+        document.getElementById('editMacAddress').value = dev.mac_address || '';
+        document.getElementById('editBranchId').value = dev.branch_id;
+        document.getElementById('editBranchNameText').textContent = dev.branch_name || ('Branch #' + dev.branch_id);
+        document.getElementById('editModal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.add('hidden');
+    }
+
+    function togglePin(id, realPin) {
+        const display = document.getElementById('pin-display-' + id);
+        const icon = document.getElementById('pin-icon-' + id);
+        if (!display || !icon) return;
+
+        if (display.textContent === '••••••') {
+            display.textContent = realPin;
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            display.textContent = '••••••';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
     }
     </script>
 </body>
