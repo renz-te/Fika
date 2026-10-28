@@ -44,6 +44,43 @@ echo "Phase D7: Payroll Runs Through the Real Approval Chain\n";
 echo "====================================================================\n";
 
 // ====================================================================
+// TASK 0 / CLEANUP: Purge Bad Sept 1-15 Demo Runs (#990012, #990013)
+// ====================================================================
+$legacyBadRuns = $pdo->query("
+    SELECT id FROM payroll_runs 
+    WHERE period_start = '2026-09-01' AND period_end = '2026-09-15' AND id > 1
+")->fetchAll(PDO::FETCH_COLUMN);
+
+if (!empty($legacyBadRuns)) {
+    if ($DEMO_APPLY) {
+        $inClause = implode(',', array_map('intval', $legacyBadRuns));
+        $pdo->exec("DELETE FROM payroll_items WHERE payroll_run_id IN ({$inClause})");
+        $pdo->exec("DELETE FROM demo_seed WHERE table_name = 'payroll_runs' AND row_id IN ({$inClause})");
+        $pdo->exec("DELETE FROM payroll_runs WHERE id IN ({$inClause})");
+        echo "  [CLEANUP] Deleted legacy Sept 1-15 demo runs (#" . implode(', #', $legacyBadRuns) . ") from payroll_runs, payroll_items, and demo_seed.\n";
+    } else {
+        echo "  [CLEANUP DRY-RUN] Would delete legacy Sept 1-15 demo runs (#" . implode(', #', $legacyBadRuns) . ").\n";
+    }
+}
+
+// Clean up any legacy attendance certifications for Sept 1-15 branches 2 or 3
+$legacyCerts = $pdo->query("
+    SELECT id FROM attendance_certifications 
+    WHERE period_start = '2026-09-01' AND period_end = '2026-09-15' AND branch_id IN (2, 3)
+")->fetchAll(PDO::FETCH_COLUMN);
+
+if (!empty($legacyCerts)) {
+    if ($DEMO_APPLY) {
+        $inCerts = implode(',', array_map('intval', $legacyCerts));
+        $pdo->exec("DELETE FROM demo_seed WHERE table_name = 'attendance_certifications' AND row_id IN ({$inCerts})");
+        $pdo->exec("DELETE FROM attendance_certifications WHERE id IN ({$inCerts})");
+        echo "  [CLEANUP] Deleted legacy Sept 1-15 demo attendance certifications (#" . implode(', #', $legacyCerts) . ").\n";
+    } else {
+        echo "  [CLEANUP DRY-RUN] Would delete legacy Sept 1-15 demo attendance certifications (#" . implode(', #', $legacyCerts) . ").\n";
+    }
+}
+
+// ====================================================================
 // TASK 1: Seed 2025 Statutory Contribution Rates
 // ====================================================================
 echo "[1/4] Seeding 2025 Statutory Contribution Rates into contribution_rates...\n";
@@ -295,43 +332,26 @@ if (!$existRun) {
 echo "[3/4] Generating Standard Semi-Monthly Payroll Runs via Live Handlers...\n";
 
 /**
- * Standard Demo Runs Schedule:
+ * Standard Demo Runs Schedule (3 Valid Periods with Seeded Attendance):
  *
- * 1. Sep Cutoff 1 (2026-09-01 to 2026-09-15) - Cutoff 1
- *    - Branch 1: Real Run #1 already exists (RELEASED, Do not touch!)
- *    - Branch 2: BHR (10016) -> BA (10017) -> BM (10015) => RELEASED
- *    - Branch 3: BHR (10024) -> BA (10025) -> BM (10023) => RELEASED
- *
- * 2. Sep Cutoff 2 (2026-09-16 to 2026-09-30) - Cutoff 2
+ * 1. Sep Cutoff 2 (2026-09-16 to 2026-09-30) - Cutoff 2 (Has 3 days attendance Sept 28-30)
  *    - Branch 1: CHR (1) [FALLBACK] -> BA (10009) -> BM (10007) => RELEASED
  *    - Branch 2: BHR (10016) -> GA (2) [FALLBACK] -> BM (10015) => RELEASED (Resubmitted & Approved)
  *    - Branch 3: BHR (10024) -> BA (10025) -> BM (10023) => RELEASED
  *
- * 3. Oct Cutoff 1 (2026-10-01 to 2026-10-15) - Cutoff 1 (Most Recent Completed Period)
+ * 2. Oct Cutoff 1 (2026-10-01 to 2026-10-15) - Cutoff 1 (Full Attendance)
  *    - Branch 1: BHR (10008) -> BA (10009) => APPROVED (Awaiting BM Release)
  *    - Branch 2: BHR (10016) -> BA (10017) => APPROVED (Awaiting BM Release)
  *    - Branch 3: BHR (10024) -> BA (10025) => APPROVED (Awaiting BM Release)
  *
- * 4. Oct Cutoff 2 (2026-10-16 to 2026-10-31) - Cutoff 2 (Current Period)
+ * 3. Oct Cutoff 2 (2026-10-16 to 2026-10-31) - Cutoff 2 (Attendance up to Oct 28)
  *    - Branch 1: BHR (10008) -> BA (10009) => APPROVED (Displays "Awaiting BM Release" / PENDING_BM equivalent)
  *    - Branch 2: BHR (10016) => GENERATED (Awaiting BA Approval)
  *    - Branch 3: BHR (10024) => DRAFT (Draft in progress)
  */
 
 $payrollPlan = [
-    // Sep Cutoff 1
-    [
-        'scope' => 'BRANCH', 'branch_id' => 2, 'period_start' => '2026-09-01', 'period_end' => '2026-09-15', 'cutoff' => 1,
-        'certifier' => 1, 'drafter' => 10016, 'approver' => 10017, 'releaser' => 10015,
-        'target_status' => 'RELEASED', 'label' => 'Branch 2 (Sep 1-15)', 'fallback' => 'None'
-    ],
-    [
-        'scope' => 'BRANCH', 'branch_id' => 3, 'period_start' => '2026-09-01', 'period_end' => '2026-09-15', 'cutoff' => 1,
-        'certifier' => 1, 'drafter' => 10024, 'approver' => 10025, 'releaser' => 10023,
-        'target_status' => 'RELEASED', 'label' => 'Branch 3 (Sep 1-15)', 'fallback' => 'None'
-    ],
-
-    // Sep Cutoff 2
+    // Sep Cutoff 2 (2026-09-16 to 2026-09-30) - RELEASED
     [
         'scope' => 'BRANCH', 'branch_id' => 1, 'period_start' => '2026-09-16', 'period_end' => '2026-09-30', 'cutoff' => 2,
         'certifier' => 1, 'drafter' => 1, 'approver' => 10009, 'releaser' => 10007,
@@ -348,7 +368,7 @@ $payrollPlan = [
         'target_status' => 'RELEASED', 'label' => 'Branch 3 (Sep 16-30)', 'fallback' => 'None'
     ],
 
-    // Oct Cutoff 1 (Most Recent Completed - Stopped at APPROVED)
+    // Oct Cutoff 1 (2026-10-01 to 2026-10-15) - APPROVED
     [
         'scope' => 'BRANCH', 'branch_id' => 1, 'period_start' => '2026-10-01', 'period_end' => '2026-10-15', 'cutoff' => 1,
         'certifier' => 10007, 'drafter' => 10008, 'approver' => 10009, 'releaser' => null,
@@ -365,7 +385,7 @@ $payrollPlan = [
         'target_status' => 'APPROVED', 'label' => 'Branch 3 (Oct 1-15)', 'fallback' => 'None'
     ],
 
-    // Oct Cutoff 2 (Current Period - Branch 1 PENDING_BM, Branch 2 GENERATED, Branch 3 DRAFT)
+    // Oct Cutoff 2 (2026-10-16 to 2026-10-31) - Branch 1 APPROVED, Branch 2 GENERATED, Branch 3 DRAFT
     [
         'scope' => 'BRANCH', 'branch_id' => 1, 'period_start' => '2026-10-16', 'period_end' => '2026-10-31', 'cutoff' => 2,
         'certifier' => 10007, 'drafter' => 10008, 'approver' => 10009, 'releaser' => null,
@@ -546,6 +566,28 @@ foreach ($allRuns as $r) {
 }
 echo str_repeat("-", 136) . "\n";
 
+$allPositive = true;
+$allParity = true;
+foreach ($allRuns as $r) {
+    $net = (float)($r['sum_net'] ?? 0);
+    $gross = (float)($r['sum_gross'] ?? 0);
+    $ded = (float)($r['sum_deductions'] ?? 0);
+    if ($net <= 0) {
+        $allPositive = false;
+        echo "  [WARNING] Run #{$r['id']} has non-positive Net Pay: {$net}\n";
+    }
+    if (abs(round($gross - $ded, 2) - round($net, 2)) > 0.01) {
+        $allParity = false;
+        echo "  [MISMATCH] Run #{$r['id']} Net != Gross - Deductions: {$net} vs " . ($gross - $ded) . "\n";
+    }
+}
+if ($allPositive) {
+    echo "  [PASS] Positive Net Pay: All " . count($allRuns) . " payroll runs have positive Net Pay (> 0).\n";
+}
+if ($allParity) {
+    echo "  [PASS] Mathematical Parity: Net = Gross - Deductions on every row in summary table.\n";
+}
+
 // ====================================================================
 // VERIFICATION 2: Released Run SoD Proof (4 Distinct Users) & Checksum
 // ====================================================================
@@ -553,12 +595,12 @@ echo "\n====================================================================\n";
 echo "VERIFICATION 2: Released Run SoD Proof (4 Distinct Users) & Checksum\n";
 echo "====================================================================\n";
 
-// Select a released run seeded in phase 7
+// Select a released run seeded in phase 7 (Branch 2 showcases CHR certifier, BHR drafter, GA fallback approver, BM releaser)
 $relRunStmt = $pdo->query("
     SELECT pr.*, b.name as branch_name 
     FROM payroll_runs pr 
     JOIN branches b ON pr.branch_id = b.id
-    WHERE pr.status = 'RELEASED' AND pr.id > 1
+    WHERE pr.status = 'RELEASED' AND pr.branch_id = 2 AND pr.id > 1
     ORDER BY pr.id ASC LIMIT 1
 ");
 $relRun = $relRunStmt->fetch(PDO::FETCH_ASSOC);
