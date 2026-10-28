@@ -162,6 +162,10 @@ $navActive = function(string $file, array $aliases = []) use ($currentPage): str
         <?php endif; ?>
 
         <?php if (in_array((int)($_SESSION['user']['role_id'] ?? 0), [1, 6], true)): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_users.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_users.php') ?>">
+            <i class="fa-solid fa-users w-5 text-center text-purple-400"></i>
+            <span>Account Management</span>
+        </a>
         <a href="<?= $url('fika_hrms', 'fika_hrms_devices.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_devices.php') ?>">
             <i class="fa-solid fa-server w-5 text-center text-cyan-400"></i>
             <span>System Accounts</span>
