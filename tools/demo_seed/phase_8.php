@@ -218,14 +218,30 @@ $prodStmt = $pdo->query("
 ");
 $products = $prodStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Modifiers mapped to recipes
-$coldSizes = [9630, 9631]; // Size: M (Cold) (₱0), Size: L (Cold) (₱20)
-$hotSizes  = [9632, 9633]; // Size: M (Hot) (₱0), Size: L (Hot) (₱20)
-$addOnMods = [9634, 9635, 9636, 9637]; // Extra shot (₱30), Pearls (₱15), Whipped cream (₱15), Caramel drizzle (₱15)
-
-// Modifiers lookup
+// Modifiers lookup & dynamic resolution by name
 $modLookupStmt = $pdo->query("SELECT id, name, price FROM modifiers WHERE is_active = 1 AND deleted_at IS NULL");
-$modLookup = $modLookupStmt->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
+$allMods = $modLookupStmt->fetchAll(PDO::FETCH_ASSOC);
+$modLookup = [];
+$modByName = [];
+foreach ($allMods as $m) {
+    $modLookup[(int)$m['id']] = $m;
+    $modByName[strtolower(trim($m['name']))] = (int)$m['id'];
+}
+
+$coldSizes = [
+    $modByName['size: m (cold)'] ?? 0,
+    $modByName['size: l (cold)'] ?? 0
+];
+$hotSizes  = [
+    $modByName['size: m (hot)'] ?? 0,
+    $modByName['size: l (hot)'] ?? 0
+];
+$addOnMods = [
+    $modByName['extra espresso shot'] ?? 0,
+    $modByName['pearls'] ?? 0,
+    $modByName['whipped cream'] ?? 0,
+    $modByName['caramel drizzle'] ?? 0
+];
 
 // Prepare order creation statements
 $orderInsertStmt = $pdo->prepare("
