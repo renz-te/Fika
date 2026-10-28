@@ -118,6 +118,10 @@ class Auth {
         return $_SESSION['user'] ?? null;
     }
 
+    public static function getRoleRedirect(?array $user = null): string {
+        return self::getRedirectUrl($user);
+    }
+
     public static function getRedirectUrl(?array $user = null): string {
         global $pdo;
         if ($user === null) {
@@ -143,8 +147,8 @@ class Auth {
             }
         }
 
-        $roleName = '';
-        if ($roleId > 0 && $pdo) {
+        $roleName = $user['role_name'] ?? '';
+        if (!$roleName && $roleId > 0 && $pdo) {
             $stmt = $pdo->prepare("SELECT name FROM roles WHERE id = ? LIMIT 1");
             $stmt->execute([$roleId]);
             $roleName = (string)$stmt->fetchColumn();
@@ -159,6 +163,19 @@ class Auth {
 
         $upperRole = strtoupper(trim($roleName));
         $upperPos = strtoupper(trim($position));
+
+        // System device roles (Hardware Terminals)
+        if (in_array($roleId, [12], true) || in_array($upperRole, ['CLOCK', 'TIME CLOCK'], true)) {
+            return 'fika_hrms/fika_hrms_clock.php';
+        }
+
+        if (in_array($roleId, [13], true) || in_array($upperRole, ['KIOSK', 'SELF-SERVICE KIOSK'], true)) {
+            return 'fika_pos/fika_pos_kiosk.php';
+        }
+
+        if (in_array($roleId, [9], true) || in_array($upperRole, ['CASHIER TERMINAL', 'CASHIER'], true)) {
+            return 'fika_pos/fika_pos_dashboard.php';
+        }
 
         // Admins, CHR, Branch HR & Branch Managers always go to HRMS management dashboard
         if (
