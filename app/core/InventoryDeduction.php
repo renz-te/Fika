@@ -107,10 +107,28 @@ class InventoryDeduction {
      * Constraint 2: Attempts INSERT into order_ledger_deductions FIRST.
      * Returns true if deducted or already deducted; throws Exception on failure.
      */
-    public static function deductOrder(int $orderId, int $branchId, ?int $userId = null, string $orderNumber = ''): bool {
+    public static function deductOrder(mixed $orderId, mixed $branchId = null, ?int $userId = null, string $orderNumber = ''): bool {
         global $pdo;
 
+        // Support both deductOrder($pdo, $orderId, $branchId, $userId) and deductOrder($orderId, $branchId, $userId, $orderNumber)
+        if ($orderId instanceof \PDO) {
+            $pdo = $orderId;
+            $orderId = (int)$branchId;
+            $branchId = (int)$userId;
+            $userId = !empty($orderNumber) && is_numeric($orderNumber) ? (int)$orderNumber : 1;
+            $orderNumber = '';
+        } else {
+            $orderId = (int)$orderId;
+            $branchId = (int)$branchId;
+        }
+
         $userId = $userId ?: 1;
+
+        if (empty($orderNumber)) {
+            $ordStmt = $pdo->prepare("SELECT order_number FROM orders WHERE id = ?");
+            $ordStmt->execute([$orderId]);
+            $orderNumber = (string)($ordStmt->fetchColumn() ?: ('ORD-' . $orderId));
+        }
 
         // 1. Race condition protection: Attempt INSERT FIRST
         try {

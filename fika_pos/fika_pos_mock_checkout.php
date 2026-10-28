@@ -1,20 +1,85 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $status = strtolower(trim((string)($_GET['status'] ?? '')));
-$orderId = (int)($_GET['order_id'] ?? $_POST['order_id'] ?? 0);
+$orderId = (int)($_GET['order_id'] ?? $_POST['order_id'] ?? ($_SESSION['last_order_id'] ?? 0));
 $intentId = trim((string)($_GET['intent_id'] ?? $_POST['intent_id'] ?? ''));
 $method = strtolower(trim((string)($_GET['method'] ?? $_POST['method'] ?? 'gcash')));
 
 global $pdo;
 
+// Fallback: If order_id is missing from URL, check reference or intent_id
+if ($orderId <= 0) {
+    $ref = trim((string)($_GET['order_number'] ?? $_GET['ref'] ?? $_GET['reference'] ?? ($_SESSION['last_order_number'] ?? '')));
+    if (!empty($ref)) {
+        $refStmt = $pdo->prepare("SELECT id FROM orders WHERE order_number = ? LIMIT 1");
+        $refStmt->execute([$ref]);
+        $orderId = (int)$refStmt->fetchColumn();
+    }
+}
+if ($orderId <= 0 && !empty($intentId)) {
+    $payStmt = $pdo->prepare("SELECT order_id FROM payments WHERE intent_id = ? LIMIT 1");
+    $payStmt->execute([$intentId]);
+    $orderId = (int)$payStmt->fetchColumn();
+}
+
 // If customer is redirected after payment (status=success or status=cancel)
 if ($status === 'success' || $status === 'cancel') {
     $order = null;
-    if ($orderId > 0) {
-        $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
-        $stmt->execute([$orderId]);
-        $order = $stmt->fetch();
+
+    if ($status === 'success') {
+        error_log("[MOCK CHECKOUT] Processing status=success for order_id: {$orderId}, intent_id: {$intentId}");
+
+        if ($orderId > 0) {
+            $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch();
+
+            if ($order) {
+                $branchId = (int)($order['branch_id'] ?? 1);
+                $userId = (int)($order['cashier_id'] ?: 1);
+                $orderNumber = (string)($order['order_number'] ?? ('ORD-' . $orderId));
+
+                error_log("[MOCK CHECKOUT] Found order #{$orderId} ({$orderNumber}). Current payment_status: {$order['payment_status']}");
+
+                // 1. UPDATE orders SET payment_status = 'PAID', order_status = 'COMPLETED' WHERE id = ?
+                $updOrder = $pdo->prepare("UPDATE orders SET payment_status = 'PAID', order_status = 'COMPLETED' WHERE id = ?");
+                $updOrder->execute([$orderId]);
+                error_log("[MOCK CHECKOUT] SQL Executed: UPDATE orders SET payment_status = 'PAID', order_status = 'COMPLETED' WHERE id = {$orderId}");
+
+                // 2. UPDATE payments SET status = 'paid' WHERE order_id = ?
+                $updPayment = $pdo->prepare("UPDATE payments SET status = 'paid' WHERE order_id = ?");
+                $updPayment->execute([$orderId]);
+                error_log("[MOCK CHECKOUT] SQL Executed: UPDATE payments SET status = 'paid' WHERE order_id = {$orderId}");
+
+                // 3. Call InventoryDeduction::deductOrder($pdo, $orderId, $branchId, $userId) AFTER order is marked as paid
+                try {
+                    InventoryDeduction::deductOrder($pdo, $orderId, $branchId, $userId);
+                    error_log("[MOCK CHECKOUT] InventoryDeduction::deductOrder successfully executed for order #{$orderId} (Branch {$branchId})");
+                } catch (Throwable $e) {
+                    error_log("[MOCK CHECKOUT] InventoryDeduction error for order #{$orderId}: " . $e->getMessage());
+                }
+
+                // Refresh order record for display
+                $stmt->execute([$orderId]);
+                $order = $stmt->fetch();
+            } else {
+                error_log("[MOCK CHECKOUT] Error: Order not found in database for order_id: {$orderId}");
+            }
+        } else {
+            error_log("[MOCK CHECKOUT] Warning: order_id could not be resolved from GET/SESSION/Intent");
+        }
+    } else {
+        error_log("[MOCK CHECKOUT] Payment cancelled for order_id: {$orderId}");
+        if ($orderId > 0) {
+            $stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch();
+        }
     }
     ?>
     <!DOCTYPE html>

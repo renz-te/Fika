@@ -260,6 +260,11 @@ try {
     $pdo->prepare("UPDATE orders SET pos_session_id = ?, payment_method = ? WHERE id = ?")
         ->execute([$shiftId, strtoupper($selectedMethod), $orderId]);
 
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['last_order_id'] = $orderId;
+        $_SESSION['last_order_number'] = $order['order_number'];
+    }
+
     echo json_encode([
         'success'      => true,
         'order_id'     => $orderId,
