@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../app/bootstrap.php';
 require_once __DIR__ . '/../../app/lib/attendance_calc.php';
+require_once __DIR__ . '/../../app/lib/attendance_summary.php';
 
 if (php_sapi_name() !== 'cli') {
     die("Tests must be run from CLI.");
@@ -59,6 +60,57 @@ $res5 = AttendanceCalc::calculate('2026-10-06 12:00:00', '2026-10-06 21:00:00', 
 assertTest("Midnight crossing - Worked Mins", $res5['worked_minutes'] === 540, "Got {$res5['worked_minutes']}");
 assertTest("Midnight crossing - OT", $res5['overtime_minutes'] === 60, "Got {$res5['overtime_minutes']}");
 assertTest("Midnight crossing - ND", $res5['night_diff_minutes'] === 420, "Got {$res5['night_diff_minutes']}");
+
+// 6. Afternoon/Closing Shift (14:00 Start) - Early Clock-in (13:57)
+// Scheduled: 14:00 Manila (06:00 UTC)
+// Clock In: 13:57 Manila (05:57 UTC)
+// Clock Out: 22:02 Manila (14:02 UTC)
+$res6 = AttendanceCalc::calculate('2026-10-06 05:57:00', '2026-10-06 14:02:00', '2026-10-06 06:00:00', 15);
+assertTest("14:00 Shift - Early clock-in (13:57) has 0 late minutes", $res6['late_minutes'] === 0, "Got {$res6['late_minutes']}");
+
+// 7. Afternoon/Closing Shift (14:00 Start) - Clock-in within grace (14:10)
+$res7 = AttendanceCalc::calculate('2026-10-06 06:10:00', '2026-10-06 14:02:00', '2026-10-06 06:00:00', 15);
+assertTest("14:00 Shift - Clock-in within grace (14:10) has 0 late minutes", $res7['late_minutes'] === 0, "Got {$res7['late_minutes']}");
+
+// 8. Afternoon/Closing Shift (14:00 Start) - Late beyond grace period (14:20)
+// Clock In: 14:20 Manila (06:20 UTC) -> 20 minutes late (5m beyond 15m grace)
+$res8 = AttendanceCalc::calculate('2026-10-06 06:20:00', '2026-10-06 14:02:00', '2026-10-06 06:00:00', 15);
+assertTest("14:00 Shift - Late clock-in (14:20) calculates 20 late minutes", $res8['late_minutes'] === 20, "Got {$res8['late_minutes']}");
+
+// 9. Integration Test: attendance_summary() with dynamic shift start_time from DB
+global $pdo;
+$testEmpId = 8889;
+$pdo->beginTransaction();
+try {
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
+    $pdo->exec("DELETE FROM attendance_logs WHERE employee_id = {$testEmpId};");
+    $pdo->exec("DELETE FROM shifts WHERE employee_id = {$testEmpId};");
+    $pdo->exec("DELETE FROM employees WHERE id = {$testEmpId};");
+
+    $pdo->exec("INSERT INTO employees (id, employee_code, first_name, last_name, email, branch_id, status) VALUES ({$testEmpId}, 'EMP_TEST_14', 'Test', 'Shift', 't14@fika.local', 1, 'ACTIVE');");
+    
+    // Scheduled Closing shift: 14:00:00 to 22:00:00
+    $pdo->exec("INSERT INTO shifts (branch_id, employee_id, shift_date, start_time, end_time, shift_type, status, created_by) VALUES (1, {$testEmpId}, '2026-10-15', '14:00:00', '22:00:00', 'Closing', 'PUBLISHED', 1);");
+
+    // Test A: Early clock in at 13:57 for 14:00 shift -> late_minutes = 0
+    $pdo->exec("INSERT INTO attendance_logs (employee_id, branch_id, clock_in, clock_out, work_date, status) VALUES ({$testEmpId}, 1, '2026-10-15 13:57:00', '2026-10-15 22:02:00', '2026-10-15', 'CLOSED');");
+    $sumEarly = attendance_summary($testEmpId, '2026-10-15', '2026-10-15');
+    assertTest("attendance_summary() - 13:57 clock-in on 14:00 shift has 0 late minutes", $sumEarly['late_minutes'] === 0, "Got {$sumEarly['late_minutes']}");
+
+    // Test B: Late clock in at 14:20 for 14:00 shift -> late_minutes = 20
+    $pdo->exec("UPDATE attendance_logs SET clock_in = '2026-10-15 14:20:00' WHERE employee_id = {$testEmpId};");
+    $sumLate = attendance_summary($testEmpId, '2026-10-15', '2026-10-15');
+    assertTest("attendance_summary() - 14:20 clock-in on 14:00 shift calculates 20 late minutes", $sumLate['late_minutes'] === 20, "Got {$sumLate['late_minutes']}");
+
+    // Clean up
+    $pdo->rollBack();
+} catch (\Throwable $e) {
+    $pdo->rollBack();
+    echo "[FAIL] Integration test exception: " . $e->getMessage() . "\n";
+    $failed++;
+} finally {
+    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
+}
 
 echo "\nTests Completed. Failed: {$failed}\n";
 if ($failed > 0) {

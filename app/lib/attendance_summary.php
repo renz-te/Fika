@@ -15,12 +15,17 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
     $modeStmt->execute([$employee_id]);
     $mode = $modeStmt->fetchColumn() ?: 'CLOCK';
 
-    // 2. Fetch all valid attendance logs
+    // 2. Fetch all valid attendance logs joining scheduled shifts
     $stmt = $pdo->prepare("
-        SELECT * FROM attendance_logs 
-        WHERE employee_id = ? 
-        AND work_date BETWEEN ? AND ? 
-        AND status IN ('CLOSED', 'ADJUSTED', 'ABSENT')
+        SELECT al.*, s.start_time AS shift_start_time
+        FROM attendance_logs al
+        LEFT JOIN shifts s ON s.employee_id = al.employee_id 
+            AND s.shift_date = al.work_date 
+            AND s.status != 'REJECTED'
+        WHERE al.employee_id = ? 
+        AND al.work_date BETWEEN ? AND ? 
+        AND al.status IN ('CLOSED', 'ADJUSTED', 'ABSENT')
+        ORDER BY al.work_date ASC, al.clock_in ASC
     ");
     $stmt->execute([$employee_id, $date_from, $date_to]);
     $logs = $stmt->fetchAll();
@@ -45,10 +50,12 @@ function attendance_summary(int $employee_id, string $date_from, string $date_to
             $daysWorked++;
         }
 
-        // Heuristic: Assume standard 08:00 AM shift start
-        $assumedSchedule = substr($log['clock_in'], 0, 10) . ' 08:00:00';
+        // Use scheduled shift start time if available, otherwise fall back to 08:00 AM default
+        $workDate = !empty($log['work_date']) ? $log['work_date'] : substr($log['clock_in'], 0, 10);
+        $shiftStart = !empty($log['shift_start_time']) ? $log['shift_start_time'] : '08:00:00';
+        $scheduledSchedule = $workDate . ' ' . $shiftStart;
         
-        $calc = AttendanceCalc::calculate($log['clock_in'], $log['clock_out'], $assumedSchedule, $graceMins);
+        $calc = AttendanceCalc::calculate($log['clock_in'], $log['clock_out'], $scheduledSchedule, $graceMins);
         
         $lateMinutes += $calc['late_minutes'];
         $otMinutes += $calc['overtime_minutes'];
