@@ -125,15 +125,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $search = trim($_GET['search'] ?? '');
 $filterStage = trim($_GET['stage'] ?? '');
 
-// Role-based ATS Applicant Routing:
-// 1. Branch HR (Role 5): Only Crew applicants ('Barista', 'Head Barista')
-// 2. Central HR (Role 2) & Global Accountant (Role 3): Only Official applicants ('Branch Manager', 'Branch HR', 'Branch Accountant', 'Central HR', 'Global Accountant')
+// Role-based ATS Applicant Routing (Strict Segregation of Duties):
+// 1. Branch HR (Role 5) & Branch Manager (Role 6): Only Crew applicants ('Barista', 'Head Barista')
+// 2. Central HR (Role 2) & Global Accountant (Role 3): Only Official applicants (NOT 'Barista' and NOT 'Head Barista')
 // 3. Admin (Role 1): Sees all applicants
 $roleRoutingSql = "";
-if ($currentRoleId === 5) {
+if (in_array($currentRoleId, [5, 6], true)) {
     $roleRoutingSql = " AND COALESCE(a.position_applied, a.position) IN ('Barista', 'Head Barista')";
 } elseif (in_array($currentRoleId, [2, 3], true)) {
-    $roleRoutingSql = " AND COALESCE(a.position_applied, a.position) IN ('Branch Manager', 'Branch HR', 'Branch Accountant', 'Central HR', 'Global Accountant')";
+    $roleRoutingSql = " AND (COALESCE(a.position_applied, a.position) NOT IN ('Barista', 'Head Barista') OR COALESCE(a.position_applied, a.position) IS NULL)";
 }
 
 $filterSql = $branchSql . $roleRoutingSql;
@@ -198,15 +198,24 @@ $intStmt = $pdo->prepare("
 $intStmt->execute($branchParams);
 $scheduledInterviews = $intStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch active interviewers (branch managers, HR, head baristas)
+// Fetch active interviewers: Strictly Branch HR (Role 5) and Branch Manager (Role 6)
+// Excludes Central HR, Global Accountant, and Baristas/Staff
+$targetBranchId = $userBranchId !== null ? (int)$userBranchId : $selectedBranchId;
 $interviewerSql = "
-    SELECT e.id, CONCAT(e.first_name, ' ', e.last_name) as full_name, e.position 
-    FROM employees e 
-    WHERE e.status = 'Active' " . ($selectedBranchId ? "AND (e.branch_id = ? OR e.branch_id IS NULL)" : "") . "
-    ORDER BY e.first_name ASC
+    SELECT COALESCE(e.id, u.employee_id, u.id) as id, 
+           COALESCE(CONCAT(e.first_name, ' ', e.last_name), u.username) as full_name, 
+           COALESCE(e.position, IF(u.role_id = 6, 'Branch Manager', 'Branch HR')) as position,
+           b.name as branch_name
+    FROM users u 
+    LEFT JOIN employees e ON u.employee_id = e.id 
+    LEFT JOIN branches b ON u.branch_id = b.id
+    WHERE u.role_id IN (5, 6) 
+      AND u.deleted_at IS NULL
+" . ($targetBranchId ? " AND u.branch_id = ?" : "") . "
+    ORDER BY b.name ASC, e.first_name ASC
 ";
 $interviewerStmt = $pdo->prepare($interviewerSql);
-$interviewerStmt->execute($selectedBranchId ? [$selectedBranchId] : []);
+$interviewerStmt->execute($targetBranchId ? [$targetBranchId] : []);
 $interviewers = $interviewerStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Pipeline Stage Ordering for drag validation
@@ -302,7 +311,7 @@ $pipelineRanks = [
                 <div class="text-xs font-semibold text-slate-500 flex items-center gap-2">
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
                         <i class="fa-solid fa-user-clock text-xs"></i>
-                        <span>Total Pipeline: <?= count($allApplicants) ?> Candidate<?= count($allApplicants) === 1 ? '' : 's' ?></span>
+                        <span><?= count($allApplicants) ?> Total Pipeline Candidate<?= count($allApplicants) === 1 ? '' : 's' ?></span>
                     </span>
                 </div>
             </div>
@@ -624,7 +633,7 @@ $pipelineRanks = [
                         <option value="">Select Interviewer...</option>
                         <?php foreach ($interviewers as $iv): ?>
                             <option value="<?= (int)$iv['id'] ?>">
-                                <?= e($iv['full_name']) ?> (<?= e($iv['position']) ?>)
+                                <?= e($iv['full_name']) ?> (<?= e($iv['position']) ?><?= !empty($iv['branch_name']) && !$targetBranchId ? ' &bull; ' . e($iv['branch_name']) : '' ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>
