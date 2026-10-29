@@ -179,6 +179,16 @@ if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
             <i class="fa-solid fa-server w-5 text-center text-cyan-400"></i>
             <span>System Accounts</span>
         </a>
+        <?php if ($canBranches): ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_branches.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_branches.php') ?>">
+            <i class="fa-solid fa-store w-5 text-center text-amber-500"></i>
+            <span>Branch Management</span>
+        </a>
+        <?php endif; ?>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_branch_settings.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_branch_settings.php') ?>">
+            <i class="fa-solid fa-sliders w-5 text-center text-amber-400"></i>
+            <span>Branch Settings</span>
+        </a>
         <?php endif; ?>
 
         <?php else: ?>
@@ -274,6 +284,10 @@ if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
         <a href="<?= $url('fika_hrms', 'fika_hrms_branches.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_branches.php') ?>">
             <i class="fa-solid fa-store w-5 text-center text-amber-500"></i>
             <span>Branch Management</span>
+        </a>
+        <a href="<?= $url('fika_hrms', 'fika_hrms_branch_settings.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_branch_settings.php') ?>">
+            <i class="fa-solid fa-sliders w-5 text-center text-amber-400"></i>
+            <span>Branch Settings</span>
         </a>
         <?php endif; ?>
         <?php if (Rbac::can('settings.manage') && ($sessRoleId === 1)): ?>
