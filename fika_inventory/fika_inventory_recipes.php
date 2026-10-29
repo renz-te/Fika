@@ -384,7 +384,7 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
             imageSection.classList.remove('hidden');
             document.getElementById('image-product-id').value = item.id;
             if (item.image_path) {
-                imgPreview.src = '../' + item.image_path.replace(/^\/+/, '');
+                imgPreview.src = item.image_path;
                 imgPreview.classList.remove('hidden');
                 imgPlaceholder.classList.add('hidden');
             } else {
@@ -582,7 +582,7 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
                 }
                 const preview = document.getElementById('product-image-preview');
                 const placeholder = document.getElementById('product-image-placeholder');
-                preview.src = '../' + json.image_path.replace(/^\/+/, '');
+                preview.src = json.image_path;
                 preview.classList.remove('hidden');
                 placeholder.classList.add('hidden');
             } else {

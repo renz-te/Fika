@@ -242,15 +242,7 @@ foreach ($rawModifiers as $m) {
                         
                         <div class="aspect-square bg-amber-50 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
                             <?php 
-                            $rawImg = !empty($prod['image_path']) ? $prod['image_path'] : (!empty($prod['image_url']) ? $prod['image_url'] : null);
-                            $imgSrc = null;
-                            if (!empty($rawImg)) {
-                                if (str_starts_with($rawImg, 'http') || str_starts_with($rawImg, '/') || str_starts_with($rawImg, '../')) {
-                                    $imgSrc = $rawImg;
-                                } else {
-                                    $imgSrc = '../' . ltrim($rawImg, '/');
-                                }
-                            }
+                            $imgSrc = !empty($prod['image_path']) ? $prod['image_path'] : (!empty($prod['image_url']) ? $prod['image_url'] : null);
                             if (!empty($imgSrc)): 
                             ?>
                                 <img src="<?= e($imgSrc) ?>" alt="<?= e($prod['name']) ?>" class="object-cover w-full h-full" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -690,6 +682,39 @@ foreach ($rawModifiers as $m) {
             });
         }
 
+        // Strict Add-on conditional filtering helper based on prodName
+        function shouldShowAddon(addonName, prodName) {
+            const aName = (addonName || '').trim();
+            const pName = (prodName || '').toLowerCase();
+
+            const isEspresso = aName === 'Extra Espresso Shot' || /espresso|extra\s*shot/i.test(aName);
+            const isPearls = aName === 'Pearls' || /pearl/i.test(aName);
+            const isWhipped = aName === 'Whipped Cream' || /whipped/i.test(aName);
+            const isCaramel = aName === 'Caramel Drizzle' || /caramel|drizzle/i.test(aName);
+
+            // - Extra Espresso Shot: Show for drinks. Hide if prodName contains "Matcha" or "Milktea"
+            if (isEspresso) {
+                return !pName.includes('matcha') && !pName.includes('milktea') && !pName.includes('milk tea');
+            }
+
+            // - Pearls: Show ONLY if prodName contains "Milktea"
+            if (isPearls) {
+                return pName.includes('milktea') || pName.includes('milk tea');
+            }
+
+            // - Whipped Cream: Show ONLY if prodName contains "Frappe", "Mocha", or "Macchiato"
+            if (isWhipped) {
+                return pName.includes('frappe') || pName.includes('mocha') || pName.includes('macchiato');
+            }
+
+            // - Caramel Drizzle: Show ONLY if prodName contains "Frappe", "Mocha", or "Macchiato"
+            if (isCaramel) {
+                return pName.includes('frappe') || pName.includes('mocha') || pName.includes('macchiato');
+            }
+
+            return false;
+        }
+
         // Modifier Modal Logic
         function openModifierModal(prodId, prodName, basePriceCents, category) {
             currentModalProduct = {
@@ -758,26 +783,12 @@ foreach ($rawModifiers as $m) {
                 });
                 sizeContainer.innerHTML = sizeHtml;
 
-                // Add-on Filtering:
-                // - Hide "Extra Espresso Shot" if the product name contains "Matcha" or "Milktea"
-                // - Show "Pearls" ONLY if the product name contains "Milktea"
-                // - Show "Whipped Cream" and "Caramel Drizzle" ONLY if the product name contains "Frappe", "Mocha", or "Macchiato"
-                const allowedAddons = MODIFIERS.addons.filter(a => {
-                    const aName = a.name;
-                    if (aName === 'Extra Espresso Shot') {
-                        if (nameLower.includes('matcha') || nameLower.includes('milktea')) {
-                            return false;
-                        }
-                        return true;
-                    }
-                    if (aName === 'Pearls') {
-                        return nameLower.includes('milktea');
-                    }
-                    if (aName === 'Whipped Cream' || aName === 'Caramel Drizzle') {
-                        return nameLower.includes('frappe') || nameLower.includes('mocha') || nameLower.includes('macchiato');
-                    }
-                    return true;
-                });
+                // Strict Add-on Filtering based strictly on prodName:
+                // - Extra Espresso Shot: Show for drinks. Hide if prodName contains "Matcha" or "Milktea"
+                // - Pearls: Show ONLY if prodName contains "Milktea"
+                // - Whipped Cream: Show ONLY if prodName contains "Frappe", "Mocha", or "Macchiato"
+                // - Caramel Drizzle: Show ONLY if prodName contains "Frappe", "Mocha", or "Macchiato"
+                const allowedAddons = MODIFIERS.addons.filter(a => shouldShowAddon(a.name, prodName));
 
                 if (allowedAddons.length > 0) {
                     addonsSection.classList.remove('hidden');
@@ -814,6 +825,10 @@ foreach ($rawModifiers as $m) {
 
         function closeModifierModal() {
             currentModalProduct = null;
+            const sizeContainer = document.getElementById('mod-size-options');
+            const addonContainer = document.getElementById('mod-addon-options');
+            if (sizeContainer) sizeContainer.innerHTML = '';
+            if (addonContainer) addonContainer.innerHTML = '';
             document.getElementById('modifier-modal').classList.add('hidden');
         }
 
@@ -844,8 +859,10 @@ foreach ($rawModifiers as $m) {
                 // Add-ons (only if addons section is visible)
                 const addonsSection = document.getElementById('mod-section-addons');
                 if (addonsSection && !addonsSection.classList.contains('hidden')) {
-                    document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
-                        unitCents += parseInt(cb.dataset.price || '0', 10);
+                    document.querySelectorAll('#mod-addon-options input[name="mod_addon"]:checked').forEach(cb => {
+                        if (shouldShowAddon(cb.dataset.name, currentModalProduct.name)) {
+                            unitCents += parseInt(cb.dataset.price || '0', 10);
+                        }
                     });
                 }
 
@@ -900,11 +917,14 @@ foreach ($rawModifiers as $m) {
                 // Add-ons (only if addons section is visible)
                 const addonsSection = document.getElementById('mod-section-addons');
                 if (addonsSection && !addonsSection.classList.contains('hidden')) {
-                    document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
-                        const mId = parseInt(cb.value, 10);
-                        modifierIds.push(mId);
-                        modifierNames.push(cb.dataset.name);
-                        modPriceCents += parseInt(cb.dataset.price || '0', 10);
+                    document.querySelectorAll('#mod-addon-options input[name="mod_addon"]:checked').forEach(cb => {
+                        const mName = cb.dataset.name;
+                        if (shouldShowAddon(mName, currentModalProduct.name)) {
+                            const mId = parseInt(cb.value, 10);
+                            modifierIds.push(mId);
+                            modifierNames.push(mName);
+                            modPriceCents += parseInt(cb.dataset.price || '0', 10);
+                        }
                     });
                 }
 

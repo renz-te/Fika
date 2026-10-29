@@ -247,25 +247,25 @@ try {
             exit(json_encode(['success' => false, 'error' => 'Invalid image format. Allowed formats: JPEG, PNG, WebP (max 5MB).']));
         }
 
-        $relativePath = 'public/uploads/menu/' . $filename;
+        $absolutePath = '/public/uploads/menu/' . $filename;
 
         // Clean up previous image if it was in public/uploads/menu
         if (!empty($product['image_path'])) {
             $oldPath = APP_ROOT . '/' . ltrim($product['image_path'], '/');
-            if (is_file($oldPath) && strpos($product['image_path'], 'public/uploads/menu/') === 0) {
+            if (is_file($oldPath) && strpos(ltrim($product['image_path'], '/'), 'public/uploads/menu/') === 0) {
                 @unlink($oldPath);
             }
         }
 
         $updateStmt = $pdo->prepare("UPDATE products SET image_path = ?, updated_at = NOW() WHERE id = ?");
-        $updateStmt->execute([$relativePath, $productId]);
+        $updateStmt->execute([$absolutePath, $productId]);
 
-        Audit::log('PRODUCT_IMAGE_UPLOADED', "Uploaded image for product #{$productId} ({$product['name']}): {$relativePath}", $user['id']);
+        Audit::log('PRODUCT_IMAGE_UPLOADED', "Uploaded image for product #{$productId} ({$product['name']}): {$absolutePath}", $user['id']);
 
         echo json_encode([
             'success' => true,
             'message' => 'Product image uploaded successfully.',
-            'image_path' => $relativePath
+            'image_path' => $absolutePath
         ]);
         exit;
 

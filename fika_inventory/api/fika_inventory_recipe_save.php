@@ -38,12 +38,12 @@ try {
             exit(json_encode(['success' => false, 'error' => 'Invalid image. Must be JPEG, PNG, or WebP under 5MB.']));
         }
 
-        $uploadedPath = 'public/uploads/menu/' . $filename;
+        $uploadedPath = '/public/uploads/menu/' . $filename;
 
         // Clean up previous image if it was in public/uploads/menu
         if (!empty($product['image_path'])) {
             $oldPath = APP_ROOT . '/' . ltrim($product['image_path'], '/');
-            if (is_file($oldPath) && strpos($product['image_path'], 'public/uploads/menu/') === 0) {
+            if (is_file($oldPath) && strpos(ltrim($product['image_path'], '/'), 'public/uploads/menu/') === 0) {
                 @unlink($oldPath);
             }
         }
