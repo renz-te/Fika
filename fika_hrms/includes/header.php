@@ -35,10 +35,10 @@ $isHB = (stripos($empPos, 'Head Barista') !== false);
 $isStaff = in_array($userRoleName, ['STAFF', 'BARISTA', 'HEAD BARISTA', 'CASHIER'], true) || in_array(strtoupper($empPos), ['HEAD BARISTA', 'BARISTA', 'CASHIER'], true);
 $isStaffOrHB = !$isAdmin && !$isBM && ($isHB || $isStaff);
 
-$canPosDash = Rbac::can('pos.access');
+$canPosDash = in_array($sessRoleId, [1, 6, 9], true) && Rbac::can('pos.access');
 $canInv = (Rbac::can('inventory.view') || Rbac::can('inventory.adjust')) && !($sessRoleId === 1);
 $canProc = Rbac::can('procurement.view');
-$canFin = Rbac::can('finance.view') && !($sessRoleId === 1);
+$canFin = in_array($sessRoleId, [1, 3, 4, 6], true) && (Rbac::can('finance.view') || !($sessRoleId === 1));
 $canHR = Rbac::can('hr.employee.view') && !($sessRoleId === 1) && !$isBM;
 $canLeave = (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($sessRoleId === 1);
 $canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
@@ -237,7 +237,7 @@ if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
         <?php endif; ?>
 
         <!-- 2. OPERATIONS Group -->
-        <?php if (Rbac::can('pos.access')): ?>
+        <?php if (in_array($sessRoleId, [1, 6, 9], true)): ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">OPERATIONS</div>
         <a href="<?= $url('fika_pos', 'fika_pos_dashboard.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_pos_dashboard.php') ?>">
             <i class="fa-solid fa-cash-register w-5 text-center text-amber-500"></i>
@@ -246,7 +246,7 @@ if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
         <?php endif; ?>
 
         <!-- 3. FINANCE Group -->
-        <?php if (Rbac::can('finance.view') && !($sessRoleId === 1)): 
+        <?php if (in_array($sessRoleId, [1, 3, 4, 6], true)): 
             $finLabel = ($sessRoleId === 3 || $userRoleName === 'GA') ? 'Global Finance' : (($sessRoleId === 4 || $sessRoleId === 6 || in_array($userRoleName, ['BA', 'BM'], true)) ? 'Branch Finance' : 'Finance');
         ?>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-6 mb-2">FINANCE</div>

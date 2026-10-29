@@ -59,26 +59,43 @@ $sql .= " ORDER BY e.branch_id ASC, e.first_name ASC, e.last_name ASC";
 $employees = [];
 $pending_hires = [];
 
+// Onboarding Scope Filters:
+// 1. Status Scope: only Hired / Hireable applicants
+// 2. Branch Scope: scoped to logged-in user's branch (unless Admin or CHR, who see all)
+// 3. Role Scope: if Role 5 (BHR), only Crew applicants ('Barista', 'Head Barista')
+$onboardingWhere = ["(status = 'HIRED' OR stage IN ('Hireable', 'Hired'))"];
+$onboardingParams = [];
+
+if (!in_array($userRoleId, [1, 2], true) && !empty($userBranchId)) {
+    $onboardingWhere[] = "branch_id = ?";
+    $onboardingParams[] = (int)$userBranchId;
+}
+
+if ($userRoleId === 5) {
+    $onboardingWhere[] = "COALESCE(position_applied, position) IN ('Barista', 'Head Barista')";
+}
+
+$onboardingWhereClause = implode(' AND ', $onboardingWhere);
+
 if ($tab === 'onboarding') {
-    $stmt = $pdo->query("SELECT id, first_name, last_name, email, phone, COALESCE(position_applied, position) AS target_role, created_at FROM applicants WHERE status IN ('SHORTLISTED', 'NEW') ORDER BY created_at ASC");
+    $stmt = $pdo->prepare("SELECT id, first_name, last_name, email, phone, COALESCE(position_applied, position) AS target_role, created_at FROM applicants WHERE {$onboardingWhereClause} ORDER BY created_at ASC");
+    $stmt->execute($onboardingParams);
     $pending_hires = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $pendingCount = count($pending_hires);
 } else {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Count pending onboarding with the exact same scoped filters
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM applicants WHERE {$onboardingWhereClause}");
+    $countStmt->execute($onboardingParams);
+    $pendingCount = (int)$countStmt->fetchColumn();
 }
 
 // Positions list for filter dropdown
 $posStmt = $pdo->query("SELECT DISTINCT position FROM employees WHERE position IS NOT NULL AND position != '' AND deleted_at IS NULL AND branch_id IS NOT NULL ORDER BY position ASC");
 $positionsList = $posStmt->fetchAll(PDO::FETCH_COLUMN);
-
-// Count pending onboarding
-$pendingCount = 0;
-try {
-    $pendingCount = (int)$pdo->query("SELECT COUNT(*) FROM applicants WHERE status IN ('SHORTLISTED', 'NEW')")->fetchColumn();
-} catch (Throwable $t) {
-    $pendingCount = 0;
-}
 
 $pageTitle = 'Employees Directory';
 ?>
