@@ -129,6 +129,38 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
 
             <!-- Modal Body (Scrollable) -->
             <div class="p-6 space-y-6 overflow-y-auto flex-1">
+                <!-- Product Image Section (TASK 1) -->
+                <div id="recipe-image-section" class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-image text-blue-600"></i> Product Image</span>
+                        <span class="text-[11px] text-slate-400 font-normal">Shown on Kiosk &amp; POS</span>
+                    </h4>
+                    
+                    <form id="product-image-form" onsubmit="handleImageUpload(event)" enctype="multipart/form-data" class="flex flex-col sm:flex-row items-center gap-4">
+                        <input type="hidden" name="product_id" id="image-product-id" value="">
+                        
+                        <!-- Image Preview -->
+                        <div class="w-20 h-20 rounded-xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-xs relative">
+                            <img id="product-image-preview" src="" alt="Product Preview" class="w-full h-full object-cover hidden">
+                            <span id="product-image-placeholder" class="text-xs font-bold text-slate-300 uppercase tracking-wider">No Image</span>
+                        </div>
+                        
+                        <!-- Upload Input & Button -->
+                        <div class="flex-1 w-full space-y-2">
+                            <label class="block text-[11px] font-bold text-slate-600 uppercase">Select Image (JPEG, PNG, WebP &bull; Max 5MB)</label>
+                            <div class="flex gap-2">
+                                <input type="file" name="product_image" id="product-image-input" accept="image/jpeg, image/png, image/webp" onchange="previewSelectedImage(this)" class="w-full border border-slate-300 rounded-xl px-3 py-1.5 text-xs bg-white file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                                <?php if ($canAdjust): ?>
+                                <button type="submit" id="product-image-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-xs whitespace-nowrap inline-flex items-center gap-1.5">
+                                    <i class="fa-solid fa-cloud-arrow-up text-xs"></i> Upload
+                                </button>
+                                <?php endif; ?>
+                            </div>
+                            <div id="recipe-image-msg" class="text-xs font-semibold hidden"></div>
+                        </div>
+                    </form>
+                </div>
+
                 <!-- Add Ingredient Form -->
                 <?php if ($canAdjust): ?>
                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -212,6 +244,7 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
 
     <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const canAdjust = <?= json_encode((bool)$canAdjust) ?>;
     let currentType = 'product';
     let productsList = [];
     let modifiersList = [];
@@ -304,6 +337,11 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
                     <button type="button" onclick="openRecipeModal('${currentType}', ${item.id})" class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5">
                         <i class="fa-solid fa-list-check text-[11px]"></i> Edit Recipe BOM
                     </button>
+                    ${currentType === 'product' && canAdjust ? `
+                        <button type="button" onclick="deleteProduct(${item.id}, '${escapeHtml(item.name).replace(/'/g, "\\'")}')" class="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 ml-2">
+                            <i class="fa-solid fa-trash-can text-[11px]"></i> Delete
+                        </button>
+                    ` : ''}
                 </td>
             `;
             tbody.appendChild(tr);
@@ -331,6 +369,32 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
         document.getElementById('recipe-inv-id').value = '';
         document.getElementById('recipe-unit-addon').innerText = 'unit';
         document.getElementById('recipe-add-error').classList.add('hidden');
+
+        // Product Image UI section
+        const imageSection = document.getElementById('recipe-image-section');
+        const imgPreview = document.getElementById('product-image-preview');
+        const imgPlaceholder = document.getElementById('product-image-placeholder');
+        const imgInput = document.getElementById('product-image-input');
+        const imgMsg = document.getElementById('recipe-image-msg');
+
+        if (imgMsg) imgMsg.className = 'text-xs font-semibold hidden';
+        if (imgInput) imgInput.value = '';
+
+        if (type === 'product') {
+            imageSection.classList.remove('hidden');
+            document.getElementById('image-product-id').value = item.id;
+            if (item.image_path) {
+                imgPreview.src = '../' + item.image_path.replace(/^\/+/, '');
+                imgPreview.classList.remove('hidden');
+                imgPlaceholder.classList.add('hidden');
+            } else {
+                imgPreview.src = '';
+                imgPreview.classList.add('hidden');
+                imgPlaceholder.classList.remove('hidden');
+            }
+        } else {
+            imageSection.classList.add('hidden');
+        }
 
         renderModalIngredients(item.ingredients || []);
         openModal('recipe-modal');
@@ -457,6 +521,102 @@ $pageTitle = 'Recipe BOM & Costing · Fika Inventory';
                 }
             } else {
                 alert(json.error || 'Failed to remove ingredient.');
+            }
+        } catch (err) {
+            alert('Network error: ' + err.message);
+        }
+    }
+
+    function previewSelectedImage(input) {
+        const preview = document.getElementById('product-image-preview');
+        const placeholder = document.getElementById('product-image-placeholder');
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function handleImageUpload(e) {
+        e.preventDefault();
+        const msgDiv = document.getElementById('recipe-image-msg');
+        msgDiv.className = 'text-xs font-semibold hidden';
+        
+        const fileInput = document.getElementById('product-image-input');
+        const prodId = document.getElementById('image-product-id').value;
+
+        if (!fileInput.files || !fileInput.files[0]) {
+            msgDiv.innerText = 'Please select an image file to upload.';
+            msgDiv.className = 'text-xs font-semibold text-rose-600 block mt-1';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'upload_image');
+        formData.append('product_id', prodId);
+        formData.append('product_image', fileInput.files[0]);
+        formData.append('csrf_token', csrfToken);
+
+        const btn = document.getElementById('product-image-btn');
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch('api/fika_inventory_recipe.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                body: formData
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                msgDiv.innerText = json.message || 'Image uploaded successfully!';
+                msgDiv.className = 'text-xs font-semibold text-emerald-600 block mt-1';
+                
+                // Update local product entry
+                const prod = productsList.find(p => p.id == prodId);
+                if (prod) {
+                    prod.image_path = json.image_path;
+                }
+                const preview = document.getElementById('product-image-preview');
+                const placeholder = document.getElementById('product-image-placeholder');
+                preview.src = '../' + json.image_path.replace(/^\/+/, '');
+                preview.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+            } else {
+                msgDiv.innerText = json.error || 'Failed to upload image.';
+                msgDiv.className = 'text-xs font-semibold text-rose-600 block mt-1';
+            }
+        } catch (err) {
+            msgDiv.innerText = 'Network error: ' + err.message;
+            msgDiv.className = 'text-xs font-semibold text-rose-600 block mt-1';
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function deleteProduct(productId, productName) {
+        if (!confirm(`Are you sure you want to delete and deactivate '${productName}'?\nThis will remove it from the Kiosk and POS menu.`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch('api/fika_inventory_recipe.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({
+                    action: 'delete_product',
+                    product_id: productId,
+                    csrf_token: csrfToken
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                await loadRecipes();
+            } else {
+                alert(json.error || 'Failed to deactivate product.');
             }
         } catch (err) {
             alert('Network error: ' + err.message);

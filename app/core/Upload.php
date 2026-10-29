@@ -4,6 +4,7 @@ class Upload {
     private const ALLOWED_MIMES = [
         'image/jpeg' => 'jpg',
         'image/png'  => 'png',
+        'image/webp' => 'webp',
         'application/pdf' => 'pdf'
     ];
     private const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB limit

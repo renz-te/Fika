@@ -242,10 +242,19 @@ foreach ($rawModifiers as $m) {
                         
                         <div class="aspect-square bg-amber-50 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
                             <?php 
-                            $imgSrc = !empty($prod['image_path']) ? $prod['image_path'] : (!empty($prod['image_url']) ? $prod['image_url'] : null);
+                            $rawImg = !empty($prod['image_path']) ? $prod['image_path'] : (!empty($prod['image_url']) ? $prod['image_url'] : null);
+                            $imgSrc = null;
+                            if (!empty($rawImg)) {
+                                if (str_starts_with($rawImg, 'http') || str_starts_with($rawImg, '/') || str_starts_with($rawImg, '../')) {
+                                    $imgSrc = $rawImg;
+                                } else {
+                                    $imgSrc = '../' . ltrim($rawImg, '/');
+                                }
+                            }
                             if (!empty($imgSrc)): 
                             ?>
-                                <img src="<?= e($imgSrc) ?>" alt="<?= e($prod['name']) ?>" class="object-cover w-full h-full">
+                                <img src="<?= e($imgSrc) ?>" alt="<?= e($prod['name']) ?>" class="object-cover w-full h-full" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                <span class="text-3xl font-black text-amber-800/30 hidden items-center justify-center w-full h-full">FIKA</span>
                             <?php else: ?>
                                 <span class="text-3xl font-black text-amber-800/30">FIKA</span>
                             <?php endif; ?>
@@ -696,8 +705,16 @@ foreach ($rawModifiers as $m) {
             document.getElementById('mod-modal-base-price').innerText = '₱' + (basePriceCents / 100).toFixed(2);
             document.getElementById('mod-modal-qty').innerText = '1';
 
-            const isPastry = /pastr/i.test(category);
-            const isHot = /hot/i.test(category) || /hot/i.test(prodName);
+            const catLower = (category || '').toLowerCase();
+            const nameLower = (prodName || '').toLowerCase();
+
+            // Intelligent Modifier Filtering:
+            // 1. Pastries: Hide Size, Sugar, Ice, and Add-ons completely.
+            // 2. Hot: Hide Size (Cold) and Ice. Show Size (Hot) and Sugar.
+            // 3. Cold: Hide Size (Hot). Show Size (Cold), Sugar, and Ice.
+            const isPastry = catLower === 'pastries' || catLower.includes('pastr') || catLower.includes('bakery');
+            const isHot = !isPastry && (catLower === 'hot' || catLower.includes('hot') || nameLower.includes('hot'));
+            const isCold = !isPastry && !isHot;
             
             const sizeSection = document.getElementById('mod-section-size');
             const addonsSection = document.getElementById('mod-section-addons');
@@ -711,9 +728,10 @@ foreach ($rawModifiers as $m) {
                 addonsSection.classList.add('hidden');
                 sugarSection.classList.add('hidden');
                 iceSection.classList.add('hidden');
+                sizeContainer.innerHTML = '';
+                addonContainer.innerHTML = '';
             } else {
                 sizeSection.classList.remove('hidden');
-                addonsSection.classList.remove('hidden');
                 sugarSection.classList.remove('hidden');
                 if (isHot) {
                     iceSection.classList.add('hidden');
@@ -722,6 +740,7 @@ foreach ($rawModifiers as $m) {
                 }
 
                 // Render Size Options (Radio buttons: M, L)
+                // Hot drinks: Size (Hot); Cold drinks: Size (Cold)
                 const sizes = isHot ? MODIFIERS.hot_sizes : MODIFIERS.cold_sizes;
                 let sizeHtml = '';
                 sizes.forEach((s, idx) => {
@@ -739,20 +758,46 @@ foreach ($rawModifiers as $m) {
                 });
                 sizeContainer.innerHTML = sizeHtml;
 
-                // Render Add-ons (Checkboxes: Extra Shot, Pearls, etc.)
-                let addonHtml = '';
-                MODIFIERS.addons.forEach(a => {
-                    addonHtml += `
-                        <label class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition">
-                            <div class="flex items-center space-x-2.5">
-                                <input type="checkbox" name="mod_addon" value="${a.id}" data-price="${a.priceCents}" data-name="${escapeHtml(a.name)}" onchange="calculateModalTotal()" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
-                                <span class="text-sm font-semibold text-slate-800">${escapeHtml(a.name)}</span>
-                            </div>
-                            <span class="text-xs font-bold text-amber-900">+₱${(a.priceCents / 100).toFixed(2)}</span>
-                        </label>
-                    `;
+                // Add-on Filtering:
+                // - Hide "Extra Espresso Shot" if the product name contains "Matcha" or "Milktea"
+                // - Show "Pearls" ONLY if the product name contains "Milktea"
+                // - Show "Whipped Cream" and "Caramel Drizzle" ONLY if the product name contains "Frappe", "Mocha", or "Macchiato"
+                const allowedAddons = MODIFIERS.addons.filter(a => {
+                    const aName = a.name;
+                    if (aName === 'Extra Espresso Shot') {
+                        if (nameLower.includes('matcha') || nameLower.includes('milktea')) {
+                            return false;
+                        }
+                        return true;
+                    }
+                    if (aName === 'Pearls') {
+                        return nameLower.includes('milktea');
+                    }
+                    if (aName === 'Whipped Cream' || aName === 'Caramel Drizzle') {
+                        return nameLower.includes('frappe') || nameLower.includes('mocha') || nameLower.includes('macchiato');
+                    }
+                    return true;
                 });
-                addonContainer.innerHTML = addonHtml;
+
+                if (allowedAddons.length > 0) {
+                    addonsSection.classList.remove('hidden');
+                    let addonHtml = '';
+                    allowedAddons.forEach(a => {
+                        addonHtml += `
+                            <label class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition">
+                                <div class="flex items-center space-x-2.5">
+                                    <input type="checkbox" name="mod_addon" value="${a.id}" data-price="${a.priceCents}" data-name="${escapeHtml(a.name)}" onchange="calculateModalTotal()" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
+                                    <span class="text-sm font-semibold text-slate-800">${escapeHtml(a.name)}</span>
+                                </div>
+                                <span class="text-xs font-bold text-amber-900">+₱${(a.priceCents / 100).toFixed(2)}</span>
+                            </label>
+                        `;
+                    });
+                    addonContainer.innerHTML = addonHtml;
+                } else {
+                    addonsSection.classList.add('hidden');
+                    addonContainer.innerHTML = '';
+                }
 
                 // Reset Sugar dropdown
                 const sugarSelect = document.getElementById('mod-sugar-select');
@@ -783,31 +828,45 @@ foreach ($rawModifiers as $m) {
             if (!currentModalProduct) return;
             let unitCents = currentModalProduct.basePriceCents;
 
-            const isPastry = /pastr/i.test(currentModalProduct.category);
+            const catLower = (currentModalProduct.category || '').toLowerCase();
+            const isPastry = catLower === 'pastries' || catLower.includes('pastr') || catLower.includes('bakery');
+
             if (!isPastry) {
-                // Size
-                const selectedSize = document.querySelector('input[name="mod_size"]:checked');
-                if (selectedSize) {
-                    unitCents += parseInt(selectedSize.dataset.price || '0', 10);
+                // Size (only if size section is visible)
+                const sizeSection = document.getElementById('mod-section-size');
+                if (sizeSection && !sizeSection.classList.contains('hidden')) {
+                    const selectedSize = document.querySelector('input[name="mod_size"]:checked');
+                    if (selectedSize) {
+                        unitCents += parseInt(selectedSize.dataset.price || '0', 10);
+                    }
                 }
 
-                // Add-ons
-                document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
-                    unitCents += parseInt(cb.dataset.price || '0', 10);
-                });
-
-                // Sugar
-                const sugarSelect = document.getElementById('mod-sugar-select');
-                if (sugarSelect && sugarSelect.value) {
-                    const opt = sugarSelect.options[sugarSelect.selectedIndex];
-                    unitCents += parseInt(opt.dataset.price || '0', 10);
+                // Add-ons (only if addons section is visible)
+                const addonsSection = document.getElementById('mod-section-addons');
+                if (addonsSection && !addonsSection.classList.contains('hidden')) {
+                    document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
+                        unitCents += parseInt(cb.dataset.price || '0', 10);
+                    });
                 }
 
-                // Ice
-                const iceSelect = document.getElementById('mod-ice-select');
-                if (iceSelect && iceSelect.value && !document.getElementById('mod-section-ice').classList.contains('hidden')) {
-                    const opt = iceSelect.options[iceSelect.selectedIndex];
-                    unitCents += parseInt(opt.dataset.price || '0', 10);
+                // Sugar (only if sugar section is visible)
+                const sugarSection = document.getElementById('mod-section-sugar');
+                if (sugarSection && !sugarSection.classList.contains('hidden')) {
+                    const sugarSelect = document.getElementById('mod-sugar-select');
+                    if (sugarSelect && sugarSelect.value) {
+                        const opt = sugarSelect.options[sugarSelect.selectedIndex];
+                        unitCents += parseInt(opt.dataset.price || '0', 10);
+                    }
+                }
+
+                // Ice (only if ice section is visible)
+                const iceSection = document.getElementById('mod-section-ice');
+                if (iceSection && !iceSection.classList.contains('hidden')) {
+                    const iceSelect = document.getElementById('mod-ice-select');
+                    if (iceSelect && iceSelect.value) {
+                        const opt = iceSelect.options[iceSelect.selectedIndex];
+                        unitCents += parseInt(opt.dataset.price || '0', 10);
+                    }
                 }
             }
 
@@ -822,43 +881,57 @@ foreach ($rawModifiers as $m) {
             const modifierNames = [];
             let modPriceCents = 0;
 
-            const isPastry = /pastr/i.test(currentModalProduct.category);
+            const catLower = (currentModalProduct.category || '').toLowerCase();
+            const isPastry = catLower === 'pastries' || catLower.includes('pastr') || catLower.includes('bakery');
+
             if (!isPastry) {
-                // Size
-                const selectedSize = document.querySelector('input[name="mod_size"]:checked');
-                if (selectedSize) {
-                    const mId = parseInt(selectedSize.value, 10);
-                    modifierIds.push(mId);
-                    modifierNames.push(selectedSize.dataset.name);
-                    modPriceCents += parseInt(selectedSize.dataset.price || '0', 10);
+                // Size (only if size section is visible)
+                const sizeSection = document.getElementById('mod-section-size');
+                if (sizeSection && !sizeSection.classList.contains('hidden')) {
+                    const selectedSize = document.querySelector('input[name="mod_size"]:checked');
+                    if (selectedSize) {
+                        const mId = parseInt(selectedSize.value, 10);
+                        modifierIds.push(mId);
+                        modifierNames.push(selectedSize.dataset.name);
+                        modPriceCents += parseInt(selectedSize.dataset.price || '0', 10);
+                    }
                 }
 
-                // Add-ons
-                document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
-                    const mId = parseInt(cb.value, 10);
-                    modifierIds.push(mId);
-                    modifierNames.push(cb.dataset.name);
-                    modPriceCents += parseInt(cb.dataset.price || '0', 10);
-                });
-
-                // Sugar
-                const sugarSelect = document.getElementById('mod-sugar-select');
-                if (sugarSelect && sugarSelect.value) {
-                    const mId = parseInt(sugarSelect.value, 10);
-                    const opt = sugarSelect.options[sugarSelect.selectedIndex];
-                    modifierIds.push(mId);
-                    modifierNames.push(opt.text);
-                    modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                // Add-ons (only if addons section is visible)
+                const addonsSection = document.getElementById('mod-section-addons');
+                if (addonsSection && !addonsSection.classList.contains('hidden')) {
+                    document.querySelectorAll('input[name="mod_addon"]:checked').forEach(cb => {
+                        const mId = parseInt(cb.value, 10);
+                        modifierIds.push(mId);
+                        modifierNames.push(cb.dataset.name);
+                        modPriceCents += parseInt(cb.dataset.price || '0', 10);
+                    });
                 }
 
-                // Ice
-                const iceSelect = document.getElementById('mod-ice-select');
-                if (iceSelect && iceSelect.value && !document.getElementById('mod-section-ice').classList.contains('hidden')) {
-                    const mId = parseInt(iceSelect.value, 10);
-                    const opt = iceSelect.options[iceSelect.selectedIndex];
-                    modifierIds.push(mId);
-                    modifierNames.push(opt.text);
-                    modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                // Sugar (only if sugar section is visible)
+                const sugarSection = document.getElementById('mod-section-sugar');
+                if (sugarSection && !sugarSection.classList.contains('hidden')) {
+                    const sugarSelect = document.getElementById('mod-sugar-select');
+                    if (sugarSelect && sugarSelect.value) {
+                        const mId = parseInt(sugarSelect.value, 10);
+                        const opt = sugarSelect.options[sugarSelect.selectedIndex];
+                        modifierIds.push(mId);
+                        modifierNames.push(opt.text);
+                        modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                    }
+                }
+
+                // Ice (only if ice section is visible)
+                const iceSection = document.getElementById('mod-section-ice');
+                if (iceSection && !iceSection.classList.contains('hidden')) {
+                    const iceSelect = document.getElementById('mod-ice-select');
+                    if (iceSelect && iceSelect.value) {
+                        const mId = parseInt(iceSelect.value, 10);
+                        const opt = iceSelect.options[iceSelect.selectedIndex];
+                        modifierIds.push(mId);
+                        modifierNames.push(opt.text);
+                        modPriceCents += parseInt(opt.dataset.price || '0', 10);
+                    }
                 }
             }
 

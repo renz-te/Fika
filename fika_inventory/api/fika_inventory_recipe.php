@@ -69,7 +69,7 @@ try {
         // Action: list
         // 1. Products with mapped recipes
         $prodStmt = $pdo->query("
-            SELECT id, name, category, price 
+            SELECT id, name, category, price, image_path 
             FROM products 
             WHERE is_active = 1 AND deleted_at IS NULL 
             ORDER BY name ASC
@@ -213,6 +213,86 @@ try {
         Audit::log('RECIPE_INGREDIENT_DELETED', "Deleted recipe ingredient row #{$recipeId}", $user['id']);
 
         echo json_encode(['success' => true, 'message' => 'Recipe ingredient removed.']);
+        exit;
+
+    } elseif ($action === 'upload_image') {
+        $productId = (int)($input['product_id'] ?? $input['target_id'] ?? 0);
+        if ($productId <= 0) {
+            http_response_code(400);
+            exit(json_encode(['success' => false, 'error' => 'Valid product ID is required.']));
+        }
+
+        $checkStmt = $pdo->prepare("SELECT id, name, image_path FROM products WHERE id = ? AND deleted_at IS NULL");
+        $checkStmt->execute([$productId]);
+        $product = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$product) {
+            http_response_code(404);
+            exit(json_encode(['success' => false, 'error' => 'Product not found.']));
+        }
+
+        $file = $_FILES['product_image'] ?? $_FILES['image'] ?? null;
+        if (!$file || !isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            exit(json_encode(['success' => false, 'error' => 'No image file uploaded or upload error occurred.']));
+        }
+
+        $destinationDir = APP_ROOT . '/public/uploads/menu';
+        if (!is_dir($destinationDir)) {
+            mkdir($destinationDir, 0755, true);
+        }
+
+        $filename = Upload::handle($file, $destinationDir);
+        if ($filename === null) {
+            http_response_code(400);
+            exit(json_encode(['success' => false, 'error' => 'Invalid image format. Allowed formats: JPEG, PNG, WebP (max 5MB).']));
+        }
+
+        $relativePath = 'public/uploads/menu/' . $filename;
+
+        // Clean up previous image if it was in public/uploads/menu
+        if (!empty($product['image_path'])) {
+            $oldPath = APP_ROOT . '/' . ltrim($product['image_path'], '/');
+            if (is_file($oldPath) && strpos($product['image_path'], 'public/uploads/menu/') === 0) {
+                @unlink($oldPath);
+            }
+        }
+
+        $updateStmt = $pdo->prepare("UPDATE products SET image_path = ?, updated_at = NOW() WHERE id = ?");
+        $updateStmt->execute([$relativePath, $productId]);
+
+        Audit::log('PRODUCT_IMAGE_UPLOADED', "Uploaded image for product #{$productId} ({$product['name']}): {$relativePath}", $user['id']);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Product image uploaded successfully.',
+            'image_path' => $relativePath
+        ]);
+        exit;
+
+    } elseif ($action === 'delete_product') {
+        $productId = (int)($input['product_id'] ?? $input['id'] ?? 0);
+        if ($productId <= 0) {
+            http_response_code(400);
+            exit(json_encode(['success' => false, 'error' => 'Valid product ID is required.']));
+        }
+
+        $checkStmt = $pdo->prepare("SELECT id, name FROM products WHERE id = ? AND deleted_at IS NULL");
+        $checkStmt->execute([$productId]);
+        $product = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$product) {
+            http_response_code(404);
+            exit(json_encode(['success' => false, 'error' => 'Product not found or already deleted.']));
+        }
+
+        $delStmt = $pdo->prepare("UPDATE products SET is_active = 0, deleted_at = NOW() WHERE id = ?");
+        $delStmt->execute([$productId]);
+
+        Audit::log('PRODUCT_DELETED', "Soft-deleted product #{$productId} ({$product['name']})", $user['id']);
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Product '{$product['name']}' deactivated successfully."
+        ]);
         exit;
 
     } else {
