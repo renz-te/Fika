@@ -1,5 +1,6 @@
 # Block PHP execution
 <FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps|cgi|pl|exe)$">
+    Require all denied
     Order allow,deny
     Deny from all
 </FilesMatch>

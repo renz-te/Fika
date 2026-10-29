@@ -44,7 +44,7 @@ $canLeave = (Rbac::can('hr.leave.view') || Rbac::can('leave.approve')) && !($ses
 $canPayroll = Rbac::can('payroll.generate') || Rbac::can('payroll.release');
 $canShift = (Rbac::can('schedule.view') || Rbac::can('schedule.manage')) && !in_array($sessRoleId, [1, 2], true);
 $canAttendance = Rbac::can('hr.attendance.view') && !($sessRoleId === 1);
-$canUsers = Rbac::can('users.view') && !$isBM;
+$canUsers = Rbac::can('users.view') && in_array($sessRoleId, [1, 6], true);
 $canSystemAccounts = ($sessRoleId === 1) || $isAdmin || Rbac::can('user.manage');
 $canDevices = Rbac::can('devices.view');
 $canSettings = Rbac::can('settings.manage') && ($sessRoleId === 1);
@@ -274,7 +274,7 @@ if ((int)($_SESSION['user']['role_id'] ?? 0) === 13) {
             <span>System Accounts</span>
         </a>
         <?php endif; ?>
-        <?php if ($canUsers): ?>
+        <?php if (in_array((int)($_SESSION['user']['role_id'] ?? 0), [1, 6], true)): ?>
         <a href="<?= $url('fika_hrms', 'fika_hrms_users.php') ?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold <?= $navActive('fika_hrms_users.php') ?>">
             <i class="fa-solid fa-user-shield w-5 text-center text-purple-400"></i>
             <span>Account Management</span>
